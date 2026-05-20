@@ -38,8 +38,10 @@ Language specifications for the KriolLang programming language.
 
 ```xml
 <type_specifier> ::= T_TYPE_NUM
+                   | T_TYPE_NTER
                    | T_TYPE_VOID
                    | T_TYPE_BOOL
+                   | T_TYPE_TEXTU
 
 <constant> ::= T_INT_LIT
              | T_FLOAT_LIT

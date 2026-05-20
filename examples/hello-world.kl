@@ -1,5 +1,6 @@
 inpristan "stdio.h"
 
 vaziu inisiu() {
-    mostra("Kuale, Mundu!\n");
+    textu mensagem = "Kuale, Mundu!\n";
+    mostra(mensagem);
 }

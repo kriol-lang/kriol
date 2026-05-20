@@ -6,13 +6,38 @@ using namespace kriol::ast;
 
 std::string translate_type(const std::string& type) {
     if (type == "num")   return "double";
+    if (type == "nter")  return "long long";
     if (type == "vaziu") return "void";
     if (type == "bool")  return "unsigned short";
+    if (type == "textu") return "char*";
     return type;
+}
+
+std::string CodeGenVisitor::inferFormat(Expr* expr) {
+    if (auto* lit = dynamic_cast<LiteralExpr*>(expr)) {
+        if (lit->Type == "int")            return "%d";
+        if (lit->Type == "float")          return "%g";
+        if (lit->Type == "unsigned short") return "%u";
+        if (lit->Type == "char*")          return "%s";
+    }
+    if (auto* id = dynamic_cast<IdentExpr*>(expr)) {
+        auto it = symTable.find(id->Name);
+        if (it != symTable.end()) {
+            const std::string& t = it->second;
+            if (t == "num")            return "%g";
+            if (t == "nter")           return "%lld";
+            if (t == "unsigned short") return "%u";
+            if (t == "textu")          return "%s";
+            if (t == "char*")          return "%s";
+        }
+    }
+    return "";
 }
 
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {
+    // track for auto-formatting of printf in MostraFunCallExpr
+    symTable[node.Name] = node.Type;
     os << translate_type(node.Type) << " " << node.Name;
     if (node.Value) {
         os << C_EQ;
@@ -92,8 +117,41 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
 }
 
 void CodeGenVisitor::visit(MostraFunCallExpr& node) {
-    os << node.Name << C_OPEN_PAR;
-    if (node.Args) node.Args->accept(*this);
+    os << C_PRINTF << C_OPEN_PAR;
+
+    if (!node.Args || node.Args->Args.empty()) {
+        os << C_CLOSE_PAR;
+        return;
+    }
+
+    auto& args = node.Args->Args;
+
+    // If the first argument is a string literal the user is supplying
+    // their own format string, pass through unchanged.
+    if (auto* first = dynamic_cast<LiteralExpr*>(args[0].get())) {
+        if (first->Type == "char*") {
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (args[i]) args[i]->accept(*this);
+                if (i < args.size() - 1) os << C_COMMA;
+            }
+            os << C_CLOSE_PAR;
+            return;
+        }
+    }
+
+    // Auto-format: build a format string from argument types.
+    std::string fmt;
+    for (auto& arg : args) {
+        std::string spec = inferFormat(arg.get());
+        // Fall back to %g (double) when expression type is not statically known.
+        fmt += spec.empty() ? "%g" : spec;
+    }
+
+    os << "\"" << fmt << "\"";
+    for (auto& arg : args) {
+        os << C_COMMA;
+        if (arg) arg->accept(*this);
+    }
     os << C_CLOSE_PAR;
 }
 

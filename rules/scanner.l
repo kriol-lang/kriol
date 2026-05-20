@@ -36,11 +36,13 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "si"            return TOKENIZE(SI);
 "sinon"         return TOKENIZE(SINON);
 "divolvi"       return TOKENIZE(DIVOLVI);
-"pa"            return TOKENIZE(DI);
+"pa"            return TOKENIZE(PA);
 "nkuantu"       return TOKENIZE(NKUANTU);
 "num"           SAVE_TOKEN;   return TYPE_NUM;
+"nter"          SAVE_TOKEN;   return TYPE_NTER;
 "vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
+"textu"         SAVE_TOKEN;   return TYPE_TEXTU;
 "sin"           SAVE_BOOLEAN; return BOOL_LIT;
 "nau"           SAVE_BOOLEAN; return BOOL_LIT;
 "para"          return TOKENIZE(PARA);

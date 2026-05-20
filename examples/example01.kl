@@ -10,6 +10,6 @@ num min(num a, num b) {
 
 vaziu inisiu() {
     num m = min(12, 20);
-    mostra("%g\n", m);
+    mostra(m);
 }
 

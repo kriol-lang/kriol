@@ -82,19 +82,21 @@ extern int yydebug;
     TYPE_NUM = 283,                /* TYPE_NUM  */
     TYPE_BOOL = 284,               /* TYPE_BOOL  */
     TYPE_VOID = 285,               /* TYPE_VOID  */
-    DIVOLVI = 286,                 /* DIVOLVI  */
-    DI = 287,                      /* DI  */
-    STRUT = 288,                   /* STRUT  */
-    NKUANTU = 289,                 /* NKUANTU  */
-    SI = 290,                      /* SI  */
-    SINON = 291,                   /* SINON  */
-    IMPRISTAN = 292,               /* IMPRISTAN  */
-    PARA = 293,                    /* PARA  */
-    CONTINUA = 294,                /* CONTINUA  */
-    DOT = 295,                     /* DOT  */
-    RPAR = 296,                    /* RPAR  */
-    LPAR = 297,                    /* LPAR  */
-    UMINUS = 298                   /* UMINUS  */
+    TYPE_NTER = 286,               /* TYPE_NTER  */
+    TYPE_TEXTU = 287,              /* TYPE_TEXTU  */
+    DIVOLVI = 288,                 /* DIVOLVI  */
+    PA = 289,                      /* PA  */
+    STRUT = 290,                   /* STRUT  */
+    NKUANTU = 291,                 /* NKUANTU  */
+    SI = 292,                      /* SI  */
+    SINON = 293,                   /* SINON  */
+    IMPRISTAN = 294,               /* IMPRISTAN  */
+    PARA = 295,                    /* PARA  */
+    CONTINUA = 296,                /* CONTINUA  */
+    DOT = 297,                     /* DOT  */
+    RPAR = 298,                    /* RPAR  */
+    LPAR = 299,                    /* LPAR  */
+    UMINUS = 300                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -118,7 +120,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 122 "parser.hh"
+#line 124 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -42,8 +42,8 @@
 %token<token>  PLUS MINUS MUL DIV
 %token<token>  EQ  NE  LT LE GT GE
 %token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
-%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID
-%token<token>  DIVOLVI DI STRUT
+%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
+%token<token>  DIVOLVI PA STRUT
 %token<token>  NKUANTU SI SINON IMPRISTAN
 %token<token> PARA CONTINUA DOT RPAR LPAR
 
@@ -77,6 +77,8 @@ program : statements { *Program = $1; }
 type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_VOID { $$ = $1; }
                | TYPE_BOOL { $$ = new std::string("unsigned short"); delete $1; }
+               | TYPE_NTER { $$ = $1; }
+               | TYPE_TEXTU { $$ = $1; }
                ;
 
 constant : INT_LIT { auto lit = new ast::LiteralExpr("int", *$1); lit->ActivateAutoCast(); $$ = lit; delete $1; }
@@ -218,7 +220,7 @@ else_then : compound_statement { $$ = $1; }
           ;
 
 iteration_statement : NKUANTU expression compound_statement { $$ = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); }
-                    | DI expression SEMIC expression SEMIC expression compound_statement { $$ = new ast::ForSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); }
+                    | PA expression SEMIC expression SEMIC expression compound_statement { $$ = new ast::ForSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); }
                     ;
 
 jump_statement : PARA SEMIC { $$ = new ast::JumpSttmt("break"); }

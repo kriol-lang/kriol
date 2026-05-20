@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <algorithm>
 #include <cstdlib>
@@ -203,11 +204,6 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
 {
     this->ParseArgs(argc, argv);
 
-    if (Args.shouldFormatOutput)
-    {
-        cli::PrintErr("Format option not implemented yet.");
-    }
-
     auto matchAtEndOfFilename = [name = Args.filename](std::string endstr)
     {
         return name.find(endstr, name.size() - endstr.size());
@@ -235,6 +231,25 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     catch (std::exception &err)
     {
         cli::PrintErr(err.what(), 1);
+    }
+
+    if (Args.shouldFormatOutput)
+    {
+        if (system("which clang-format > /dev/null 2>&1") == 0)
+        {
+            std::string fmtFile = ".creolfmt-" + ConvertToHex(Args.filename) + ".tmp.c";
+            SaveCodeToFile(GeneratedCode, fmtFile);
+            system(("clang-format -i " + fmtFile).c_str());
+            std::ifstream fmtIn(fmtFile);
+            GeneratedCode = std::string(
+                std::istreambuf_iterator<char>(fmtIn),
+                std::istreambuf_iterator<char>());
+            if (fs::exists(fmtFile)) fs::remove(fmtFile);
+        }
+        else
+        {
+            cli::PrintErr("clang-format not found; skipping format.");
+        }
     }
 
     if (Args.outfile != "")

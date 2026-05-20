@@ -5,6 +5,8 @@
 #include "cbinds.hh"
 #include <iostream>
 #include <ostream>
+#include <string>
+#include <unordered_map>
 
 namespace kriol {
 namespace ast {
@@ -12,6 +14,11 @@ namespace ast {
     class CodeGenVisitor : public Visitor {
     private:
         std::ostream& os;
+        std::unordered_map<std::string, std::string> symTable;
+
+        // Returns a printf format specifier for the given expression,
+        // or "" if the type cannot be determined statically.
+        std::string inferFormat(Expr* expr);
 
     public:
         CodeGenVisitor(std::ostream& os) : os(os) {}
