@@ -1,9 +1,9 @@
 inpristan "stdio.h"
 
-nteru soma(nteru n) {
-    nteru acc = 0;
+num soma(num n) {
+    num acc = 0;
 
-    nteru i;
+    num i;
     pa i = 0 ; i < n ; i = i + 1 {
         acc = acc + i;
     }
@@ -11,6 +11,6 @@ nteru soma(nteru n) {
     divolvi acc;
 }
 
-nteru inisiu() {
-    mostra("Soma ti 10 é igual a %d\n", soma(10));
+vaziu inisiu() {
+    mostra("Soma ti 10 é igual a %g\n", soma(10));
 }

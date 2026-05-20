@@ -38,8 +38,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "divolvi"       return TOKENIZE(DIVOLVI);
 "pa"            return TOKENIZE(DI);
 "nkuantu"       return TOKENIZE(NKUANTU);
-"nteru"         SAVE_TOKEN;   return TYPE_INT;
-"real"          SAVE_TOKEN;   return TYPE_FLOAT;
+"num"           SAVE_TOKEN;   return TYPE_NUM;
 "vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "sin"           SAVE_BOOLEAN; return BOOL_LIT;

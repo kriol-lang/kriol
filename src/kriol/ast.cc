@@ -5,10 +5,9 @@
 using namespace kriol::ast;
 
 std::string translate_type(const std::string& type) {
-    if (type == "nteru") return "int";
-    if (type == "real") return "float";
+    if (type == "num")   return "double";
     if (type == "vaziu") return "void";
-    if (type == "bool") return "unsigned short";
+    if (type == "bool")  return "unsigned short";
     return type;
 }
 
@@ -39,11 +38,13 @@ void CodeGenVisitor::visit(FuncArgs& node) {
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     // localizing the main entry point
     std::string name = node.Name;
+    std::string type = translate_type(node.Type);
     if (name == "inisiu") {
         name = "main";
+        type = "int";  // C mandates int main()
     }
 
-    os << translate_type(node.Type) << " " << name << C_OPEN_PAR;
+    os << type << " " << name << C_OPEN_PAR;
     if (node.Args) node.Args->accept(*this);
     os << C_CLOSE_PAR;
     if (node.Body) node.Body->accept(*this);

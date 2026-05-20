@@ -42,7 +42,7 @@
 %token<token>  PLUS MINUS MUL DIV
 %token<token>  EQ  NE  LT LE GT GE
 %token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
-%token<string> TYPE_INT TYPE_FLOAT TYPE_BOOL TYPE_VOID
+%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID
 %token<token>  DIVOLVI DI STRUT
 %token<token>  NKUANTU SI SINON IMPRISTAN
 %token<token> PARA CONTINUA DOT RPAR LPAR
@@ -74,8 +74,7 @@ program : statements { *Program = $1; }
         | error { *Program = nullptr; }
         ;
 
-type_specifier : TYPE_INT { $$ = $1; }
-               | TYPE_FLOAT { $$ = $1; }
+type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_VOID { $$ = $1; }
                | TYPE_BOOL { $$ = new std::string("unsigned short"); delete $1; }
                ;

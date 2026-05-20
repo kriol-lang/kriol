@@ -180,10 +180,9 @@ KriolLang is localized strictly using standard ALUPEC orthography. Below are the
 
 | KriolLang   | C Equivalent | Meaning      |
 | ----------- | ------------ | ------------ |
-| nteru       | int          | Integer      |
-| real        | float        | Float        |
+| num         | double       | Number       |
 | vaziu       | void         | Void         |
-| bool       | bool         | Boolean      |
+| bool        | bool         | Boolean      |
 | sin         | true / 1     | True         |
 | nau         | false / 0    | False        |
 | inpristan   | #include     | Import       |

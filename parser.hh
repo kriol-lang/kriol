@@ -79,23 +79,22 @@ extern int yydebug;
     SEMIC = 280,                   /* SEMIC  */
     LBRAC = 281,                   /* LBRAC  */
     RBRAC = 282,                   /* RBRAC  */
-    TYPE_INT = 283,                /* TYPE_INT  */
-    TYPE_FLOAT = 284,              /* TYPE_FLOAT  */
-    TYPE_BOOL = 285,               /* TYPE_BOOL  */
-    TYPE_VOID = 286,               /* TYPE_VOID  */
-    DIVOLVI = 287,                 /* DIVOLVI  */
-    DI = 288,                      /* DI  */
-    STRUT = 289,                   /* STRUT  */
-    NKUANTU = 290,                 /* NKUANTU  */
-    SI = 291,                      /* SI  */
-    SINON = 292,                   /* SINON  */
-    IMPRISTAN = 293,               /* IMPRISTAN  */
-    PARA = 294,                    /* PARA  */
-    CONTINUA = 295,                /* CONTINUA  */
-    DOT = 296,                     /* DOT  */
-    RPAR = 297,                    /* RPAR  */
-    LPAR = 298,                    /* LPAR  */
-    UMINUS = 299                   /* UMINUS  */
+    TYPE_NUM = 283,                /* TYPE_NUM  */
+    TYPE_BOOL = 284,               /* TYPE_BOOL  */
+    TYPE_VOID = 285,               /* TYPE_VOID  */
+    DIVOLVI = 286,                 /* DIVOLVI  */
+    DI = 287,                      /* DI  */
+    STRUT = 288,                   /* STRUT  */
+    NKUANTU = 289,                 /* NKUANTU  */
+    SI = 290,                      /* SI  */
+    SINON = 291,                   /* SINON  */
+    IMPRISTAN = 292,               /* IMPRISTAN  */
+    PARA = 293,                    /* PARA  */
+    CONTINUA = 294,                /* CONTINUA  */
+    DOT = 295,                     /* DOT  */
+    RPAR = 296,                    /* RPAR  */
+    LPAR = 297,                    /* LPAR  */
+    UMINUS = 298                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -119,7 +118,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 123 "parser.hh"
+#line 122 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

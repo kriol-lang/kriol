@@ -1,6 +1,6 @@
 inpristan "stdio.h"
 
-nteru min(nteru a, nteru b) {
+num min(num a, num b) {
     si a < b {
         divolvi a;
     } sinon {
@@ -8,8 +8,8 @@ nteru min(nteru a, nteru b) {
     }
 }
 
-nteru inisiu() {
-    nteru m = min(12, 20);
-    mostra("%d\n", m);
+vaziu inisiu() {
+    num m = min(12, 20);
+    mostra("%g\n", m);
 }
 
