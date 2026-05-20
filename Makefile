@@ -1,10 +1,16 @@
 .DEFAULT_GOAL := kriol
 
-.PHONY: kriol debug release clean
+.PHONY: kriol debug release clean test
 
 CC = clang++
+CC_C = cc
 
 OUTPUT = kriol
+
+EXAMPLES = examples/hello-world.kl \
+	   examples/example01.kl \
+	   examples/example02.kl \
+	   examples/example03.kl
 
 FLAGS = -std=c++17 -fPIC
 
@@ -48,3 +54,21 @@ scanner.cc:
 
 clean:
 	rm *.o kriol parser.cc parser.hh scanner.cc
+
+test: kriol
+	@echo "\n~~ Running tests ~~\n"; \
+	pass=0; fail=0; \
+	tmpfile=$$(mktemp /tmp/kriol_XXXX.c); \
+	for f in $(EXAMPLES); do \
+		printf "  %-38s" "$$f"; \
+		if ./kriol "$$f" > "$$tmpfile" 2>/dev/null && \
+		   [ -s "$$tmpfile" ] && \
+		   $(CC_C) -x c "$$tmpfile" -fsyntax-only 2>/dev/null; then \
+			echo " PASS"; pass=$$((pass+1)); \
+		else \
+			echo " FAIL"; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	rm -f "$$tmpfile"; \
+	echo "\n  $$pass/$$((pass+fail)) passed\n"; \
+	[ $$fail -eq 0 ]

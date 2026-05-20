@@ -2,5 +2,4 @@ inpristan "stdio.h"
 
 vaziu inisiu() {
     mostra("Kuale, Mundu!\n");
-    divolvi 0;
 }

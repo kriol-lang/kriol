@@ -37,8 +37,7 @@ Language specifications for the KriolLang programming language.
 ### Variable declaration
 
 ```xml
-<type_specifier> ::= T_TYPE_INT
-                   | T_TYPE_FLOAT
+<type_specifier> ::= T_TYPE_NUM
                    | T_TYPE_VOID
                    | T_TYPE_BOOL
 
