@@ -1,12 +1,14 @@
-#include "../../include/creol/cli.hh"
-#include "../../include/creol/ast.hh"
-#include "../../include/creol/cnst.hh"
+#include "../../include/kriol/cli.hh"
+#include "../../include/kriol/ast.hh"
+#include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/cnst.hh"
 
 #include "../../include/external/argparse.hpp"
 
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <algorithm>
 #include <cstdlib>
@@ -16,17 +18,15 @@
 namespace fs = std::filesystem;
 namespace ap = argparse;
 
-using namespace creol;
+using namespace kriol;
 
 extern FILE *yyin;
 
-extern int yyparse(void);
-
-extern ast::BlockSttmt *Program;
+extern int yyparse(kriol::ast::BlockSttmt** Program);
 
 void cli::PrintErr(std::string message)
 {
-    std::cerr << "Creol: Err: " << message << std::endl;
+    std::cerr << "Kriol: Err: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
@@ -123,17 +123,18 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
     Args.shouldCheckExtension = !Parser->get<bool>("--ignore-extension");
 }
 
-ast::BlockSttmt *cli::CreolLangParserWrapper::ParseCode(std::string Content, bool isFile)
+ast::BlockSttmt *cli::KriolLangParserWrapper::ParseCode(std::string Content, bool isFile)
 {
+    ast::BlockSttmt* ProgramAST = nullptr;
     if (isFile)
     {
-        ParseFile(Content);
+        ParseFile(Content, &ProgramAST);
     }
     else
     {
-        ParseText(Content);
+        ParseText(Content, &ProgramAST);
     }
-    return Program;
+    return ProgramAST;
 }
 
 void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
@@ -150,7 +151,7 @@ void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseFile(std::string filename)
+void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttmt** Program)
 {
     if (!fs::exists(filename))
     {
@@ -165,15 +166,15 @@ void cli::CreolLangParserWrapper::ParseFile(std::string filename)
     }
 
     yyin = file;
-    yyparse();
+    yyparse(Program);
 
     fclose(file);
 }
 
-void cli::CreolLangParserWrapper::ParseText(std::string text)
+void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
 {
     /// TODO: Implement this
-    cli::PrintErr("cli::CreolLangParserWrapper::ParseText is not implemented yet!\n", -1);
+    cli::PrintErr("cli::KriolLangParserWrapper::ParseText is not implemented yet!\n", -1);
 }
 
 void cli::Compiler::BuildCode(std::string Code)
@@ -203,12 +204,6 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
 {
     this->ParseArgs(argc, argv);
 
-    if (Args.shouldFormatOutput)
-    {
-        cli::PrintErr("Format option not implemented yet.");
-    }
-
-    // Checks if there's a matching extension at the end of the filename
     auto matchAtEndOfFilename = [name = Args.filename](std::string endstr)
     {
         return name.find(endstr, name.size() - endstr.size());
@@ -219,17 +214,42 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         cli::PrintErr("File format not recognized. Filename should end with a '" + std::string(KL_STANDARD_FILE_EXTENSION) + "' file extension.", 1);
     }
 
-    ast::BlockSttmt *ProgramAST = CreolLangParserWrapper::ParseCode(Args.filename, true);
+    ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(Args.filename, true);
+    std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
     std::string GeneratedCode;
 
     try
     {
-        GeneratedCode = ProgramAST->CodeGen();
+        std::stringstream ss;
+        ast::CodeGenVisitor visitor(ss);
+        if (ProgramNode) {
+            ProgramNode->accept(visitor);
+        }
+        GeneratedCode = ss.str();
     }
     catch (std::exception &err)
     {
         cli::PrintErr(err.what(), 1);
+    }
+
+    if (Args.shouldFormatOutput)
+    {
+        if (system("which clang-format > /dev/null 2>&1") == 0)
+        {
+            std::string fmtFile = ".creolfmt-" + ConvertToHex(Args.filename) + ".tmp.c";
+            SaveCodeToFile(GeneratedCode, fmtFile);
+            system(("clang-format -i " + fmtFile).c_str());
+            std::ifstream fmtIn(fmtFile);
+            GeneratedCode = std::string(
+                std::istreambuf_iterator<char>(fmtIn),
+                std::istreambuf_iterator<char>());
+            if (fs::exists(fmtFile)) fs::remove(fmtFile);
+        }
+        else
+        {
+            cli::PrintErr("clang-format not found; skipping format.");
+        }
     }
 
     if (Args.outfile != "")

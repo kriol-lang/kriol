@@ -79,23 +79,24 @@ extern int yydebug;
     SEMIC = 280,                   /* SEMIC  */
     LBRAC = 281,                   /* LBRAC  */
     RBRAC = 282,                   /* RBRAC  */
-    TYPE_INT = 283,                /* TYPE_INT  */
-    TYPE_FLOAT = 284,              /* TYPE_FLOAT  */
-    TYPE_BOOL = 285,               /* TYPE_BOOL  */
-    TYPE_VOID = 286,               /* TYPE_VOID  */
-    DIVOLVI = 287,                 /* DIVOLVI  */
-    DI = 288,                      /* DI  */
-    STRUT = 289,                   /* STRUT  */
-    NKUANTU = 290,                 /* NKUANTU  */
-    SI = 291,                      /* SI  */
-    SINON = 292,                   /* SINON  */
-    IMPRISTAN = 293,               /* IMPRISTAN  */
-    PARA = 294,                    /* PARA  */
-    CONTINUA = 295,                /* CONTINUA  */
-    DOT = 296,                     /* DOT  */
-    RPAR = 297,                    /* RPAR  */
-    LPAR = 298,                    /* LPAR  */
-    UMINUS = 299                   /* UMINUS  */
+    TYPE_NUM = 283,                /* TYPE_NUM  */
+    TYPE_BOOL = 284,               /* TYPE_BOOL  */
+    TYPE_VOID = 285,               /* TYPE_VOID  */
+    TYPE_NTER = 286,               /* TYPE_NTER  */
+    TYPE_TEXTU = 287,              /* TYPE_TEXTU  */
+    DIVOLVI = 288,                 /* DIVOLVI  */
+    PA = 289,                      /* PA  */
+    STRUT = 290,                   /* STRUT  */
+    NKUANTU = 291,                 /* NKUANTU  */
+    SI = 292,                      /* SI  */
+    SINON = 293,                   /* SINON  */
+    IMPRISTAN = 294,               /* IMPRISTAN  */
+    PARA = 295,                    /* PARA  */
+    CONTINUA = 296,                /* CONTINUA  */
+    DOT = 297,                     /* DOT  */
+    RPAR = 298,                    /* RPAR  */
+    LPAR = 299,                    /* LPAR  */
+    UMINUS = 300                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -104,22 +105,22 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 17 "rules/parser.y"
+#line 19 "rules/parser.y"
 
     int token;
     std::string* integer;
     std::string* floatingpoint;
     std::string* boolean;
     std::string* string;
-    creol::ast::Expr* expr;
-    creol::ast::Sttmt* sttmt;
-    creol::ast::BlockSttmt* block;
-    creol::ast::VarDeclSttmt* vardecl;
-    creol::ast::FuncArgs* params;
-    creol::ast::FuncCallArgs* args;
-    creol::ast::LiteralExpr* litexpr;
+    kriol::ast::Expr* expr;
+    kriol::ast::Sttmt* sttmt;
+    kriol::ast::BlockSttmt* block;
+    kriol::ast::VarDeclSttmt* vardecl;
+    kriol::ast::FuncArgs* params;
+    kriol::ast::FuncCallArgs* args;
+    kriol::ast::LiteralExpr* litexpr;
 
-#line 123 "parser.hh"
+#line 124 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -131,7 +132,7 @@ typedef union YYSTYPE YYSTYPE;
 extern YYSTYPE yylval;
 
 
-int yyparse (void);
+int yyparse (kriol::ast::BlockSttmt** Program);
 
 
 #endif /* !YY_YY_PARSER_HH_INCLUDED  */

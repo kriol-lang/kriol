@@ -1,6 +1,6 @@
-# CreolLang Language Specification
+# KriolLang Language Specification
 
-Language specifications for the CreolLang programming language.
+Language specifications for the KriolLang programming language.
 
 *A modified version of the **Backus-Naus Form** language was used for describing this language.*
 
@@ -28,7 +28,7 @@ Language specifications for the CreolLang programming language.
 
 ```xml
 
-<import_statement> ::= T_IMPRISTAN <single_import>
+<import_statement> ::= T_INPRISTAN <single_import>
 
 <single_import> ::= T_STR_LIT
 
@@ -37,10 +37,11 @@ Language specifications for the CreolLang programming language.
 ### Variable declaration
 
 ```xml
-<type_specifier> ::= T_TYPE_INT
-                   | T_TYPE_FLOAT
+<type_specifier> ::= T_TYPE_NUM
+                   | T_TYPE_NTER
                    | T_TYPE_VOID
                    | T_TYPE_BOOL
+                   | T_TYPE_TEXTU
 
 <constant> ::= T_INT_LIT
              | T_FLOAT_LIT
@@ -85,7 +86,7 @@ Language specifications for the CreolLang programming language.
 
 <multiplicative_expression> ::= <unary_expression>
                               | <multiplicative_expression> T_MUL <primary_expression>
-                              | <multiplicative_expression> T_DIV <primary_expression>
+                              | <multiplicative_expression> T_PAV <primary_expression>
 ```
 
 ### Other Expressions
@@ -158,18 +159,40 @@ Language specifications for the CreolLang programming language.
 
 ```xml
 <iteration_statement> ::= T_NKUANTU <expression> <compound_statement>
-                        | T_DI <expression> ';' <expression> ';' <expression>
+                        | T_PA <expression> ';' <expression> ';' <expression>
 ```
 
 ### Jump statement
 
 ```xml
 <jump_statement> ::= T_PARA ';'
-                   | T_CONTINUA ';'
-                   | T_DIVOLVI <expression> ';'
-                   | T_DIVOLVI ';'
+                   | T_KONTINUA ';'
+                   | T_PAVOLVI <expression> ';'
+                   | T_PAVOLVI ';'
 ```
 
 ## License
 
-The specification of the CreolLang programming language is released under the [MIT License](LICENSE).
+The specification of the KriolLang programming language is released under the [MIT License](LICENSE).
+
+## Vocabulary
+
+Below are the keywords and types in the language mapped to standard C.
+
+| KriolLang   | C Equivalent | Meaning      |
+| ----------- | ------------ | ------------ |
+| num         | double       | Number       |
+| vaziu       | void         | Void         |
+| bool        | bool         | Boolean      |
+| sin         | true / 1     | True         |
+| nau         | false / 0    | False        |
+| inpristan   | #include     | Import       |
+| si          | if           | If           |
+| sinon       | else         | Else         |
+| pa          | for          | For loop     |
+| nkuantu     | while        | While loop   |
+| kontinua    | continue     | Continue     |
+| para        | break        | Break        |
+| divolvi     | return       | Return       |
+| mostra      | printf       | Print        |
+| inisiu      | main         | Entry point  |

@@ -1,10 +1,16 @@
-.DEFAULT_GOAL := creol
+.DEFAULT_GOAL := kriol
 
-.PHONY: creol debug release clean
+.PHONY: kriol debug release clean test
 
 CC = clang++
+CC_C = cc
 
-OUTPUT = creol
+OUTPUT = kriol
+
+EXAMPLES = examples/hello-world.kl \
+	   examples/example01.kl \
+	   examples/example02.kl \
+	   examples/example03.kl
 
 FLAGS = -std=c++17 -fPIC
 
@@ -15,16 +21,16 @@ RLS_FLAGS = $(FLAGS) -O3 -finline-functions
 OBJS = main.o ast.o cli.o parser.o scanner.o
 
 SRCS = main.cpp \
-	   src/creol/ast.cc \
-	   src/creol/cli.cc \
+	   src/kriol/ast.cc \
+	   src/kriol/cli.cc \
 	   parser.cc scanner.cc \
 	   include/external/argparse.hpp
 
 # The default build is debug.
 # Change to release if wanted.
-creol: debug
+kriol: debug
 	@echo "\n\nRun the compiler with:"
-	@echo "\n  ./creol --help\n"
+	@echo "\n  ./kriol --help\n"
 
 dbg-obj: $(SRCS)
 	@echo "~~ Debug build ~~"
@@ -47,4 +53,22 @@ scanner.cc:
 	flex -o scanner.cc rules/scanner.l
 
 clean:
-	rm *.o creol
+	rm *.o kriol parser.cc parser.hh scanner.cc
+
+test: kriol
+	@echo "\n~~ Running tests ~~\n"; \
+	pass=0; fail=0; \
+	tmpfile=$$(mktemp /tmp/kriol_XXXX.c); \
+	for f in $(EXAMPLES); do \
+		printf "  %-38s" "$$f"; \
+		if ./kriol "$$f" > "$$tmpfile" 2>/dev/null && \
+		   [ -s "$$tmpfile" ] && \
+		   $(CC_C) -x c "$$tmpfile" -fsyntax-only 2>/dev/null; then \
+			echo " PASS"; pass=$$((pass+1)); \
+		else \
+			echo " FAIL"; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	rm -f "$$tmpfile"; \
+	echo "\n  $$pass/$$((pass+fail)) passed\n"; \
+	[ $$fail -eq 0 ]

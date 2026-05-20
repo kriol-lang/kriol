@@ -1,8 +1,8 @@
 %option noyywrap yylineno
 
 %{
-    #include "include/creol/ast.hh"
-    #include "include/creol/cli.hh"
+    #include "include/kriol/ast.hh"
+    #include "include/kriol/cli.hh"
 
     #include <string>
     #include <cstdio>
@@ -13,7 +13,7 @@
     #define YYERROR_VERBOSE 1
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
-    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sim") == 0 ? "1" : "0");
+    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sin") == 0 ? "1" : "0");
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
@@ -32,20 +32,21 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 [ \t\n]         /* ignore */;
 
 "mostra"        return TOKENIZE(MOSTRA);
-"impristan"     return TOKENIZE(IMPRISTAN);
+"inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);
 "sinon"         return TOKENIZE(SINON);
 "divolvi"       return TOKENIZE(DIVOLVI);
-"di"            return TOKENIZE(DI);
+"pa"            return TOKENIZE(PA);
 "nkuantu"       return TOKENIZE(NKUANTU);
-"int"           SAVE_TOKEN;   return TYPE_INT;
-"float"         SAVE_TOKEN;   return TYPE_FLOAT;
-"void"          SAVE_TOKEN;   return TYPE_VOID;
+"num"           SAVE_TOKEN;   return TYPE_NUM;
+"nter"          SAVE_TOKEN;   return TYPE_NTER;
+"vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
-"sim"           SAVE_BOOLEAN; return BOOL_LIT;
+"textu"         SAVE_TOKEN;   return TYPE_TEXTU;
+"sin"           SAVE_BOOLEAN; return BOOL_LIT;
 "nau"           SAVE_BOOLEAN; return BOOL_LIT;
 "para"          return TOKENIZE(PARA);
-"continua"      return TOKENIZE(CONTINUA);
+"kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
 "-"             return TOKENIZE(MINUS);
 "*"             return TOKENIZE(MUL);
@@ -75,7 +76,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 {STRING}        SAVE_TOKEN;   return STR_LIT;
 
 . {
-    creol::cli::PrintErr(
+    kriol::cli::PrintErr(
         "Unknown token " + std::string(yytext) +
         " at line " + std::to_string(yylineno)
     );
