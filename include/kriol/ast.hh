@@ -73,6 +73,7 @@ namespace ast {
         std::string Type;
         std::string Name;
         std::unique_ptr<Expr> Value;
+        bool IsParam = false;
 
         VarDeclSttmt(std::string Type, std::string Name, std::unique_ptr<Expr> Value)
             : Type(std::move(Type)), Name(std::move(Name)), Value(std::move(Value)) {}

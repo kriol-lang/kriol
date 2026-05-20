@@ -93,7 +93,7 @@ identifier : IDENT { $$ = $1; }
 declarator : identifier { $$ = $1; }
            ;
 
-declaration : type_specifier init_declarator { $2->SetType(*$1); $$ = $2; delete $1; }
+declaration : type_specifier init_declarator SEMIC { $2->SetType(*$1); $$ = $2; delete $1; }
             ;
 
 init_declarator : declarator { $$ = new ast::VarDeclSttmt("void", *$1, nullptr); delete $1; }
@@ -166,7 +166,7 @@ parameter_list : parameter_declaration { $$ = new ast::FuncArgs(); $$->AddArg(st
                | parameter_list COMMA parameter_declaration { $1->AddArg(std::unique_ptr<ast::VarDeclSttmt>($3)); $$ = $1; }
                ;
 
-parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); delete $1; delete $2; }
+parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); $$->IsParam = true; delete $1; delete $2; }
                       ;
 
 argument_list : argument_list COMMA expression { $1->AddArg(std::unique_ptr<ast::Expr>($3)); $$ = $1; }

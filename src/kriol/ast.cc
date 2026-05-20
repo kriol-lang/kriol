@@ -43,6 +43,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
         os << C_EQ;
         node.Value->accept(*this);
     }
+    if (!node.IsParam) os << C_SEMICOLON;
 }
 
 void CodeGenVisitor::visit(BlockSttmt& node) {
