@@ -1,5 +1,5 @@
 // While loop with break and continue.
-vaziu inisiu() {
+fn inisiu() {
     nter i = 0;
     nkuantu i < 10 {
         i = i + 1;

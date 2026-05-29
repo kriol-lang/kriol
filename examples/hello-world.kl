@@ -1,6 +1,4 @@
-inpristan "stdio.h"
-
-vaziu inisiu() {
+fn inisiu() {
     textu mensagem1 = "Kuale, Mundu 1!\n";
     textu mensagem2 = "Kuale, Mundu 2!\n";
 

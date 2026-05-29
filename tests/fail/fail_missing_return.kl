@@ -1,8 +1,8 @@
 // ERROR: non-void function that never returns.
-num sen_retornu() {
+fn sen_retornu() num {
     nter x = 42;
 }
 
-vaziu inisiu() {
+fn inisiu() {
     mostra(sen_retornu());
 }

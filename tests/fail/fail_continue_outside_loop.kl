@@ -1,4 +1,4 @@
 // ERROR: kontinua (continue) used outside any loop.
-vaziu inisiu() {
+fn inisiu() {
     kontinua;
 }
