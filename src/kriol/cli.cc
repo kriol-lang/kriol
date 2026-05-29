@@ -2,7 +2,7 @@
 #include "../../include/kriol/ast.hh"
 #include "../../include/kriol/codegen.hh"
 #include "../../include/kriol/sema.hh"
-#include "../../include/kriol/cnst.hh"
+#include "../../include/kriol/constants.hh"
 
 #include "../../include/external/argparse.hpp"
 

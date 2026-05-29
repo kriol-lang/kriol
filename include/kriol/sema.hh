@@ -2,7 +2,7 @@
 #define _KRIOL_SEMA_HEADER
 
 #include "ast.hh"
-#include "cnst.hh"
+#include "constants.hh"
 
 #include <string>
 #include <vector>
