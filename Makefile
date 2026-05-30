@@ -31,7 +31,7 @@ RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"runtime/kriol_runtime.o"'
 
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)
-SRCS = main.cpp \
+SRCS = main.cc \
 	   src/kriol/sema.cc \
 	   parser.cc scanner.cc
 
