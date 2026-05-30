@@ -83,7 +83,8 @@ namespace ast {
         std::string emitIR();
 
         /// Compile the module to a native executable at outputPath.
-        void emitNative(const std::string& outputPath);
+        /// argv0 is used to locate the runtime object relative to the executable.
+        void emitNative(const std::string& outputPath, const char* argv0 = nullptr);
 
         void visit(VarDeclSttmt&      node) override;
         void visit(BlockSttmt&        node) override;

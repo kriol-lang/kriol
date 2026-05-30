@@ -3,7 +3,7 @@
 .PHONY: kriol debug release clean test
 
 CC = clang++
-CC_C = cc
+CC_C = clang
 
 OUTPUT = kriol
 
@@ -25,8 +25,9 @@ OBJS = main.o cli.o sema.o codegen.o parser.o scanner.o
 
 RUNTIME_OBJ = runtime/kriol_runtime.o
 
-# -DKRIOL_RUNTIME_OBJ passes the absolute path of the runtime object to codegen.cc
-RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"$(CURDIR)/$(RUNTIME_OBJ)"'
+# KRIOL_RUNTIME_OBJ is a path relative to the kriol executable.
+# codegen.cc resolves it at runtime against the executable's directory.
+RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"runtime/kriol_runtime.o"'
 
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)

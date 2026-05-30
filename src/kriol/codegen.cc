@@ -12,6 +12,7 @@
 #include <llvm/MC/TargetRegistry.h>
 
 #include <llvm/Support/Program.h>
+#include <llvm/Support/Path.h>
 
 #include <stdexcept>
 #include <cstdlib>
@@ -152,7 +153,7 @@ std::string CodeGenVisitor::emitIR() {
     return buf;
 }
 
-void CodeGenVisitor::emitNative(const std::string& outputPath) {
+void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0) {
     auto triple = llvm::sys::getDefaultTargetTriple();
     Mod->setTargetTriple(triple);
 
@@ -179,16 +180,25 @@ void CodeGenVisitor::emitNative(const std::string& outputPath) {
     pm.run(*Mod);
     dest.flush();
 
-    auto ccPath = llvm::sys::findProgramByName("cc");
+    auto ccPath = llvm::sys::findProgramByName("clang");
 
     if (!ccPath)
-        throw std::runtime_error("Cannot find 'cc': " + ccPath.getError().message());
+        throw std::runtime_error("Cannot find 'clang': " + ccPath.getError().message());
+
+#ifdef KRIOL_RUNTIME_OBJ
+    // Resolve the runtime object relative to the running executable.
+    static int anchor;
+    std::string exePath = llvm::sys::fs::getMainExecutable(argv0, (void*)&anchor);
+    llvm::SmallString<256> runtimePath(llvm::sys::path::parent_path(exePath));
+    llvm::sys::path::append(runtimePath, KRIOL_RUNTIME_OBJ);
+    std::string runtimeObj(runtimePath);
+#endif
 
     std::vector<llvm::StringRef> linkArgs = {
         *ccPath,
         objPath,
 #ifdef KRIOL_RUNTIME_OBJ
-        KRIOL_RUNTIME_OBJ,
+        runtimeObj,
 #endif
         "-o",
         outputPath,
