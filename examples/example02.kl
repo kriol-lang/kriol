@@ -10,5 +10,7 @@ fn soma(num n) num {
 }
 
 fn inisiu() {
-    mostran("Soma di 1 ti 10 é igual a {}", soma(10));
+    num n = 10;
+    num resultadu = soma(n);
+    mostran(f"Soma di 1 ti {n} é igual a {resultadu}.");
 }

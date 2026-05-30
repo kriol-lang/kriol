@@ -84,6 +84,7 @@ namespace sema {
         void visit(ast::ForSttmt&          node) override;
         void visit(ast::MostraFunCallExpr& node) override;
         void visit(ast::ImportSttmt&       node) override;
+        void visit(ast::FStringExpr&       node) override;
     };
 
 } // namespace sema

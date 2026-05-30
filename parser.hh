@@ -56,49 +56,50 @@ extern int yydebug;
     YYUNDEF = 257,                 /* "invalid token"  */
     IDENT = 258,                   /* IDENT  */
     STR_LIT = 259,                 /* STR_LIT  */
-    MOSTRA = 260,                  /* MOSTRA  */
-    MOSTRAN = 261,                 /* MOSTRAN  */
-    INT_LIT = 262,                 /* INT_LIT  */
-    FLOAT_LIT = 263,               /* FLOAT_LIT  */
-    BOOL_LIT = 264,                /* BOOL_LIT  */
-    PLUS = 265,                    /* PLUS  */
-    MINUS = 266,                   /* MINUS  */
-    MUL = 267,                     /* MUL  */
-    DIV = 268,                     /* DIV  */
-    EQ = 269,                      /* EQ  */
-    NE = 270,                      /* NE  */
-    LT = 271,                      /* LT  */
-    LE = 272,                      /* LE  */
-    GT = 273,                      /* GT  */
-    GE = 274,                      /* GE  */
-    AND = 275,                     /* AND  */
-    OR = 276,                      /* OR  */
-    ASSIGN = 277,                  /* ASSIGN  */
-    LCURLY = 278,                  /* LCURLY  */
-    RCURLY = 279,                  /* RCURLY  */
-    COMMA = 280,                   /* COMMA  */
-    SEMIC = 281,                   /* SEMIC  */
-    LBRAC = 282,                   /* LBRAC  */
-    RBRAC = 283,                   /* RBRAC  */
-    TYPE_NUM = 284,                /* TYPE_NUM  */
-    TYPE_BOOL = 285,               /* TYPE_BOOL  */
-    TYPE_VOID = 286,               /* TYPE_VOID  */
-    TYPE_NTER = 287,               /* TYPE_NTER  */
-    TYPE_TEXTU = 288,              /* TYPE_TEXTU  */
-    DIVOLVI = 289,                 /* DIVOLVI  */
-    PA = 290,                      /* PA  */
-    STRUT = 291,                   /* STRUT  */
-    NKUANTU = 292,                 /* NKUANTU  */
-    SI = 293,                      /* SI  */
-    SINON = 294,                   /* SINON  */
-    IMPRISTAN = 295,               /* IMPRISTAN  */
-    PARA = 296,                    /* PARA  */
-    CONTINUA = 297,                /* CONTINUA  */
-    DOT = 298,                     /* DOT  */
-    RPAR = 299,                    /* RPAR  */
-    LPAR = 300,                    /* LPAR  */
-    FN = 301,                      /* FN  */
-    UMINUS = 302                   /* UMINUS  */
+    FSTR_LIT = 260,                /* FSTR_LIT  */
+    MOSTRA = 261,                  /* MOSTRA  */
+    MOSTRAN = 262,                 /* MOSTRAN  */
+    INT_LIT = 263,                 /* INT_LIT  */
+    FLOAT_LIT = 264,               /* FLOAT_LIT  */
+    BOOL_LIT = 265,                /* BOOL_LIT  */
+    PLUS = 266,                    /* PLUS  */
+    MINUS = 267,                   /* MINUS  */
+    MUL = 268,                     /* MUL  */
+    DIV = 269,                     /* DIV  */
+    EQ = 270,                      /* EQ  */
+    NE = 271,                      /* NE  */
+    LT = 272,                      /* LT  */
+    LE = 273,                      /* LE  */
+    GT = 274,                      /* GT  */
+    GE = 275,                      /* GE  */
+    AND = 276,                     /* AND  */
+    OR = 277,                      /* OR  */
+    ASSIGN = 278,                  /* ASSIGN  */
+    LCURLY = 279,                  /* LCURLY  */
+    RCURLY = 280,                  /* RCURLY  */
+    COMMA = 281,                   /* COMMA  */
+    SEMIC = 282,                   /* SEMIC  */
+    LBRAC = 283,                   /* LBRAC  */
+    RBRAC = 284,                   /* RBRAC  */
+    TYPE_NUM = 285,                /* TYPE_NUM  */
+    TYPE_BOOL = 286,               /* TYPE_BOOL  */
+    TYPE_VOID = 287,               /* TYPE_VOID  */
+    TYPE_NTER = 288,               /* TYPE_NTER  */
+    TYPE_TEXTU = 289,              /* TYPE_TEXTU  */
+    DIVOLVI = 290,                 /* DIVOLVI  */
+    PA = 291,                      /* PA  */
+    STRUT = 292,                   /* STRUT  */
+    NKUANTU = 293,                 /* NKUANTU  */
+    SI = 294,                      /* SI  */
+    SINON = 295,                   /* SINON  */
+    IMPRISTAN = 296,               /* IMPRISTAN  */
+    PARA = 297,                    /* PARA  */
+    CONTINUA = 298,                /* CONTINUA  */
+    DOT = 299,                     /* DOT  */
+    RPAR = 300,                    /* RPAR  */
+    LPAR = 301,                    /* LPAR  */
+    FN = 302,                      /* FN  */
+    UMINUS = 303                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -122,7 +123,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 126 "parser.hh"
+#line 127 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

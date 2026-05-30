@@ -17,7 +17,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-// Interpret C-style backslash escapes in a raw string (without surrounding quotes).
+// Interpret backslash escapes in a raw string (without surrounding quotes).
 static std::string processEscapes(const std::string& raw) {
     std::string out;
     out.reserve(raw.size());
@@ -31,6 +31,8 @@ static std::string processEscapes(const std::string& raw) {
                 case '"':  out += '"';  break;
                 case '\'': out += '\''; break;
                 case '0':  out += '\0'; break;
+                case '{':  out += '{';  break;
+                case '}':  out += '}';  break;
                 default:   out += '\\'; out += raw[i]; break;
             }
         } else {
@@ -38,6 +40,14 @@ static std::string processEscapes(const std::string& raw) {
         }
     }
     return out;
+}
+
+// Returns the printf format specifier for a Kriol type.
+static const char* fmtSpec(const std::string& kriolType) {
+    if (kriolType == "nter")  return "%lld";
+    if (kriolType == "num")   return "%g";
+    if (kriolType == "bool")  return "%d";
+    return "%s"; // textu / fallback
 }
 
 using namespace kriol::ast;
@@ -469,17 +479,17 @@ void CodeGenVisitor::visit(LiteralExpr& node) {
     const auto& t = node.Type;
     const auto& v = node.Value;
 
-    if (t == "float" || t == "num") {
+    if (t == "num") {
         LastValue = llvm::ConstantFP::get(Context, llvm::APFloat(std::stod(v)));
-    } else if (t == "int" || t == "nter") {
+    } else if (t == "nter") {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context),
                                            std::stoll(v), /*isSigned=*/true);
-    } else if (t == "unsigned short" || t == "bool") {
+    } else if (t == "bool") {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt1Ty(Context),
                                            std::stoi(v) != 0);
-    } else if (t == "char*" || t == "textu") {
+    } else if (t == "char*") {
         std::string s = v;
-        if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+        if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front())
             s = s.substr(1, s.size() - 2);
         LastValue = Builder->CreateGlobalStringPtr(processEscapes(s));
     } else {
@@ -611,51 +621,137 @@ static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext&
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
 }
 
-void CodeGenVisitor::visit(MostraFunCallExpr& node) {
-    if (!node.Args || node.Args->Args.empty()) return;
-    auto& args = node.Args->Args;
+// Declare (or retrieve) __kriol_format -> char* __kriol_format(const char* fmt, ...)
+static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_format")) return fn;
+    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
+    auto* ftype  = llvm::FunctionType::get(ptrTy, {ptrTy}, /*isVarArg=*/true);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
+}
 
-    // If first arg is a string literal, pass through as-is (user format string)
-    if (auto* first = dynamic_cast<LiteralExpr*>(args[0].get())) {
-        if (first->Type == "char*") {
-            std::vector<llvm::Value*> callArgs;
-            for (auto& arg : args) {
-                arg->accept(*this);
-                if (LastValue) callArgs.push_back(LastValue);
-            }
-            Builder->CreateCall(getOrDeclarePrintf(), callArgs);
-            LastValue = nullptr;
-            return;
-        }
+void CodeGenVisitor::visit(FStringExpr& node) {
+    std::string raw = node.Value;
+
+    if (raw.size() >= 3) {
+        // Strip f prefix and surrounding quotes
+        raw = raw.substr(2, raw.size() - 3);
     }
 
-    // Auto-format: derive format string from Kriol types
-    std::string fmt;
-    for (auto& arg : args) {
-        std::string spec = "%g"; // default: double
-        if (auto* id = dynamic_cast<IdentExpr*>(arg.get())) {
-            auto it = TypeTable.find(id->Name);
-            if (it != TypeTable.end()) {
-                if (it->second == "nter")  spec = "%lld";
-                else if (it->second == "textu") spec = "%s";
-                else if (it->second == "bool")  spec = "%d";
-                else spec = "%g";
-            }
-        } else if (auto* lit = dynamic_cast<LiteralExpr*>(arg.get())) {
-            if (lit->Type == "int" || lit->Type == "nter")        spec = "%lld";
-            else if (lit->Type == "char*" || lit->Type == "textu") spec = "%s";
-            else if (lit->Type == "bool")                          spec = "%d";
-        }
-        fmt += spec;
-    }
-
+    std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
-    callArgs.push_back(Builder->CreateGlobalStringPtr(fmt));
-    for (auto& arg : args) {
-        arg->accept(*this);
-        if (LastValue) callArgs.push_back(LastValue);
+
+    size_t i = 0;
+    while (i < raw.size()) {
+        char c = raw[i];
+        if (c == '\\' && i + 1 < raw.size()) {
+            char next = raw[i + 1];
+            switch (next) {
+                case '{':  fmtStr += '{';  i += 2; break;
+                case '}':  fmtStr += '}';  i += 2; break;
+                case 'n':  fmtStr += '\n'; i += 2; break;
+                case 't':  fmtStr += '\t'; i += 2; break;
+                case 'r':  fmtStr += '\r'; i += 2; break;
+                case '\\': fmtStr += '\\'; i += 2; break;
+                case '"':  fmtStr += '"';  i += 2; break;
+                case '\'': fmtStr += '\''; i += 2; break;
+                case '0':  fmtStr += '\0'; i += 2; break;
+                default:   fmtStr += '\\'; fmtStr += next; i += 2; break;
+            }
+        } else if (c == '{') {
+            size_t end = raw.find('}', i + 1);
+
+            // malformed, skip
+            if (end == std::string::npos) {
+                ++i;
+                continue;
+            }
+
+            std::string name = raw.substr(i + 1, end - i - 1);
+
+            // Look up the variable to determine its type for the format specifier
+            std::string kriolType;
+            auto it = TypeTable.find(name);
+            if (it != TypeTable.end())
+                kriolType = it->second;
+
+            fmtStr += fmtSpec(kriolType);
+
+            // Emit the variable's value and coerce to what printf expects
+            auto* alloca = lookupVar(name);
+            llvm::Value* val = nullptr;
+
+            if (alloca) {
+                val = Builder->CreateLoad(alloca->getAllocatedType(), alloca, name);
+            } else if (auto* gv = lookupGlobal(name)) {
+                val = Builder->CreateLoad(gv->getValueType(), gv, name);
+            }
+
+            if (val) {
+                // bool needs to be widened to i32 for printf varargs
+                if (val->getType()->isIntegerTy(1))
+                    val = Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context), "bool_ext");
+                callArgs.push_back(val);
+            }
+            i = end + 1;
+        } else {
+            // Escape literal % signs so they pass through printf unchanged
+            if (c == '%') fmtStr += '%';
+            fmtStr += c;
+            ++i;
+        }
     }
-    Builder->CreateCall(getOrDeclarePrintf(), callArgs);
+
+    auto* fmtGstr = Builder->CreateGlobalStringPtr(fmtStr, "fstr_fmt");
+    callArgs.insert(callArgs.begin(), fmtGstr);
+    auto* formatFn = getOrDeclareKriolFormat(*Mod, Context);
+    LastValue = Builder->CreateCall(formatFn, callArgs, "fstr");
+}
+
+void CodeGenVisitor::visit(MostraFunCallExpr& node) {
+    auto* ptrTy    = llvm::PointerType::getUnqual(Context);
+    auto* i64Ty    = llvm::Type::getInt64Ty(Context);
+    auto* doubleTy = llvm::Type::getDoubleTy(Context);
+    auto* i32Ty    = llvm::Type::getInt32Ty(Context);
+
+    auto emitPrintValue = [&](llvm::Value* val, const std::string& resolvedType, bool newline) {
+        if (resolvedType == "nter") {
+            if (val->getType() != i64Ty) val = coerce(val, i64Ty);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "nter", i64Ty, newline), {val});
+        } else if (resolvedType == "num") {
+            if (val->getType() != doubleTy) val = coerce(val, doubleTy);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "num", doubleTy, newline), {val});
+        } else if (resolvedType == "bool") {
+            llvm::Value* ext = val->getType()->isIntegerTy(1)
+                ? Builder->CreateZExt(val, i32Ty, "bool_ext")
+                : Builder->CreateTrunc(val, i32Ty, "bool_ext");
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "bool", i32Ty, newline), {ext});
+        } else {
+            if (!val->getType()->isPointerTy()) val = Builder->CreateIntToPtr(val, ptrTy);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "textu", ptrTy, newline), {val});
+        }
+    };
+
+    if (!node.Args || node.Args->Args.empty()) {
+        if (node.AddNewline)
+            Builder->CreateCall(getOrDeclarePutchar(*Mod, Context),
+                                {llvm::ConstantInt::get(i32Ty, '\n')});
+        LastValue = nullptr;
+        return;
+    }
+
+    auto& args    = node.Args->Args;
+    size_t lastIdx = args.size() - 1;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        bool addNlHere = (i == lastIdx) && node.AddNewline;
+        auto& arg = args[i];
+
+        arg->accept(*this);
+        llvm::Value* v = LastValue;
+        if (v) emitPrintValue(v, arg->ResolvedType, addNlHere);
+    }
+
     LastValue = nullptr;
 }
 

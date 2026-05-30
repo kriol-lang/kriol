@@ -172,12 +172,8 @@ void SemanticAnalyzer::visit(BinExpr& node) {
 }
 
 void SemanticAnalyzer::visit(LiteralExpr& node) {
-    // Map internal literal type tags to Kriol type names
-    if      (node.Type == "int")            node.ResolvedType = "nter";
-    else if (node.Type == "float")          node.ResolvedType = "num";
-    else if (node.Type == "unsigned short") node.ResolvedType = "bool";
-    else if (node.Type == "char*")          node.ResolvedType = "textu";
-    else                                   node.ResolvedType = node.Type;
+    if (node.Type == "char*") node.ResolvedType = "textu";
+    else                      node.ResolvedType = node.Type;
 }
 
 void SemanticAnalyzer::visit(ExprSttmt& node) {
@@ -232,6 +228,39 @@ void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
 
 void SemanticAnalyzer::visit(ImportSttmt& node) {
     throw std::runtime_error("'inpristan' (import) statements are not supported yet");
+}
+
+void SemanticAnalyzer::visit(FStringExpr& node) {
+    std::string raw = node.Value;
+
+    if (raw.size() >= 3) {
+        // strip the prefix f and surrounding quotes
+        raw = raw.substr(2, raw.size() - 3);
+    }
+
+    size_t i = 0;
+    while (i < raw.size()) {
+        if (raw[i] == '\\' && (i + 1 < raw.size())) {
+            i += 2; // skip escape sequence
+        } else if (raw[i] == '{' && (i + 1 < raw.size()) && raw[i + 1] != '}') {
+            // Collect identifier name up to closing '}'
+            size_t start = i + 1;
+            size_t end = raw.find('}', start);
+            if (end == std::string::npos) {
+                addError("f-string has unclosed '{'" +
+                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+                break;
+            }
+            std::string varName = raw.substr(start, end - start);
+            if (!varName.empty() && !lookupVar(varName))
+                addError("f-string references undefined variable '" + varName + "'" +
+                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+            i = end + 1;
+        } else {
+            ++i;
+        }
+    }
+    node.ResolvedType = "textu";
 }
 
 } // namespace sema

@@ -31,6 +31,7 @@ namespace ast {
     class ForSttmt;
     class MostraFunCallExpr;
     class ImportSttmt;
+    class FStringExpr;
 
     class Visitor {
     public:
@@ -54,6 +55,7 @@ namespace ast {
         virtual void visit(ForSttmt& node) = 0;
         virtual void visit(MostraFunCallExpr& node) = 0;
         virtual void visit(ImportSttmt& node) = 0;
+        virtual void visit(FStringExpr& node) = 0;
     };
 
     class Sttmt {
@@ -191,12 +193,9 @@ namespace ast {
     public:
         std::string Type;
         std::string Value;
-        bool AutoCast = true;
 
         LiteralExpr(std::string Type, std::string Value)
             : Type(std::move(Type)), Value(std::move(Value)) {}
-        void DeactivateAutoCast() { AutoCast = false; }
-        void ActivateAutoCast() { AutoCast = true; }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -253,6 +252,14 @@ namespace ast {
         std::string Import;
 
         ImportSttmt(std::string Import) : Import(std::move(Import)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class FStringExpr : public Expr {
+    public:
+        std::string Value;
+
+        FStringExpr(std::string Value) : Value(std::move(Value)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

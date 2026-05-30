@@ -25,7 +25,11 @@ FLOAT {INT}\.[0-9]+
 
 IDENT [a-zA-Z_][a-zA-Z0-9_]*
 
-STRING ["]([^"\\\n]|\\.|\\\n)*["]
+STRING_DQ   ["]([^"\\\n]|\\.|\\\n)*["]
+STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
+
+FSTR_DQ     f["]([^"\\\n]|\\.|\\\n)*["]
+FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 
 %%
 
@@ -77,7 +81,10 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;
 {IDENT}         SAVE_TOKEN;   return IDENT;
-{STRING}        SAVE_TOKEN;   return STR_LIT;
+{FSTR_DQ}       SAVE_TOKEN;   return FSTR_LIT;
+{FSTR_SQ}       SAVE_TOKEN;   return FSTR_LIT;
+{STRING_DQ}     SAVE_TOKEN;   return STR_LIT;
+{STRING_SQ}     SAVE_TOKEN;   return STR_LIT;
 
 . {
     kriol::cli::PrintErr(

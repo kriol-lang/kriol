@@ -34,7 +34,7 @@
 %destructor { delete $$; } <string> <integer> <floatingpoint> <boolean>
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
-%token<string> IDENT STR_LIT
+%token<string> IDENT STR_LIT FSTR_LIT
 %token<token> MOSTRA MOSTRAN
 %token<integer> INT_LIT
 %token<floatingpoint> FLOAT_LIT
@@ -82,10 +82,11 @@ type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
                ;
 
-constant : INT_LIT { auto lit = new ast::LiteralExpr("int", *$1); lit->ActivateAutoCast(); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | FLOAT_LIT { auto lit = new ast::LiteralExpr("float", *$1); lit->ActivateAutoCast(); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | BOOL_LIT { auto lit = new ast::LiteralExpr("unsigned short", *$1); lit->ActivateAutoCast(); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | STR_LIT { auto lit = new ast::LiteralExpr("char*", *$1); lit->DeactivateAutoCast(); lit->LineNum = yylineno; $$ = lit; delete $1; }
+constant : INT_LIT   { auto lit = new ast::LiteralExpr("nter",  *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
+         | FLOAT_LIT { auto lit = new ast::LiteralExpr("num",   *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
+         | BOOL_LIT  { auto lit = new ast::LiteralExpr("bool",  *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
+         | STR_LIT   { auto lit = new ast::LiteralExpr("char*", *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
+         | FSTR_LIT  { auto fs = new ast::FStringExpr(*$1); fs->LineNum = yylineno; $$ = fs; delete $1; }
          ;
 
 identifier : IDENT { $$ = $1; }
