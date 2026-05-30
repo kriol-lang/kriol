@@ -152,10 +152,9 @@ void SemanticAnalyzer::visit(ExprSttmt& node) {
 
 void SemanticAnalyzer::visit(IdentExpr& node) {
     // Only flag as undefined if we are inside a function scope (SymbolScopes
-    // has at least 2 levels: top-level scope + function scope). Top-level
-    // identifiers that come from C imports via 'inpristan' must pass silently.
+    // has at least 2 levels: top-level scope + function scope).
     if (SymbolScopes.size() >= 2) {
-        if (!lookupVar(node.Name) && !FunctionTable.count(node.Name))
+        if (!lookupVar(node.Name))
             addError("undefined variable '" + node.Name + "'");
     }
 }
