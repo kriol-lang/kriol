@@ -52,6 +52,8 @@ FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
 "nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
+"sai"           return TOKENIZE(SAI);
+"konfirma"      return TOKENIZE(KONFIRMA);
 "para"          return TOKENIZE(PARA);
 "kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
@@ -70,6 +72,7 @@ FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 "="             return TOKENIZE(ASSIGN);
 "=="            return TOKENIZE(EQ);
 "!="            return TOKENIZE(NE);
+"!"             return TOKENIZE(NOT);
 ">"             return TOKENIZE(GT);
 ">="            return TOKENIZE(GE);
 "<"             return TOKENIZE(LT);

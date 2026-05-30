@@ -105,6 +105,9 @@ namespace ast {
         void visit(MostraFunCallExpr& node) override;
         void visit(ImportSttmt&       node) override;
         void visit(FStringExpr&       node) override;
+        void visit(UnaryExpr&         node) override;
+        void visit(SaiSttmt&          node) override;
+        void visit(KonfirmaSttmt&     node) override;
     };
 
 } // namespace ast

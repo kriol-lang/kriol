@@ -785,3 +785,71 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
 void CodeGenVisitor::visit(ImportSttmt& node) {
     // C #include directives have no LLVM IR equivalent; skipped.
 }
+
+void CodeGenVisitor::visit(UnaryExpr& node) {
+    if (!node.Operand) { LastValue = nullptr; return; }
+    node.Operand->accept(*this);
+
+    llvm::Value* v = LastValue;
+    if (!v) { LastValue = nullptr; return; }
+
+    if (node.Op == "!") {
+        LastValue = Builder->CreateNot(toBool(v), "nottmp");
+    } else { // "-"
+        if (v->getType()->isDoubleTy())
+            LastValue = Builder->CreateFNeg(v, "negtmp");
+        else
+            LastValue = Builder->CreateNeg(v, "negtmp");
+    }
+}
+
+// Declare (or retrieve) libc exit
+static llvm::Function* getOrDeclareExit(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("exit")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "exit", Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
+// Declare (or retrieve) __kriol_konfirma -> void __kriol_konfirma(i32 cond, i32 line)
+static llvm::Function* getOrDeclareKriolKonfirma(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_konfirma")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty, i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_konfirma", Mod);
+}
+
+void CodeGenVisitor::visit(SaiSttmt& node) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    // Default to exit code 0 if no expression is provided.
+    llvm::Value* code = llvm::ConstantInt::get(i32Ty, 0);
+    if (node.Code) {
+        node.Code->accept(*this);
+        if (LastValue) code = coerce(LastValue, i32Ty);
+    }
+    Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
+    Builder->CreateUnreachable();
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(KonfirmaSttmt& node) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    // Default to true (1) if no condition is provided.
+    llvm::Value* cond = llvm::ConstantInt::get(i32Ty, 1);
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        if (LastValue) {
+            llvm::Value* b = toBool(LastValue);
+            cond = Builder->CreateZExt(b, i32Ty, "konfirma_cond");
+        }
+    }
+    llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
+    Builder->CreateCall(getOrDeclareKriolKonfirma(*Mod, Context), {cond, line});
+    LastValue = nullptr;
+}

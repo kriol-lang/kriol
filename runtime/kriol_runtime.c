@@ -76,3 +76,10 @@ char* __kriol_format(const char* fmt, ...) {
 
     return buf;
 }
+
+void __kriol_konfirma(int cond, int line) {
+    if (!cond) {
+        fprintf(stderr, "Kriol: Err: 'konfirma' (assert) failed at the line %d\n", line);
+        exit(1);
+    }
+}

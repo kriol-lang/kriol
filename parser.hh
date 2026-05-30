@@ -99,7 +99,10 @@ extern int yydebug;
     RPAR = 300,                    /* RPAR  */
     LPAR = 301,                    /* LPAR  */
     FN = 302,                      /* FN  */
-    UMINUS = 303                   /* UMINUS  */
+    NOT = 303,                     /* NOT  */
+    SAI = 304,                     /* SAI  */
+    KONFIRMA = 305,                /* KONFIRMA  */
+    UMINUS = 306                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -122,7 +125,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 126 "parser.hh"
+#line 129 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

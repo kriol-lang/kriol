@@ -272,5 +272,37 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
     node.ResolvedType = "textu";
 }
 
+void SemanticAnalyzer::visit(UnaryExpr& node) {
+    if (node.Operand) node.Operand->accept(*this);
+    if (node.Op == "!")
+        node.ResolvedType = "bool";
+    else // "-" (numeric negation) keeps operand type, default to num if unknown
+        node.ResolvedType = node.Operand ? node.Operand->ResolvedType : "num";
+}
+
+void SemanticAnalyzer::visit(SaiSttmt& node) {
+    if (node.Code) {
+        node.Code->accept(*this);
+        const std::string& t = node.Code->ResolvedType;
+        if (t != "nter") {
+            std::string err = "sai() expects an integer exit code";
+            if (!t.empty()) err += ", got value of type '" + t + "'";
+            addError(err + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+        }
+    }
+}
+
+void SemanticAnalyzer::visit(KonfirmaSttmt& node) {
+    if (node.Cond) {
+        node.Cond->accept(*this);
+        const std::string& t = node.Cond->ResolvedType;
+        if (t != "bool" && t != "nter" && t != "num") {
+            std::string err = "konfirma() expects a boolean condition";
+            if (!t.empty()) err += ", got value of type '" + t + "'";
+            addError(err + (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+        }
+    };
+}
+
 } // namespace sema
 } // namespace kriol

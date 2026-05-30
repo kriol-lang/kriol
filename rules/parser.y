@@ -45,7 +45,7 @@
 %token<token>  DIVOLVI PA STRUT
 %token<token>  NKUANTU SI SINON IMPRISTAN
 %token<token> PARA CONTINUA DOT RPAR LPAR
-%token<token> FN
+%token<token> FN NOT SAI KONFIRMA
 
 %type<expr> expression assignment_expression function_call primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
@@ -62,7 +62,7 @@
 %left LT GT LE GE EQ NE ASSIGN
 %left PLUS MINUS
 %left MUL DIV
-%left UMINUS
+%right NOT UMINUS
 
 %start program
 
@@ -141,7 +141,9 @@ multiplicative_expression : unary_expression { $$ = $1; }
                           | multiplicative_expression DIV primary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
                           ;
 
-unary_expression : primary_expression { $$ = $1; }
+unary_expression : primary_expression                          { $$ = $1; }
+                 | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+                 | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                  ;
 
 primary_expression : identifier { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
@@ -231,6 +233,10 @@ jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum =
                | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = yylineno; $$ = n; }
                | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                | DIVOLVI SEMIC { auto n = new ast::ReturnSttmt(nullptr); n->LineNum = yylineno; $$ = n; }
+               | SAI LPAR expression RPAR SEMIC { auto n = new ast::SaiSttmt(std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+               | SAI LPAR RPAR SEMIC { auto n = new ast::SaiSttmt(nullptr); n->LineNum = yylineno; $$ = n; }
+               | KONFIRMA LPAR expression RPAR SEMIC { auto n = new ast::KonfirmaSttmt(std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+               | KONFIRMA LPAR RPAR SEMIC { auto n = new ast::KonfirmaSttmt(nullptr); n->LineNum = yylineno; $$ = n; }
                ;
 %%
 

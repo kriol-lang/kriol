@@ -32,6 +32,9 @@ namespace ast {
     class MostraFunCallExpr;
     class ImportSttmt;
     class FStringExpr;
+    class UnaryExpr;
+    class SaiSttmt;
+    class KonfirmaSttmt;
 
     class Visitor {
     public:
@@ -56,6 +59,9 @@ namespace ast {
         virtual void visit(MostraFunCallExpr& node) = 0;
         virtual void visit(ImportSttmt& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
+        virtual void visit(UnaryExpr& node) = 0;
+        virtual void visit(SaiSttmt& node) = 0;
+        virtual void visit(KonfirmaSttmt& node) = 0;
     };
 
     class Sttmt {
@@ -260,6 +266,32 @@ namespace ast {
         std::string Value;
 
         FStringExpr(std::string Value) : Value(std::move(Value)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class UnaryExpr : public Expr {
+    public:
+        std::string Op;
+        std::unique_ptr<Expr> Operand;
+
+        UnaryExpr(std::string op, std::unique_ptr<Expr> operand)
+            : Op(std::move(op)), Operand(std::move(operand)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class SaiSttmt : public Sttmt {
+    public:
+        std::unique_ptr<Expr> Code;
+
+        SaiSttmt(std::unique_ptr<Expr> code) : Code(std::move(code)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class KonfirmaSttmt : public Sttmt {
+    public:
+        std::unique_ptr<Expr> Cond;
+
+        KonfirmaSttmt(std::unique_ptr<Expr> cond) : Cond(std::move(cond)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
