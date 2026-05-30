@@ -661,15 +661,20 @@ void CodeGenVisitor::visit(FStringExpr& node) {
         } else if (c == '{') {
             size_t end = raw.find('}', i + 1);
 
-            // malformed, skip
-            if (end == std::string::npos) {
-                ++i;
-                continue;
-            }
+            // malformed or empty {}, semantic analyzer should handle. skip the placeholder entirely.
+            if (end == std::string::npos) { ++i; continue; }
 
             std::string name = raw.substr(i + 1, end - i - 1);
 
-            // Look up the variable to determine its type for the format specifier
+            // trim leading/trailing whitespace
+            auto ns = name.find_first_not_of(' ');
+            auto ne = name.find_last_not_of(' ');
+            name = (ns == std::string::npos) ? "" : name.substr(ns, ne - ns + 1);
+
+            // empty name, semantic analyzer should handle. skip the placeholder entirely.
+            if (name.empty()) { i = end + 1; continue; }
+
+            // look up the variable to determine its type for the format specifier
             std::string kriolType;
             auto it = TypeTable.find(name);
             if (it != TypeTable.end())

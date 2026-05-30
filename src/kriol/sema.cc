@@ -242,17 +242,26 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
     while (i < raw.size()) {
         if (raw[i] == '\\' && (i + 1 < raw.size())) {
             i += 2; // skip escape sequence
-        } else if (raw[i] == '{' && (i + 1 < raw.size()) && raw[i + 1] != '}') {
+        } else if (raw[i] == '{') {
             // Collect identifier name up to closing '}'
-            size_t start = i + 1;
-            size_t end = raw.find('}', start);
+            size_t end = raw.find('}', i + 1);
             if (end == std::string::npos) {
                 addError("f-string has unclosed '{'" +
                          (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
                 break;
             }
-            std::string varName = raw.substr(start, end - start);
-            if (!varName.empty() && !lookupVar(varName))
+
+            std::string varName = raw.substr(i + 1, end - i - 1);
+
+            // trim leading/trailing whitespace
+            auto s = varName.find_first_not_of(' ');
+            auto e = varName.find_last_not_of(' ');
+            varName = (s == std::string::npos) ? "" : varName.substr(s, e - s + 1);
+
+            if (varName.empty())
+                addError("f-string has empty '{}' placeholder" +
+                         (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
+            else if (!lookupVar(varName))
                 addError("f-string references undefined variable '" + varName + "'" +
                          (node.LineNum ? " (line " + std::to_string(node.LineNum) + ")" : ""));
             i = end + 1;
