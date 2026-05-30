@@ -12,7 +12,7 @@ EXAMPLES = examples/hello-world.kl \
 	   examples/example02.kl \
 	   examples/example03.kl
 
-LLVM_CXXFLAGS := $(filter-out -fno-exceptions, $(shell llvm-config --cxxflags))
+LLVM_CXXFLAGS := $(filter-out -fno-exceptions -std=%, $(shell llvm-config --cxxflags))
 LLVM_LDFLAGS  := $(shell llvm-config --ldflags --libs core native --system-libs 2>/dev/null)
 
 FLAGS = -std=c++17
