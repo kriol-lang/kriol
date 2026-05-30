@@ -90,10 +90,31 @@ llvm::Function* CodeGenVisitor::getOrDeclarePrintf() {
         ftype, llvm::Function::ExternalLinkage, "printf", *Mod);
 }
 
-llvm::Value* CodeGenVisitor::coerceToDouble(llvm::Value* v) {
-    if (v->getType()->isIntegerTy())
-        return Builder->CreateSIToFP(v, llvm::Type::getDoubleTy(Context));
-    return v;
+llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
+    llvm::Type* srcTy = v->getType();
+    if (srcTy == targetTy) return v; // identity
+
+    auto* doubleTy = llvm::Type::getDoubleTy(Context);
+    auto* i64Ty    = llvm::Type::getInt64Ty(Context);
+    auto* i1Ty     = llvm::Type::getInt1Ty(Context);
+
+    // nter (i64) -> num (double)
+    if (srcTy == i64Ty && targetTy == doubleTy)
+        return Builder->CreateSIToFP(v, doubleTy, "conv");
+    // bool (i1) -> nter (i64)
+    if (srcTy == i1Ty && targetTy == i64Ty)
+        return Builder->CreateZExt(v, i64Ty, "conv");
+    // bool (i1) -> num (double)
+    if (srcTy == i1Ty && targetTy == doubleTy)
+        return Builder->CreateUIToFP(v, doubleTy, "conv");
+    // num (double) -> nter (i64)
+    if (srcTy == doubleTy && targetTy == i64Ty)
+        return Builder->CreateFPToSI(v, i64Ty, "conv");
+    // any integer widening (e.g. i1 -> i64 via general int path)
+    if (srcTy->isIntegerTy() && targetTy->isIntegerTy())
+        return Builder->CreateSExtOrTrunc(v, targetTy, "conv");
+
+    throw std::runtime_error("Unsupported implicit type conversion");
 }
 
 llvm::Value* CodeGenVisitor::toBool(llvm::Value* v) {
@@ -381,11 +402,22 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     if (!fn) { LastValue = nullptr; return; }
 
     std::vector<llvm::Value*> callArgs;
-    if (node.Args)
+    if (node.Args) {
+        size_t i = 0;
         for (auto& arg : node.Args->Args) {
             arg->accept(*this);
-            if (LastValue) callArgs.push_back(LastValue);
+            if (LastValue) {
+                if (i < fn->arg_size()) {
+                    // Coerce argument to the declared parameter type when they differ
+                    llvm::Type* paramTy = (fn->arg_begin() + i)->getType();
+                    if (LastValue->getType() != paramTy)
+                        LastValue = coerce(LastValue, paramTy);
+                }
+                callArgs.push_back(LastValue);
+                ++i;
+            }
         }
+    }
 
     LastValue = Builder->CreateCall(fn, callArgs);
 }
@@ -397,8 +429,11 @@ void CodeGenVisitor::visit(BinExpr& node) {
     llvm::Value* rhs = LastValue;
     if (!lhs || !rhs) { LastValue = nullptr; return; }
 
+    // Promote both sides to a common type: if either is double, use double;
+    // otherwise keep integer arithmetic.
+    auto* doubleTy = llvm::Type::getDoubleTy(Context);
     bool isFloat = lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy();
-    if (isFloat) { lhs = coerceToDouble(lhs); rhs = coerceToDouble(rhs); }
+    if (isFloat) { lhs = coerce(lhs, doubleTy); rhs = coerce(rhs, doubleTy); }
 
     const auto& op = node.Op;
     if      (op == "+")  LastValue = isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
@@ -473,11 +508,15 @@ void CodeGenVisitor::visit(AssignExpr& node) {
     if (alloca) {
         if (node.AssignOp != "=") {
             llvm::Value* cur = Builder->CreateLoad(alloca->getAllocatedType(), alloca);
-            bool isFloat = cur->getType()->isDoubleTy();
-            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, val) : Builder->CreateAdd(cur, val);
-            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, val) : Builder->CreateSub(cur, val);
-            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, val) : Builder->CreateMul(cur, val);
-            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, val) : Builder->CreateSDiv(cur, val);
+            llvm::Type* ty = cur->getType();
+            llvm::Value* rhs = coerce(val, ty);
+            bool isFloat = ty->isDoubleTy();
+            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
+            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
+            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
+            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
+        } else {
+            val = coerce(val, alloca->getAllocatedType());
         }
         Builder->CreateStore(val, alloca);
         LastValue = val;
@@ -488,11 +527,15 @@ void CodeGenVisitor::visit(AssignExpr& node) {
     if (gv) {
         if (node.AssignOp != "=") {
             llvm::Value* cur = Builder->CreateLoad(gv->getValueType(), gv);
-            bool isFloat = cur->getType()->isDoubleTy();
-            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, val) : Builder->CreateAdd(cur, val);
-            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, val) : Builder->CreateSub(cur, val);
-            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, val) : Builder->CreateMul(cur, val);
-            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, val) : Builder->CreateSDiv(cur, val);
+            llvm::Type* ty = cur->getType();
+            llvm::Value* rhs = coerce(val, ty);
+            bool isFloat = ty->isDoubleTy();
+            if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
+            else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
+            else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
+            else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
+        } else {
+            val = coerce(val, gv->getValueType());
         }
         Builder->CreateStore(val, gv);
     }

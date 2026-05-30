@@ -66,7 +66,12 @@ namespace ast {
         }
 
         llvm::Function* getOrDeclarePrintf();
-        llvm::Value*    coerceToDouble(llvm::Value* v);
+
+        // Central scalar coercion table: convert v to targetTy.
+        // Supported pairs: nter->num (SIToFP), bool->nter (ZExt),
+        // bool->num (UIToFP), num->nter (FPToSI). Identity is a no-op.
+        // Throws for unsupported or pointer conversions.
+        llvm::Value* coerce(llvm::Value* v, llvm::Type* targetTy);
 
         // Coerce value to i1 for use as a branch condition
         llvm::Value* toBool(llvm::Value* v);
