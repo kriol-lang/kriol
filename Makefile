@@ -26,11 +26,11 @@ OBJS = main.o cli.o sema.o codegen.o parser.o scanner.o
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)
 SRCS = main.cpp \
-	   src/kriol/cli.cc \
 	   src/kriol/sema.cc \
 	   parser.cc scanner.cc
 
-LLVM_SRC = src/kriol/codegen.cc
+LLVM_SRC = src/kriol/cli.cc \
+	   src/kriol/codegen.cc
 
 # The default build is debug.
 # Change to release if wanted.
