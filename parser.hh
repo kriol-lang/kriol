@@ -113,7 +113,6 @@ union YYSTYPE
     int token;
     std::string* integer;
     std::string* floatingpoint;
-    std::string* boolean;
     std::string* string;
     kriol::ast::Expr* expr;
     kriol::ast::Sttmt* sttmt;
@@ -123,7 +122,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 127 "parser.hh"
+#line 126 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

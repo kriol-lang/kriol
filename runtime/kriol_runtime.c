@@ -17,8 +17,12 @@ void __kriol_print_num(double v) {
     printf("%g", v);
 }
 
+const char* __kriol_bool_to_str(int v) {
+    return v ? "sin" : "nau";
+}
+
 void __kriol_print_bool(int v) {
-    fputs(v ? "sin" : "nau", stdout);
+    fputs(__kriol_bool_to_str(v), stdout);
 }
 
 void __kriol_print_textu(const char* s) {

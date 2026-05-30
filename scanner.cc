@@ -569,12 +569,11 @@ char *yytext;
     #define YYERROR_VERBOSE 1
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
-    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sin") == 0 ? "1" : "0");
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
+#line 576 "scanner.cc"
 #line 577 "scanner.cc"
-#line 578 "scanner.cc"
 
 #define INITIAL 0
 
@@ -791,10 +790,10 @@ YY_DECL
 		}
 
 	{
-#line 34 "rules/scanner.l"
+#line 33 "rules/scanner.l"
 
 
-#line 798 "scanner.cc"
+#line 797 "scanner.cc"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -864,262 +863,262 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 36 "rules/scanner.l"
+#line 35 "rules/scanner.l"
 /* ignore */;
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 37 "rules/scanner.l"
+#line 36 "rules/scanner.l"
 /* single-line comment */;
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 38 "rules/scanner.l"
+#line 37 "rules/scanner.l"
 /* multi-line comment */;
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 40 "rules/scanner.l"
+#line 39 "rules/scanner.l"
 return TOKENIZE(FN);
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 41 "rules/scanner.l"
+#line 40 "rules/scanner.l"
 return TOKENIZE(MOSTRAN);
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 42 "rules/scanner.l"
+#line 41 "rules/scanner.l"
 return TOKENIZE(MOSTRA);
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 43 "rules/scanner.l"
+#line 42 "rules/scanner.l"
 return TOKENIZE(IMPRISTAN);
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 44 "rules/scanner.l"
+#line 43 "rules/scanner.l"
 return TOKENIZE(SI);
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 45 "rules/scanner.l"
+#line 44 "rules/scanner.l"
 return TOKENIZE(SINON);
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 46 "rules/scanner.l"
+#line 45 "rules/scanner.l"
 return TOKENIZE(DIVOLVI);
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 47 "rules/scanner.l"
+#line 46 "rules/scanner.l"
 return TOKENIZE(PA);
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 48 "rules/scanner.l"
+#line 47 "rules/scanner.l"
 return TOKENIZE(NKUANTU);
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 49 "rules/scanner.l"
+#line 48 "rules/scanner.l"
 SAVE_TOKEN;   return TYPE_NUM;
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 50 "rules/scanner.l"
+#line 49 "rules/scanner.l"
 SAVE_TOKEN;   return TYPE_NTER;
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 51 "rules/scanner.l"
+#line 50 "rules/scanner.l"
 SAVE_TOKEN;   return TYPE_VOID;
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 52 "rules/scanner.l"
+#line 51 "rules/scanner.l"
 SAVE_TOKEN;   return TYPE_BOOL;
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 53 "rules/scanner.l"
+#line 52 "rules/scanner.l"
 SAVE_TOKEN;   return TYPE_TEXTU;
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 54 "rules/scanner.l"
-SAVE_BOOLEAN; return BOOL_LIT;
+#line 53 "rules/scanner.l"
+{ yylval.string = new std::string("1"); return BOOL_LIT; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 55 "rules/scanner.l"
-SAVE_BOOLEAN; return BOOL_LIT;
+#line 54 "rules/scanner.l"
+{ yylval.string = new std::string("0"); return BOOL_LIT; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 56 "rules/scanner.l"
+#line 55 "rules/scanner.l"
 return TOKENIZE(PARA);
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 57 "rules/scanner.l"
+#line 56 "rules/scanner.l"
 return TOKENIZE(CONTINUA);
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 58 "rules/scanner.l"
+#line 57 "rules/scanner.l"
 return TOKENIZE(PLUS);
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 59 "rules/scanner.l"
+#line 58 "rules/scanner.l"
 return TOKENIZE(MINUS);
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 60 "rules/scanner.l"
+#line 59 "rules/scanner.l"
 return TOKENIZE(MUL);
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 61 "rules/scanner.l"
+#line 60 "rules/scanner.l"
 return TOKENIZE(DIV);
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 62 "rules/scanner.l"
+#line 61 "rules/scanner.l"
 return TOKENIZE(LPAR);
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 63 "rules/scanner.l"
+#line 62 "rules/scanner.l"
 return TOKENIZE(RPAR);
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 64 "rules/scanner.l"
+#line 63 "rules/scanner.l"
 return TOKENIZE(DOT);
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 65 "rules/scanner.l"
+#line 64 "rules/scanner.l"
 return TOKENIZE(COMMA);
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 66 "rules/scanner.l"
+#line 65 "rules/scanner.l"
 return TOKENIZE(SEMIC);
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 67 "rules/scanner.l"
+#line 66 "rules/scanner.l"
 return TOKENIZE(LCURLY);
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 68 "rules/scanner.l"
+#line 67 "rules/scanner.l"
 return TOKENIZE(RCURLY);
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 69 "rules/scanner.l"
+#line 68 "rules/scanner.l"
 return TOKENIZE(LBRAC);
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 70 "rules/scanner.l"
+#line 69 "rules/scanner.l"
 return TOKENIZE(RBRAC);
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 71 "rules/scanner.l"
+#line 70 "rules/scanner.l"
 return TOKENIZE(ASSIGN);
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 72 "rules/scanner.l"
+#line 71 "rules/scanner.l"
 return TOKENIZE(EQ);
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 73 "rules/scanner.l"
+#line 72 "rules/scanner.l"
 return TOKENIZE(NE);
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 74 "rules/scanner.l"
+#line 73 "rules/scanner.l"
 return TOKENIZE(GT);
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 75 "rules/scanner.l"
+#line 74 "rules/scanner.l"
 return TOKENIZE(GE);
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 76 "rules/scanner.l"
+#line 75 "rules/scanner.l"
 return TOKENIZE(LT);
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 77 "rules/scanner.l"
+#line 76 "rules/scanner.l"
 return TOKENIZE(LE);
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 78 "rules/scanner.l"
+#line 77 "rules/scanner.l"
 return TOKENIZE(AND);
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 79 "rules/scanner.l"
+#line 78 "rules/scanner.l"
 return TOKENIZE(OR);
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 81 "rules/scanner.l"
+#line 80 "rules/scanner.l"
 SAVE_TOKEN;   return INT_LIT;
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 82 "rules/scanner.l"
+#line 81 "rules/scanner.l"
 SAVE_TOKEN;   return FLOAT_LIT;
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 83 "rules/scanner.l"
+#line 82 "rules/scanner.l"
 SAVE_TOKEN;   return IDENT;
 	YY_BREAK
 case 47:
 /* rule 47 can match eol */
 YY_RULE_SETUP
-#line 84 "rules/scanner.l"
+#line 83 "rules/scanner.l"
 SAVE_TOKEN;   return FSTR_LIT;
 	YY_BREAK
 case 48:
 /* rule 48 can match eol */
 YY_RULE_SETUP
-#line 85 "rules/scanner.l"
+#line 84 "rules/scanner.l"
 SAVE_TOKEN;   return FSTR_LIT;
 	YY_BREAK
 case 49:
 /* rule 49 can match eol */
 YY_RULE_SETUP
-#line 86 "rules/scanner.l"
+#line 85 "rules/scanner.l"
 SAVE_TOKEN;   return STR_LIT;
 	YY_BREAK
 case 50:
 /* rule 50 can match eol */
 YY_RULE_SETUP
-#line 87 "rules/scanner.l"
+#line 86 "rules/scanner.l"
 SAVE_TOKEN;   return STR_LIT;
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 89 "rules/scanner.l"
+#line 88 "rules/scanner.l"
 {
     kriol::cli::PrintErr(
         "Unknown token " + std::string(yytext) +
@@ -1129,10 +1128,10 @@ YY_RULE_SETUP
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 96 "rules/scanner.l"
+#line 95 "rules/scanner.l"
 ECHO;
 	YY_BREAK
-#line 1136 "scanner.cc"
+#line 1135 "scanner.cc"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -2149,6 +2148,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 96 "rules/scanner.l"
+#line 95 "rules/scanner.l"
 
 

@@ -44,10 +44,17 @@ static std::string processEscapes(const std::string& raw) {
 
 // Returns the printf format specifier for a Kriol type.
 static const char* fmtSpec(const std::string& kriolType) {
-    if (kriolType == "nter")  return "%lld";
-    if (kriolType == "num")   return "%g";
-    if (kriolType == "bool")  return "%d";
+    if (kriolType == "nter") return "%lld";
+    if (kriolType == "num")  return "%g";
     return "%s"; // textu / fallback
+}
+
+// Reverse-map an LLVM type to the corresponding Kriol type string.
+static std::string llvmTypeToKriol(llvm::Type* ty) {
+    if (ty->isDoubleTy())    return "num";
+    if (ty->isIntegerTy(64)) return "nter";
+    if (ty->isIntegerTy(1))  return "bool";
+    return "textu"; // pointer / fallback
 }
 
 using namespace kriol::ast;
@@ -621,6 +628,16 @@ static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext&
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
 }
 
+// Declare (or retrieve) __kriol_bool_to_str: const char* __kriol_bool_to_str(int)
+static llvm::Function* getOrDeclareKriolBoolToStr(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_bool_to_str")) return fn;
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ftype = llvm::FunctionType::get(ptrTy, {i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_bool_to_str", Mod);
+}
+
 // Declare (or retrieve) __kriol_format -> char* __kriol_format(const char* fmt, ...)
 static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
@@ -674,29 +691,34 @@ void CodeGenVisitor::visit(FStringExpr& node) {
             // empty name, semantic analyzer should handle. skip the placeholder entirely.
             if (name.empty()) { i = end + 1; continue; }
 
-            // look up the variable to determine its type for the format specifier
-            std::string kriolType;
-            auto it = TypeTable.find(name);
-            if (it != TypeTable.end())
-                kriolType = it->second;
-
-            fmtStr += fmtSpec(kriolType);
-
-            // Emit the variable's value and coerce to what printf expects
             auto* alloca = lookupVar(name);
             llvm::Value* val = nullptr;
+            std::string kriolType;
 
             if (alloca) {
-                val = Builder->CreateLoad(alloca->getAllocatedType(), alloca, name);
+                llvm::Type* ty = alloca->getAllocatedType();
+                kriolType = llvmTypeToKriol(ty);
+                val = Builder->CreateLoad(ty, alloca, name);
             } else if (auto* gv = lookupGlobal(name)) {
-                val = Builder->CreateLoad(gv->getValueType(), gv, name);
+                llvm::Type* ty = gv->getValueType();
+                kriolType = llvmTypeToKriol(ty);
+                val = Builder->CreateLoad(ty, gv, name);
             }
 
             if (val) {
-                // bool needs to be widened to i32 for printf varargs
-                if (val->getType()->isIntegerTy(1))
-                    val = Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context), "bool_ext");
+                if (kriolType == "bool") {
+                    llvm::Value* ext = val->getType()->isIntegerTy(1)
+                        ? Builder->CreateZExt(val, llvm::Type::getInt32Ty(Context))
+                        : val;
+                    val = Builder->CreateCall(
+                        getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
+                    fmtStr += "%s";
+                } else {
+                    fmtStr += fmtSpec(kriolType);
+                }
                 callArgs.push_back(val);
+            } else {
+                fmtStr += fmtSpec(kriolType);
             }
             i = end + 1;
         } else {

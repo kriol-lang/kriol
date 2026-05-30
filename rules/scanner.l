@@ -13,7 +13,6 @@
     #define YYERROR_VERBOSE 1
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
-    #define SAVE_BOOLEAN   yylval.boolean = new std::string(strcmp(yytext, "sin") == 0 ? "1" : "0");
     #define TOKENIZE(sym) (yylval.token   = sym)
 
     int yyerror(char const*);
@@ -51,8 +50,8 @@ FSTR_SQ     f[']([^'\\\n]|\\.|\\\n)*[']
 "vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
-"sin"           SAVE_BOOLEAN; return BOOL_LIT;
-"nau"           SAVE_BOOLEAN; return BOOL_LIT;
+"sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
+"nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
 "para"          return TOKENIZE(PARA);
 "kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);

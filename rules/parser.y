@@ -20,7 +20,6 @@
     int token;
     std::string* integer;
     std::string* floatingpoint;
-    std::string* boolean;
     std::string* string;
     kriol::ast::Expr* expr;
     kriol::ast::Sttmt* sttmt;
@@ -31,14 +30,14 @@
     kriol::ast::LiteralExpr* litexpr;
 }
 
-%destructor { delete $$; } <string> <integer> <floatingpoint> <boolean>
+%destructor { delete $$; } <string> <integer> <floatingpoint>
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
 %token<string> IDENT STR_LIT FSTR_LIT
 %token<token> MOSTRA MOSTRAN
 %token<integer> INT_LIT
 %token<floatingpoint> FLOAT_LIT
-%token<boolean> BOOL_LIT
+%token<string> BOOL_LIT
 %token<token>  PLUS MINUS MUL DIV
 %token<token>  EQ  NE  LT LE GT GE
 %token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
