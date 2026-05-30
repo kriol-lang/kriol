@@ -168,7 +168,14 @@ void CodeGenVisitor::emitNative(const std::string& outputPath) {
         throw std::runtime_error("Cannot find 'cc': " + ccPath.getError().message());
 
     std::vector<llvm::StringRef> linkArgs = {
-        *ccPath, objPath, "-o", outputPath, "-lm"
+        *ccPath,
+        objPath,
+#ifdef KRIOL_RUNTIME_OBJ
+        KRIOL_RUNTIME_OBJ,
+#endif
+        "-o",
+        outputPath,
+        "-lm"
     };
 
     std::string linkErr;
@@ -225,7 +232,10 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
 
     if (node.Value) {
         node.Value->accept(*this);
-        if (LastValue) Builder->CreateStore(LastValue, alloca);
+        if (LastValue) {
+            LastValue = coerce(LastValue, ty);
+            Builder->CreateStore(LastValue, alloca);
+        }
     }
     LastValue = nullptr;
 }
@@ -284,7 +294,10 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     if (isMain && !DeferredGlobalInits.empty()) {
         for (auto& di : DeferredGlobalInits) {
             di.InitExpr->accept(*this);
-            if (LastValue) Builder->CreateStore(LastValue, di.Var);
+            if (LastValue) {
+                LastValue = coerce(LastValue, di.Var->getValueType());
+                Builder->CreateStore(LastValue, di.Var);
+            }
         }
         DeferredGlobalInits.clear();
     }
@@ -576,6 +589,26 @@ void CodeGenVisitor::visit(ForSttmt& node) {
     Builder->SetInsertPoint(exitBB);
     LoopExit = savedExit; LoopContinue = savedCont;
     LastValue = nullptr;
+}
+
+// Declare (or retrieve) one of the __kriol_print(n)_TYPE runtime functions.
+static llvm::Function* getOrDeclareKriolPrint(llvm::Module& Mod, llvm::LLVMContext& Context,
+        const std::string& suffix, llvm::Type* argTy, bool newline)
+{
+    std::string name = newline ? "__kriol_println_" + suffix : "__kriol_print_"  + suffix;
+    if (auto* fn = Mod.getFunction(name)) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {argTy}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, Mod);
+}
+
+// Declare putchar if not already present.
+static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("putchar")) return fn;
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getInt32Ty(Context),
+        {llvm::Type::getInt32Ty(Context)}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
 }
 
 void CodeGenVisitor::visit(MostraFunCallExpr& node) {

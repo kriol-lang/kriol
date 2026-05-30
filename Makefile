@@ -23,6 +23,11 @@ RLS_FLAGS = $(FLAGS) -O3 -DNDEBUG
 
 OBJS = main.o cli.o sema.o codegen.o parser.o scanner.o
 
+RUNTIME_OBJ = runtime/kriol_runtime.o
+
+# -DKRIOL_RUNTIME_OBJ passes the absolute path of the runtime object to codegen.cc
+RUNTIME_DEFINE = -DKRIOL_RUNTIME_OBJ='"$(CURDIR)/$(RUNTIME_OBJ)"'
+
 # Sources that must NOT see LLVM headers (bison/flex generated code has
 # namespace-level std:: references that clash with LLVM's extra defines)
 SRCS = main.cpp \
@@ -32,24 +37,27 @@ SRCS = main.cpp \
 LLVM_SRC = src/kriol/cli.cc \
 	   src/kriol/codegen.cc
 
+$(RUNTIME_OBJ): runtime/kriol_runtime.c
+	$(CC_C) -c -O2 -o $@ $<
+
 # The default build is debug.
 # Change to release if wanted.
 kriol: debug
 	@echo "\n\nRun the compiler with:"
 	@echo "\n  ./kriol --help\n"
 
-dbg-obj: $(SRCS) $(LLVM_SRC)
+dbg-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_OBJ)
 	@echo "~~ Debug build ~~"
 	$(CC) -c $(DBG_FLAGS) $(SRCS)
-	$(CC) -c $(DBG_FLAGS) $(LLVM_CXXFLAGS) $(LLVM_SRC)
+	$(CC) -c $(DBG_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
 
 debug: dbg-obj
 	$(CC) -o $(OUTPUT) $(DBG_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
 
-rls-obj: $(SRCS) $(LLVM_SRC)
+rls-obj: $(SRCS) $(LLVM_SRC) $(RUNTIME_OBJ)
 	@echo "~~ Release build ~~"
 	$(CC) -c $(RLS_FLAGS) $(SRCS)
-	$(CC) -c $(RLS_FLAGS) $(LLVM_CXXFLAGS) $(LLVM_SRC)
+	$(CC) -c $(RLS_FLAGS) $(LLVM_CXXFLAGS) $(RUNTIME_DEFINE) $(LLVM_SRC)
 
 release: rls-obj
 	$(CC) -o $(OUTPUT) $(RLS_FLAGS) $(OBJS) $(LLVM_LDFLAGS)
@@ -61,7 +69,7 @@ scanner.cc: rules/scanner.l
 	flex -o scanner.cc rules/scanner.l
 
 clean:
-	rm *.o kriol parser.cc parser.hh scanner.cc
+	rm -f *.o runtime/*.o kriol parser.cc parser.hh scanner.cc
 
 test: kriol
 	@echo "\n~~ Running tests ~~\n"; \

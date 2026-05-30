@@ -34,6 +34,7 @@ STRING ["]([^"\\\n]|\\.|\\\n)*["]
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 
 "fn"            return TOKENIZE(FN);
+"mostran"       return TOKENIZE(MOSTRAN);
 "mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);

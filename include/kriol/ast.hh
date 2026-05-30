@@ -58,12 +58,14 @@ namespace ast {
 
     class Sttmt {
     public:
+        int LineNum = 0;
         virtual ~Sttmt() = default;
         virtual void accept(Visitor& v) = 0;
     };
 
     class Expr : public Sttmt {
     public:
+        std::string ResolvedType;
         virtual ~Expr() = default;
     };
 
@@ -167,8 +169,10 @@ namespace ast {
 
     class MostraFunCallExpr : public FunCallExpr {
     public:
-        MostraFunCallExpr(std::unique_ptr<FuncCallArgs> Args)
-            : FunCallExpr("printf", std::move(Args)) {}
+        bool AddNewline = false;
+
+        MostraFunCallExpr(std::unique_ptr<FuncCallArgs> Args, bool addNewline = false)
+            : FunCallExpr("printf", std::move(Args)), AddNewline(addNewline) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

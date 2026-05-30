@@ -57,47 +57,48 @@ extern int yydebug;
     IDENT = 258,                   /* IDENT  */
     STR_LIT = 259,                 /* STR_LIT  */
     MOSTRA = 260,                  /* MOSTRA  */
-    INT_LIT = 261,                 /* INT_LIT  */
-    FLOAT_LIT = 262,               /* FLOAT_LIT  */
-    BOOL_LIT = 263,                /* BOOL_LIT  */
-    PLUS = 264,                    /* PLUS  */
-    MINUS = 265,                   /* MINUS  */
-    MUL = 266,                     /* MUL  */
-    DIV = 267,                     /* DIV  */
-    EQ = 268,                      /* EQ  */
-    NE = 269,                      /* NE  */
-    LT = 270,                      /* LT  */
-    LE = 271,                      /* LE  */
-    GT = 272,                      /* GT  */
-    GE = 273,                      /* GE  */
-    AND = 274,                     /* AND  */
-    OR = 275,                      /* OR  */
-    ASSIGN = 276,                  /* ASSIGN  */
-    LCURLY = 277,                  /* LCURLY  */
-    RCURLY = 278,                  /* RCURLY  */
-    COMMA = 279,                   /* COMMA  */
-    SEMIC = 280,                   /* SEMIC  */
-    LBRAC = 281,                   /* LBRAC  */
-    RBRAC = 282,                   /* RBRAC  */
-    TYPE_NUM = 283,                /* TYPE_NUM  */
-    TYPE_BOOL = 284,               /* TYPE_BOOL  */
-    TYPE_VOID = 285,               /* TYPE_VOID  */
-    TYPE_NTER = 286,               /* TYPE_NTER  */
-    TYPE_TEXTU = 287,              /* TYPE_TEXTU  */
-    DIVOLVI = 288,                 /* DIVOLVI  */
-    PA = 289,                      /* PA  */
-    STRUT = 290,                   /* STRUT  */
-    NKUANTU = 291,                 /* NKUANTU  */
-    SI = 292,                      /* SI  */
-    SINON = 293,                   /* SINON  */
-    IMPRISTAN = 294,               /* IMPRISTAN  */
-    PARA = 295,                    /* PARA  */
-    CONTINUA = 296,                /* CONTINUA  */
-    DOT = 297,                     /* DOT  */
-    RPAR = 298,                    /* RPAR  */
-    LPAR = 299,                    /* LPAR  */
-    FN = 300,                      /* FN  */
-    UMINUS = 301                   /* UMINUS  */
+    MOSTRAN = 261,                 /* MOSTRAN  */
+    INT_LIT = 262,                 /* INT_LIT  */
+    FLOAT_LIT = 263,               /* FLOAT_LIT  */
+    BOOL_LIT = 264,                /* BOOL_LIT  */
+    PLUS = 265,                    /* PLUS  */
+    MINUS = 266,                   /* MINUS  */
+    MUL = 267,                     /* MUL  */
+    DIV = 268,                     /* DIV  */
+    EQ = 269,                      /* EQ  */
+    NE = 270,                      /* NE  */
+    LT = 271,                      /* LT  */
+    LE = 272,                      /* LE  */
+    GT = 273,                      /* GT  */
+    GE = 274,                      /* GE  */
+    AND = 275,                     /* AND  */
+    OR = 276,                      /* OR  */
+    ASSIGN = 277,                  /* ASSIGN  */
+    LCURLY = 278,                  /* LCURLY  */
+    RCURLY = 279,                  /* RCURLY  */
+    COMMA = 280,                   /* COMMA  */
+    SEMIC = 281,                   /* SEMIC  */
+    LBRAC = 282,                   /* LBRAC  */
+    RBRAC = 283,                   /* RBRAC  */
+    TYPE_NUM = 284,                /* TYPE_NUM  */
+    TYPE_BOOL = 285,               /* TYPE_BOOL  */
+    TYPE_VOID = 286,               /* TYPE_VOID  */
+    TYPE_NTER = 287,               /* TYPE_NTER  */
+    TYPE_TEXTU = 288,              /* TYPE_TEXTU  */
+    DIVOLVI = 289,                 /* DIVOLVI  */
+    PA = 290,                      /* PA  */
+    STRUT = 291,                   /* STRUT  */
+    NKUANTU = 292,                 /* NKUANTU  */
+    SI = 293,                      /* SI  */
+    SINON = 294,                   /* SINON  */
+    IMPRISTAN = 295,               /* IMPRISTAN  */
+    PARA = 296,                    /* PARA  */
+    CONTINUA = 297,                /* CONTINUA  */
+    DOT = 298,                     /* DOT  */
+    RPAR = 299,                    /* RPAR  */
+    LPAR = 300,                    /* LPAR  */
+    FN = 301,                      /* FN  */
+    UMINUS = 302                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -106,7 +107,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 18 "rules/parser.y"
+#line 19 "rules/parser.y"
 
     int token;
     std::string* integer;
@@ -121,7 +122,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 125 "parser.hh"
+#line 126 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

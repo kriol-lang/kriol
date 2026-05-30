@@ -2,7 +2,7 @@ fn soma(num n) num {
     num acc = 0;
 
     nter i;
-    pa i = 0 ; i < n ; i = i + 1 {
+    pa i = 1 ; i < n ; i = i + 1 {
         acc = acc + i;
     }
 
@@ -10,5 +10,5 @@ fn soma(num n) num {
 }
 
 fn inisiu() {
-    mostra("Soma ti 10 é igual a %g\n", soma(10));
+    mostran("Soma di 1 ti 10 é igual a {}", soma(10));
 }
