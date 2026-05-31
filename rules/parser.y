@@ -33,11 +33,11 @@
 %destructor { delete $$; } <string> <integer> <floatingpoint>
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
-%token<string> IDENT STR_LIT FSTR_TEXT
+%token<string> IDENT "valid identifier" STR_LIT "string literal" FSTR_TEXT "f-string text"
 %token<token> MOSTRA "mostra" MOSTRAN "mostran"
-%token<integer> INT_LIT
-%token<floatingpoint> FLOAT_LIT
-%token<string> BOOL_LIT
+%token<integer> INT_LIT "integer literal"
+%token<floatingpoint> FLOAT_LIT "floating-point literal "
+%token<string> BOOL_LIT "boolean literal"
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
 %token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
@@ -182,7 +182,7 @@ parameter_list : parameter_declaration { $$ = new ast::FuncArgs(); $$->AddArg(st
                | parameter_list COMMA parameter_declaration { $1->AddArg(std::unique_ptr<ast::VarDeclSttmt>($3)); $$ = $1; }
                ;
 
-parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); $$->IsParam = true; delete $1; delete $2; }
+parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(*$1, *$2, nullptr); $$->IsParam = true; $$->LineNum = yylineno; delete $1; delete $2; }
                       ;
 
 argument_list : argument_list COMMA expression { $1->AddArg(std::unique_ptr<ast::Expr>($3)); $$ = $1; }

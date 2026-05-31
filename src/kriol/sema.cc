@@ -8,6 +8,33 @@ using namespace kriol::ast;
 namespace kriol {
 namespace sema {
 
+static const std::unordered_set<std::string> reservedKeywords = {
+    // Built-in/runtime statements and call forms.
+    "mostra", "mostran", "sai", "konfirma",
+
+    // Language keywords.
+    "si", "sinon", "nkuantu", "pa", "fn", "divolvi", "inpristan",
+    "para", "kontinua",
+
+    // Type names and literals.
+    "num", "nter", "bool", "vaziu", "textu", "sin", "nau"
+};
+
+bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
+    return reservedKeywords.count(name) != 0;
+}
+
+bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
+                                            const std::string& kind,
+                                            int lineNum) {
+    if (!isReservedKeyword(name)) return true;
+
+    addError(errLoc(lineNum) + kind + " name '" + name
+             + "' is reserved and cannot be redeclared");
+
+    return false;
+}
+
 bool SemanticAnalyzer::isWideningCoercion(const std::string& from,
                                           const std::string& to) {
     if (from == to) return true;
@@ -18,10 +45,13 @@ bool SemanticAnalyzer::isWideningCoercion(const std::string& from,
 }
 
 void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
+    if (!checkDeclaredNameValid(node.Name, "function", node.LineNum)) return;
+
     if (FunctionTable.count(node.Name)) {
         addError(errLoc(node.LineNum) + "duplicate function declaration '" + node.Name + "'");
         return;
     }
+
     FuncInfo info;
     info.retType = node.Type;
     if (node.Args)
@@ -74,15 +104,21 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
-    if (!node.IsParam) {
-        // Check for duplicate in the innermost scope only
-        if (!SymbolScopes.empty()) {
-            auto& cur = SymbolScopes.back();
-            if (cur.count(node.Name))
-                addError(errLoc(node.LineNum) + "variable '" + node.Name + "' already declared in this scope");
+    const std::string kind = node.IsParam ? "parameter" : "variable";
+    bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
+
+    // Check for duplicate in the innermost scope only.
+    if (!SymbolScopes.empty()) {
+        auto& cur = SymbolScopes.back();
+        if (cur.count(node.Name)) {
+            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' already declared in this scope");
+            canDeclare = false;
         }
-        declareVar(node.Name, node.Type);
     }
+
+    if (canDeclare)
+        declareVar(node.Name, node.Type);
+
     if (node.Value) {
         node.Value->accept(*this);
         if (!node.Value->ResolvedType.empty() && node.Value->ResolvedType == "vaziu")
@@ -106,8 +142,11 @@ void SemanticAnalyzer::visit(FuncArgs& node) {
 void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     // If the signature wasn't pre-registered (nested function), register it now.
     // Top-level functions are already in FunctionTable from the first pass.
-    if (!FunctionTable.count(node.Name))
-        registerFuncSignature(node);
+    if (!FunctionTable.count(node.Name)) {
+        // Top-level functions were handled in the pre-registration pass.
+        if (SymbolScopes.size() > 1)
+            registerFuncSignature(node);
+    }
 
     std::string savedRetType = CurrFuncRetType;
     std::string savedName    = CurrFuncName;
@@ -119,7 +158,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     // Add parameters to function scope
     if (node.Args) {
         for (auto& arg : node.Args->Args) {
-            if (arg) declareVar(arg->Name, arg->Type);
+            if (arg) arg->accept(*this);
         }
     }
 
@@ -194,7 +233,10 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             if (arg) arg->accept(*this);
 
     auto it = FunctionTable.find(node.Name);
-    if (it == FunctionTable.end()) return;
+    if (it == FunctionTable.end()) {
+        addError(errLoc(node.LineNum) + "undeclared function '" + node.Name + "'");
+        return;
+    }
 
     const FuncInfo& info = it->second;
     node.ResolvedType = info.retType;

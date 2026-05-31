@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <optional>
 
 namespace kriol {
@@ -76,6 +77,14 @@ namespace sema {
         // visiting the body. Called in the first pass of Check().
         void registerFuncSignature(ast::FuncDeclSttmt& node);
 
+
+        // Checks if a name is reserved and cannot be declared (used for variables, parameters, functions).
+        static bool isReservedKeyword(const std::string& name);
+
+        // Checks if a name is reserved and cannot be declared, and if so adds an error.
+        bool checkDeclaredNameValid(const std::string& name, const std::string& kind, int lineNum);
+
+        // Adds an error message to the error list
         void addError(const std::string& msg) { Errors.push_back(msg); }
 
     public:
