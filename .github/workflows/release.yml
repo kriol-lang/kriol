@@ -39,6 +39,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
           files: |
             kriol-${{ github.ref_name }}-linux-x86_64.tar.gz
             kriol-${{ github.ref_name }}-linux-x86_64.tar.xz
