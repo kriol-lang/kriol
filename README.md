@@ -1,4 +1,4 @@
-# :stars: KriolLang
+# 🦈 KriolLang
 
 **KriolLang** or **Kriol** is a programming language based on the **Cape Verdian Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
 
