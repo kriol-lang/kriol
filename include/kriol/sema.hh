@@ -18,6 +18,16 @@ namespace sema {
         // Scoped symbol table: each entry is one scope level (name -> Kriol type)
         std::vector<std::unordered_map<std::string, std::string>> SymbolScopes;
 
+        struct VarInitState {
+            bool isArray = false;
+            bool fullyInitialized = false;
+            std::vector<bool> elementInitialized;
+        };
+
+        // Scoped initialization table: each entry is one scope level
+        // (name -> initialization state)
+        std::vector<std::unordered_map<std::string, VarInitState>> InitScopes;
+
         // Signature record for a user-defined function
         struct FuncInfo {
             std::string retType;
@@ -47,12 +57,23 @@ namespace sema {
         }
 
         // --- scope helpers ---
-        void pushScope() { SymbolScopes.push_back({}); }
-        void popScope()  { if (!SymbolScopes.empty()) SymbolScopes.pop_back(); }
+        void pushScope() {
+            SymbolScopes.push_back({});
+            InitScopes.push_back({});
+        }
+        void popScope()  {
+            if (!SymbolScopes.empty()) SymbolScopes.pop_back();
+            if (!InitScopes.empty()) InitScopes.pop_back();
+        }
 
         void declareVar(const std::string& name, const std::string& type) {
             if (!SymbolScopes.empty())
                 SymbolScopes.back()[name] = type;
+        }
+
+        void declareInitState(const std::string& name, VarInitState state) {
+            if (!InitScopes.empty())
+                InitScopes.back()[name] = std::move(state);
         }
 
         // Returns the Kriol type of the variable if found in any scope, or empty string.
@@ -62,6 +83,22 @@ namespace sema {
                 if (found != it->end()) return found->second;
             }
             return std::nullopt;
+        }
+
+        const VarInitState* lookupInitState(const std::string& name) const {
+            for (auto it = InitScopes.rbegin(); it != InitScopes.rend(); ++it) {
+                auto found = it->find(name);
+                if (found != it->end()) return &found->second;
+            }
+            return nullptr;
+        }
+
+        VarInitState* lookupInitStateMutable(const std::string& name) {
+            for (auto it = InitScopes.rbegin(); it != InitScopes.rend(); ++it) {
+                auto found = it->find(name);
+                if (found != it->end()) return &found->second;
+            }
+            return nullptr;
         }
 
         // Returns true if every reachable code path in the block ends with a
@@ -115,6 +152,8 @@ namespace sema {
         void visit(ast::ExprSttmt&         node) override;
         void visit(ast::IdentExpr&         node) override;
         void visit(ast::ParExpr&           node) override;
+        void visit(ast::ArrayAccessExpr&   node) override;
+        void visit(ast::ArrayLiteralExpr&  node) override;
         void visit(ast::AssignExpr&        node) override;
         void visit(ast::ForSttmt&          node) override;
         void visit(ast::MostraFunCallExpr& node) override;

@@ -48,15 +48,15 @@
 %token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
-%type<expr> expression assignment_expression primary_expression
+%type<expr> expression assignment_expression primary_expression unary_expression initializer
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
-            unary_expression initializer mostra_func_call fstring fstring_parts
+            mostra_func_call fstring fstring_parts array_initializer array_initializer_elements value_expression
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
              function_declaration declaration statement import_statement
 %type<block> compound_statement statements else_then
 %type<string> declarator identifier type_specifier assignment_operator single_import
-%type<vardecl> init_declarator parameter_declaration
+%type<vardecl> init_declarator parameter_declaration array_declarator
 %type<params> parameter_list parameter_optional_list
 %type<args> argument_list
 
@@ -105,14 +105,31 @@ declarator : identifier { $$ = $1; }
            ;
 
 declaration : type_specifier init_declarator SEMIC { $2->SetType(*$1); $2->LineNum = yylineno; $$ = $2; delete $1; }
+            | type_specifier array_declarator SEMIC { $2->SetType(*$1 + "[" + std::to_string($2->ArraySize) + "]"); $2->LineNum = yylineno; $$ = $2; delete $1; }
+            | type_specifier array_declarator ASSIGN initializer SEMIC { $2->SetType(*$1 + "[" + std::to_string($2->ArraySize) + "]"); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = yylineno; $$ = $2; delete $1; }
             ;
 
 init_declarator : declarator { $$ = new ast::VarDeclSttmt("void", *$1, nullptr); delete $1; }
                 | declarator ASSIGN initializer { $$ = new ast::VarDeclSttmt("void", *$1, std::unique_ptr<ast::Expr>($3)); delete $1; }
                 ;
 
+array_declarator : LBRAC INT_LIT RBRAC declarator { $$ = new ast::VarDeclSttmt("void", *$4, nullptr); $$->IsArray = true; $$->ArraySize = std::stoul(*$2); delete $2; delete $4; }
+                 ;
+
 initializer : expression { $$ = $1; }
+            | array_initializer { $$ = $1; }
             ;
+
+value_expression : constant_expression { $$ = $1; }
+                 ;
+
+array_initializer : LBRAC array_initializer_elements RBRAC { $$ = $2; }
+                  | LBRAC RBRAC { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; $$ = n; }
+                  ;
+
+array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; n->addElement(std::unique_ptr<ast::Expr>($1)); $$ = n; }
+                           | array_initializer_elements COMMA value_expression { static_cast<ast::ArrayLiteralExpr*>($1)->addElement(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+                           ;
 
 expression : assignment_expression { $$ = $1; }
            ;
@@ -159,6 +176,7 @@ primary_expression : IDENT LPAR argument_list RPAR { auto n = new ast::FunCallEx
                    | IDENT LPAR RPAR               { auto n = new ast::FunCallExpr(*$1, nullptr); n->LineNum = yylineno; $$ = n; delete $1; }
                    | mostra_func_call               { $$ = $1; }
                    | IDENT                          { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+                   | IDENT LBRAC value_expression RBRAC   { auto n = new ast::ArrayAccessExpr(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
                    | constant                       { $$ = $1; }
                    | LPAR expression RPAR           { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
                    ;

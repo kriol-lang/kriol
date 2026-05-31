@@ -58,6 +58,11 @@ namespace ast {
                                                llvm::Type* ty);
         llvm::AllocaInst*    lookupVar(const std::string& name);
         llvm::GlobalVariable* lookupGlobal(const std::string& name);
+        llvm::Value*         getArrayStorage(const std::string& name);
+        llvm::Value*         createArrayElementPtr(llvm::Value* storage,
+                               llvm::Type* arrayTy,
+                               llvm::Value* index);
+        llvm::Function*      getOrDeclareKriolCheckBounds();
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }
@@ -105,6 +110,8 @@ namespace ast {
         void visit(ExprSttmt&         node) override;
         void visit(IdentExpr&         node) override;
         void visit(ParExpr&           node) override;
+        void visit(ArrayAccessExpr&   node) override;
+        void visit(ArrayLiteralExpr&  node) override;
         void visit(AssignExpr&        node) override;
         void visit(ForSttmt&          node) override;
         void visit(MostraFunCallExpr& node) override;

@@ -1,0 +1,4 @@
+fn inisiu() {
+    nter x;
+    mostra(x);
+}
