@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <sstream>
 
+#include <llvm/Support/ManagedStatic.h>
+
 namespace fs = std::filesystem;
 namespace ap = argparse;
 
@@ -24,6 +26,7 @@ using namespace kriol;
 extern FILE *yyin;
 
 extern int yyparse(kriol::ast::BlockSttmt** Program);
+extern int yylex_destroy(void);
 
 static std::string g_source_file;
 
@@ -43,13 +46,13 @@ void cli::PrintErr(std::string message)
 void cli::PrintErr(std::string message, int exitNum)
 {
     cli::PrintErr(message);
-    exit(exitNum);
+    throw cli::FatalError(message, exitNum);
 }
 
 void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
     std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
     std::cerr << KL_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
-    if (exitNum >= 0) exit(exitNum);
+    if (exitNum >= 0) throw cli::FatalError(location + msg, exitNum);
 }
 
 void cli::ExecuteCommand(std::string command)
@@ -178,8 +181,12 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
 
     yyin = file;
     cli::SetSourceFile(filename);
-    yyparse(Program);
-
+    try {
+        yyparse(Program);
+    } catch (...) {
+        fclose(file);
+        throw;
+    }
     fclose(file);
 }
 
@@ -217,7 +224,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
         {
             for (const auto& err : sema.GetErrors())
                 cli::PrintErr(err);
-            exit(1);
+            throw cli::FatalError("semantic errors", 1);
         }
     }
 
@@ -242,6 +249,15 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
     }
     catch (std::exception &err)
     {
+        // Re-throw FatalError so main() catches it and returns the right exit code
+        if (dynamic_cast<cli::FatalError*>(&err))
+            throw;
         cli::PrintErr(err.what(), 1);
     }
+}
+
+void cli::Compiler::Cleanup()
+{
+    yylex_destroy();
+    llvm::llvm_shutdown();
 }

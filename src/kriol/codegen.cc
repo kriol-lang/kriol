@@ -163,8 +163,9 @@ void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0
         throw std::runtime_error("LLVM target lookup failed: " + err);
 
     llvm::TargetOptions opt;
-    auto* tm = target->createTargetMachine(
-        triple, "generic", "", opt, llvm::Reloc::PIC_);
+    std::unique_ptr<llvm::TargetMachine> tm(
+        target->createTargetMachine(triple, "generic", "", opt, llvm::Reloc::PIC_)
+    );
     Mod->setDataLayout(tm->createDataLayout());
 
     std::string objPath = outputPath + ".o";

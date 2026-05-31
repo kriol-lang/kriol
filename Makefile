@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := kriol
 
 .PHONY: kriol debug release clean test
+.PHONY: kriol debug release clean test valgrind
 
 CC = clang++-19
 CC_C = clang-19
@@ -31,7 +32,7 @@ SRCS = main.cc \
 	   parser.cc scanner.cc
 
 LLVM_SRC = src/kriol/cli.cc \
-	   src/kriol/codegen.cc
+	       src/kriol/codegen.cc
 
 $(RUNTIME_OBJ): runtime/kriol_runtime.c
 	$(CC_C) -c -O2 -o $@ $<
@@ -66,6 +67,14 @@ scanner.cc: rules/scanner.l
 
 clean:
 	rm -f *.o runtime/*.o kriol parser.cc parser.hh scanner.cc
+
+valgrind: debug
+	@if [ -z "$(FILE)" ]; \
+	then \
+		echo "Usage: make valgrind FILE=<path/to/file.kl>"; \
+		exit 1; \
+	fi
+	valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./kriol $(FILE)
 
 test: kriol
 	@echo "\n~~ Running tests ~~\n"; \

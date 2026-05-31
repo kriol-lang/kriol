@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <algorithm>
+#include <stdexcept>
 
 namespace ap = argparse;
 
@@ -17,6 +18,16 @@ namespace kriol
 {
     namespace cli
     {
+        /// Exception thrown instead of exit() so RAII cleanup runs
+        class FatalError : public std::exception {
+            std::string msg_;
+            int code_;
+        public:
+            FatalError(std::string msg, int code) : msg_(std::move(msg)), code_(code) {}
+            const char* what() const noexcept override { return msg_.c_str(); }
+            int exitCode() const noexcept { return code_; }
+        };
+
         /// Prints an error message to the stderr
         void PrintErr(std::string message);
         /// Prints an error message to the stderr and exits returning the `exitNum`
@@ -63,6 +74,8 @@ namespace kriol
                 : Name(Name), Version(Ver), Parser(std::make_unique<ap::ArgumentParser>(Name, Ver)) {}
             /// Used to run the compiler
             void Run(const int argc, const char *const *argv);
+            /// Cleans up left over resources
+            static void Cleanup();
 
         private:
             /// Used to parse the command-line args
