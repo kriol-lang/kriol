@@ -1179,44 +1179,50 @@ YY_RULE_SETUP
 #line 95 "rules/scanner.l"
 { SAVE_TOKEN; return FSTR_TEXT; }
 	YY_BREAK
+case YY_STATE_EOF(FSTRING_DQ):
+#line 96 "rules/scanner.l"
+{ kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
+	YY_BREAK
 case 57:
 /* rule 57 can match eol */
 YY_RULE_SETUP
-#line 96 "rules/scanner.l"
-{ /* malformed fstring char, skip */ }
+#line 97 "rules/scanner.l"
+{ /* skip unrecognised char inside f-string */ }
 	YY_BREAK
 
 
 case 58:
 YY_RULE_SETUP
-#line 100 "rules/scanner.l"
+#line 101 "rules/scanner.l"
 { yy_pop_state(); return TOKENIZE(FSTR_END); }
 	YY_BREAK
 case 59:
 YY_RULE_SETUP
-#line 101 "rules/scanner.l"
+#line 102 "rules/scanner.l"
 { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
 	YY_BREAK
 case 60:
 YY_RULE_SETUP
-#line 102 "rules/scanner.l"
+#line 103 "rules/scanner.l"
 { SAVE_TOKEN; return FSTR_TEXT; }
+	YY_BREAK
+case YY_STATE_EOF(FSTRING_SQ):
+#line 104 "rules/scanner.l"
+{ kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
 	YY_BREAK
 case 61:
 /* rule 61 can match eol */
 YY_RULE_SETUP
-#line 103 "rules/scanner.l"
-{ /* malformed fstring char, skip */ }
+#line 105 "rules/scanner.l"
+{ /* skip unrecognised char inside f-string */ }
 	YY_BREAK
 
 case 62:
 YY_RULE_SETUP
-#line 106 "rules/scanner.l"
+#line 108 "rules/scanner.l"
 {
-    kriol::cli::PrintErr(
-        "Unknown token " + std::string(yytext) +
-        " at line " + std::to_string(yylineno)
-    );
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+        "unknown token '" + std::string(yytext) + "'", 1);
 }
 	YY_BREAK
 case 63:
@@ -1224,10 +1230,8 @@ YY_RULE_SETUP
 #line 113 "rules/scanner.l"
 ECHO;
 	YY_BREAK
-#line 1228 "scanner.cc"
+#line 1234 "scanner.cc"
 case YY_STATE_EOF(INITIAL):
-case YY_STATE_EOF(FSTRING_DQ):
-case YY_STATE_EOF(FSTRING_SQ):
 	yyterminate();
 
 	case YY_END_OF_BUFFER:

@@ -36,6 +36,15 @@ namespace sema {
         // Collected errors
         std::vector<std::string> Errors;
 
+        // Source file name, used for error location prefixes
+        std::string SourceFile;
+
+        // Returns "file:line: " prefix for error messages, or "" if line is 0.
+        std::string errLoc(int lineNum) const {
+            if (lineNum == 0) return SourceFile.empty() ? "" : SourceFile + ": ";
+            return (SourceFile.empty() ? "" : SourceFile + ":") + std::to_string(lineNum) + ": ";
+        }
+
         // --- scope helpers ---
         void pushScope() { SymbolScopes.push_back({}); }
         void popScope()  { if (!SymbolScopes.empty()) SymbolScopes.pop_back(); }
@@ -77,6 +86,9 @@ namespace sema {
 
         bool HasErrors() const { return !Errors.empty(); }
         const std::vector<std::string>& GetErrors() const { return Errors; }
+
+        // Sets the source filename included in error location prefixes.
+        void SetSourceFile(const std::string& f) { SourceFile = f; }
 
         // --- visitor overrides ---
         void visit(ast::VarDeclSttmt&      node) override;

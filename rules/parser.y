@@ -34,19 +34,19 @@
 %destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args> <litexpr>
 
 %token<string> IDENT STR_LIT FSTR_TEXT
-%token<token> MOSTRA MOSTRAN
+%token<token> MOSTRA "mostra" MOSTRAN "mostran"
 %token<integer> INT_LIT
 %token<floatingpoint> FLOAT_LIT
 %token<string> BOOL_LIT
-%token<token>  PLUS MINUS MUL DIV
-%token<token>  EQ  NE  LT LE GT GE
-%token<token>  AND OR ASSIGN LCURLY RCURLY COMMA SEMIC LBRAC RBRAC
+%token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
+%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">="
+%token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
-%token<token>  DIVOLVI PA STRUT
-%token<token>  NKUANTU SI SINON IMPRISTAN
-%token<token> PARA CONTINUA DOT RPAR LPAR
-%token<token> FN NOT SAI KONFIRMA
-%token<token> FSTR_START FSTR_END FSTR_LBRACE FSTR_RBRACE
+%token<token>  DIVOLVI "divolvi" PA "pa"
+%token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
+%token<token> PARA "para" CONTINUA "kontinua" DOT "." RPAR ")" LPAR "("
+%token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma"
+%token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
 %type<expr> expression assignment_expression function_call primary_expression
             constant_expression constant logical_or_expressions logical_and_expressions
@@ -251,5 +251,5 @@ jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum =
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    kriol::cli::PrintErr(err, 1);
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, err, 1);
 }

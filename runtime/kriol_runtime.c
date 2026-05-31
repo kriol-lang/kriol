@@ -79,7 +79,7 @@ char* __kriol_format(const char* fmt, ...) {
 
 void __kriol_konfirma(int cond, int line) {
     if (!cond) {
-        fprintf(stderr, "Kriol: Err: 'konfirma' (assert) failed at the line %d\n", line);
+        fprintf(stderr, "kriol: konfirma (assertation):  failed at the line %d\n", line);
         exit(1);
     }
 }

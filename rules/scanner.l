@@ -93,21 +93,21 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
     "\""                  { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    .|\n                  { /* malformed fstring char, skip */ }
+    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
+    .|\n                  { /* skip unrecognised char inside f-string */ }
 }
 
 <FSTRING_SQ>{
     "'"                   { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    .|\n                  { /* malformed fstring char, skip */ }
+    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
+    .|\n                  { /* skip unrecognised char inside f-string */ }
 }
 
 . {
-    kriol::cli::PrintErr(
-        "Unknown token " + std::string(yytext) +
-        " at line " + std::to_string(yylineno)
-    );
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+        "unknown token '" + std::string(yytext) + "'", 1);
 }
 
 %%
