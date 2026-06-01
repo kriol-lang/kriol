@@ -821,6 +821,19 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
 }
 
+static llvm::Type* getStorageValueType(llvm::Value* storage) {
+    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) return alloca->getAllocatedType();
+    if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) return gv->getValueType();
+    return nullptr;
+}
+
+static IdentExpr* unwrapIdentExpr(Expr* expr) {
+    while (auto* par = dynamic_cast<ParExpr*>(expr)) {
+        expr = par->Content.get();
+    }
+    return dynamic_cast<IdentExpr*>(expr);
+}
+
 void CodeGenVisitor::visit(FStringExpr& node) {
     std::string fmtStr;
     std::vector<llvm::Value*> callArgs;
@@ -865,6 +878,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     auto* i64Ty    = llvm::Type::getInt64Ty(Context);
     auto* doubleTy = llvm::Type::getDoubleTy(Context);
     auto* i32Ty    = llvm::Type::getInt32Ty(Context);
+    auto* putcharFn = getOrDeclarePutchar(*Mod, Context);
 
     auto emitPrintValue = [&](llvm::Value* val, const std::string& resolvedType, bool newline) {
         if (resolvedType == "nter") {
@@ -884,9 +898,39 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         }
     };
 
+    auto printChar = [&](char c) {
+        Builder->CreateCall(putcharFn, {llvm::ConstantInt::get(i32Ty, c)});
+    };
+
+    auto emitPrintArray = [&](auto&& self, llvm::Value* storage, llvm::ArrayType* arrayTy) -> void {
+        printChar('[');
+        llvm::Type* elemTy = arrayTy->getArrayElementType();
+        uint64_t elemCount = arrayTy->getNumElements();
+
+        for (uint64_t i = 0; i < elemCount; ++i) {
+            if (i > 0) {
+                printChar(',');
+                printChar(' ');
+            }
+
+            auto* idx = llvm::ConstantInt::get(i64Ty, i);
+            llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+
+            if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
+                self(self, elemPtr, nestedArrayTy);
+                continue;
+            }
+
+            llvm::Value* elem = Builder->CreateLoad(elemTy, elemPtr, "array.elem");
+            emitPrintValue(elem, llvmTypeToKriol(elemTy), /*newline=*/false);
+        }
+
+        printChar(']');
+    };
+
     if (!node.Args || node.Args->Args.empty()) {
         if (node.AddNewline)
-            Builder->CreateCall(getOrDeclarePutchar(*Mod, Context),
+            Builder->CreateCall(putcharFn,
                                 {llvm::ConstantInt::get(i32Ty, '\n')});
         LastValue = nullptr;
         return;
@@ -898,6 +942,23 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     for (size_t i = 0; i < args.size(); ++i) {
         bool addNlHere = (i == lastIdx) && node.AddNewline;
         auto& arg = args[i];
+
+        auto parsedType = parseType(arg->ResolvedType);
+        if (parsedType && parsedType->isArray()) {
+            auto* ident = unwrapIdentExpr(arg.get());
+            if (!ident)
+                throw std::runtime_error("array printing currently supports array variables only");
+
+            llvm::Value* storage = getArrayStorage(ident->Name);
+            llvm::Type* storageTy = getStorageValueType(storage);
+            auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
+            if (!storage || !arrayTy)
+                throw std::runtime_error("cannot print array variable '" + ident->Name + "'");
+
+            emitPrintArray(emitPrintArray, storage, arrayTy);
+            if (addNlHere) printChar('\n');
+            continue;
+        }
 
         arg->accept(*this);
         llvm::Value* v = LastValue;

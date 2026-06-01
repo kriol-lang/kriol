@@ -16,6 +16,13 @@ using kriol::typeutils::arrayElementType;
 using kriol::typeutils::firstArrayDim;
 using kriol::typeutils::isArrayType;
 
+IdentExpr* unwrapIdentExpr(Expr* expr) {
+    while (auto* par = dynamic_cast<ParExpr*>(expr)) {
+        expr = par->Content.get();
+    }
+    return dynamic_cast<IdentExpr*>(expr);
+}
+
 }
 
 static const std::unordered_set<std::string> reservedKeywords = {
@@ -538,9 +545,35 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
-    if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg) arg->accept(*this);
+    if (node.Args) {
+        for (auto& arg : node.Args->Args) {
+            if (!arg) continue;
+
+            auto* ident = unwrapIdentExpr(arg.get());
+            if (!ident) {
+                arg->accept(*this);
+                continue;
+            }
+
+            auto t = lookupVar(ident->Name);
+            if (!t) {
+                addError(errLoc(ident->LineNum) + "undefined variable name '" + ident->Name + "'");
+                continue;
+            }
+
+            if (!isArrayType(*t)) {
+                arg->accept(*this);
+                continue;
+            }
+
+            auto* init = lookupInitState(ident->Name);
+            if (init && init->isArray && !init->fullyInitialized)
+                addError(errLoc(ident->LineNum) + "array '" + ident->Name + "' may contain uninitialized elements");
+
+            ident->ResolvedType = *t;
+            arg->ResolvedType = *t;
+        }
+    }
     node.ResolvedType = "vaziu";
 }
 
