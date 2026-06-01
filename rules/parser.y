@@ -122,7 +122,6 @@ value_expression : constant_expression { $$ = $1; }
                  ;
 
 array_initializer : LBRAC array_initializer_elements RBRAC { $$ = $2; }
-                  | LBRAC RBRAC { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; $$ = n; }
                   ;
 
 array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; n->addElement(std::unique_ptr<ast::Expr>($1)); $$ = n; }

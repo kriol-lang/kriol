@@ -65,7 +65,6 @@ Language specifications for the KriolLang programming language.
                 | <array_initializer> T_MUL T_INT_LIT
 
 <array_initializer> ::= '[' <array_initializer_elements> ']'
-                      | '[' ']'
 
 <array_initializer_elements> ::= <value_expression>
                                | <array_initializer_elements> ',' <value_expression>
