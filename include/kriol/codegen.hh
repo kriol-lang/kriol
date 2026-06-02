@@ -35,8 +35,9 @@ namespace ast {
         llvm::BasicBlock* LoopExit     = nullptr;
         llvm::BasicBlock* LoopContinue = nullptr;
 
-        // Scope stack: variable name -> AllocaInst*
-        std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> Scopes;
+        // Scope stack: variable name -> Value*
+        std::vector<std::unordered_map<std::string, llvm::Value*>> Scopes;
+
 
         // Module-scope globals: variable name -> GlobalVariable*
         std::unordered_map<std::string, llvm::GlobalVariable*> GlobalVars;
@@ -56,8 +57,9 @@ namespace ast {
         llvm::AllocaInst*    createEntryAlloca(llvm::Function* fn,
                                                const std::string& name,
                                                llvm::Type* ty);
-        llvm::AllocaInst*    lookupVar(const std::string& name);
+        llvm::Value*         lookupVar(const std::string& name);
         llvm::GlobalVariable* lookupGlobal(const std::string& name);
+
         llvm::Value*         getArrayStorage(const std::string& name);
         llvm::Value*         createArrayElementPtr(llvm::Value* storage,
                                llvm::Type* arrayTy,
@@ -66,9 +68,19 @@ namespace ast {
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }
-        void declareVar(const std::string& name, llvm::AllocaInst* a) {
+        void declareVar(const std::string& name, llvm::Value* a) {
             if (!Scopes.empty()) Scopes.back()[name] = a;
         }
+
+        struct StructLayout {
+            llvm::StructType* Type = nullptr;
+            std::unordered_map<std::string, unsigned> FieldIndices;
+        };
+        std::unordered_map<std::string, StructLayout> Structs;
+        std::unordered_map<std::string, llvm::StructType*> StructTypes;
+
+        llvm::Value*         allocateHeap(llvm::Type* allocTy);
+
 
         llvm::Function* getOrDeclarePrintf();
 
@@ -128,6 +140,12 @@ namespace ast {
         void visit(UnaryExpr&         node) override;
         void visit(SaiSttmt&          node) override;
         void visit(KonfirmaSttmt&     node) override;
+        void visit(CastExpr&          node) override;
+        void visit(StructDeclSttmt&   node) override;
+        void visit(ImplSttmt&         node) override;
+        void visit(StructLiteralExpr& node) override;
+        void visit(FieldAccessExpr&   node) override;
+        void visit(MethodCallExpr&    node) override;
     };
 
 } // namespace ast

@@ -1,0 +1,9 @@
+molda Mesa {
+    nter largura,
+    nter altura,
+}
+
+fn inisiu() {
+    Mesa mesa = Mesa { largura: 10 };
+    mostran(mesa.largura);
+}

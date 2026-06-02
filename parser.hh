@@ -83,30 +83,35 @@ extern int yydebug;
     RBRAC = 284,                   /* "]"  */
     TYPE_NUM = 285,                /* TYPE_NUM  */
     TYPE_BOOL = 286,               /* TYPE_BOOL  */
-    TYPE_VOID = 287,               /* TYPE_VOID  */
-    TYPE_NTER = 288,               /* TYPE_NTER  */
-    TYPE_TEXTU = 289,              /* TYPE_TEXTU  */
-    DIVOLVI = 290,                 /* "divolvi"  */
-    PA = 291,                      /* "pa"  */
-    NKUANTU = 292,                 /* "nkuantu"  */
-    SI = 293,                      /* "si"  */
-    SINON = 294,                   /* "sinon"  */
-    IMPRISTAN = 295,               /* "inpristan"  */
-    PARA = 296,                    /* "para"  */
-    CONTINUA = 297,                /* "kontinua"  */
-    DOT = 298,                     /* "."  */
-    RPAR = 299,                    /* ")"  */
-    LPAR = 300,                    /* "("  */
-    FN = 301,                      /* "fn"  */
-    NOT = 302,                     /* "!"  */
-    SAI = 303,                     /* "sai"  */
-    KONFIRMA = 304,                /* "konfirma"  */
-    DIPOZ = 305,                   /* "dipoz"  */
-    FSTR_START = 306,              /* "f-string"  */
-    FSTR_END = 307,                /* "end of f-string"  */
-    FSTR_LBRACE = 308,             /* "start of interpolation"  */
-    FSTR_RBRACE = 309,             /* "end of interpolation"  */
-    UMINUS = 310                   /* UMINUS  */
+    TYPE_NTER = 287,               /* TYPE_NTER  */
+    TYPE_TEXTU = 288,              /* TYPE_TEXTU  */
+    DIVOLVI = 289,                 /* "divolvi"  */
+    PA = 290,                      /* "pa"  */
+    NKUANTU = 291,                 /* "nkuantu"  */
+    SI = 292,                      /* "si"  */
+    SINON = 293,                   /* "sinon"  */
+    IMPRISTAN = 294,               /* "inpristan"  */
+    PARA = 295,                    /* "para"  */
+    CONTINUA = 296,                /* "kontinua"  */
+    DOT = 297,                     /* "."  */
+    RPAR = 298,                    /* ")"  */
+    LPAR = 299,                    /* "("  */
+    FN = 300,                      /* "fn"  */
+    NOT = 301,                     /* "!"  */
+    SAI = 302,                     /* "sai"  */
+    KONFIRMA = 303,                /* "konfirma"  */
+    DIPOZ = 304,                   /* "dipoz"  */
+    FSTR_START = 305,              /* "f-string"  */
+    FSTR_END = 306,                /* "end of f-string"  */
+    FSTR_LBRACE = 307,             /* "start of interpolation"  */
+    FSTR_RBRACE = 308,             /* "end of interpolation"  */
+    KOMU = 309,                    /* "komu"  */
+    NADA = 310,                    /* "nada"  */
+    MOLDA = 311,                   /* "molda"  */
+    IMPL = 312,                    /* "impl"  */
+    AMP = 313,                     /* "&"  */
+    COLON = 314,                   /* ":"  */
+    UMINUS = 315                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -128,8 +133,11 @@ union YYSTYPE
     kriol::ast::FuncArgs* params;
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
+    std::vector<kriol::ast::StructField>* struct_fields;
+    std::vector<kriol::ast::StructLiteralExpr::FieldInit>* struct_inits;
+    std::vector<std::unique_ptr<kriol::ast::FuncDeclSttmt>>* struct_methods;
 
-#line 133 "parser.hh"
+#line 141 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -22,6 +22,8 @@ Language specifications for the KriolLang programming language.
               | <function_declaration>
               | <declaration>
               | <import_statement>
+              | <struct_declaration>
+              | <impl_declaration>
 ```
 
 ### Import Statements
@@ -39,15 +41,19 @@ Language specifications for the KriolLang programming language.
 ```xml
 <type_specifier> ::= T_TYPE_NUM
                    | T_TYPE_NTER
-                   | T_TYPE_VOID
                    | T_TYPE_BOOL
                    | T_TYPE_TEXTU
+
+<type_name> ::= <type_specifier>
+              | <identifier>
+              | <type_name> '*'
 
 <constant> ::= T_INT_LIT
              | T_FLOAT_LIT
              | T_BOOL_LIT
              | T_STR_LIT
              | T_FSTR_LIT
+             | T_NADA
 
 <identifier> ::= T_IDENT
 
@@ -55,10 +61,10 @@ Language specifications for the KriolLang programming language.
 
 <array_declarator> ::= '[' T_INT_LIT ']' <declarator>
 
-<declaration> ::= <type_specifier> <declarator> '=' <initializer> ';'
-                | <type_specifier> <array_declarator> '=' <initializer> ';'
-                | T_DIPOZ <type_specifier> <declarator> ';'
-                | T_DIPOZ <type_specifier> <array_declarator> ';'
+<declaration> ::= <type_name> <declarator> '=' <initializer> ';'
+                | <type_name> <array_declarator> '=' <initializer> ';'
+                | T_DIPOZ <type_name> <declarator> ';'
+                | T_DIPOZ <type_name> <array_declarator> ';'
 
 <initializer> ::= <expression>
                 | <array_initializer>
@@ -117,13 +123,20 @@ Notes:
 <unary_expression> ::= <primary_expression>
                      | T_NOT <unary_expression>
                      | T_MINUS <unary_expression>
+                     | '&' <unary_expression>
+                     | '*' <unary_expression>
+                     | <unary_expression> T_KOMU <type_name>
 
 <primary_expression> ::= <identifier>
                        | <constant>
                        | <identifier> '[' <value_expression> ']'
                        | '(' <expression> ')'
+                       | <primary_expression> '.' <identifier>
+                       | <primary_expression> '.' <identifier> '(' <argument_list> ')'
+                       | <primary_expression> '.' <identifier> '(' ')'
 
 <assignment_expression> ::= <constant_expression>
+                          | <struct_literal>
                           | <primary_expression> <assignment_operator> <assignment_expression>
 ```
 
@@ -134,10 +147,10 @@ Notes:
 
 ```
 
-### Function Statements
+### Function statements
 
 ```xml
-<function_declaration> ::= T_FN <declarator> '(' <parameter_optional_list> ')' <type_specifier> <compound_statement>
+<function_declaration> ::= T_FN <declarator> '(' <parameter_optional_list> ')' <type_name> <compound_statement>
                          | T_FN <declarator> '(' <parameter_optional_list> ')' <compound_statement>
 
 <parameter_optional_list> ::= <parameter_list>
@@ -146,7 +159,7 @@ Notes:
 <parameter_list> ::= <parameter_declaration>
                    | <parameter_list> ',' <parameter_declaration>
 
-<parameter_declaration> ::= <type_specifier> <declarator>
+<parameter_declaration> ::= <type_name> <declarator>
 
 <argument_list> ::= <argument_list> ',' <expression> | <expression>
 
@@ -170,8 +183,8 @@ Notes:
 ### Selection statement
 
 ```xml
-<selection_statement> ::= T_SI <expression> <compound_statement>
-                        | T_SI <expression> <compound_statement> T_SINON <else_then>
+<selection_statement> ::= T_SI <constant_expression> <compound_statement>
+                        | T_SI <constant_expression> <compound_statement> T_SINON <else_then>
 
 <else_then> ::= <compound_statement>
               | <selection_statement>
@@ -180,8 +193,8 @@ Notes:
 ### Iteration statement
 
 ```xml
-<iteration_statement> ::= T_NKUANTU <expression> <compound_statement>
-                        | T_PA <expression> ';' <expression> ';' <expression> <compound_statement>
+<iteration_statement> ::= T_NKUANTU <constant_expression> <compound_statement>
+                        | T_PA <expression> ';' <constant_expression> ';' <expression> <compound_statement>
 ```
 
 ### Jump statement
@@ -195,9 +208,42 @@ Notes:
                    | T_KONFIRMA '(' <expression> ')' ';'
 ```
 
+### Structs statements
+
+```xml
+<struct_declaration> ::= T_MOLDA <identifier> '{' <struct_fields> '}'
+
+<struct_fields> ::= λ
+                  | <struct_field_list>
+
+<struct_field_list> ::= <type_name> <declarator>
+                      | <struct_field_list> ',' <type_name> <declarator>
+                      | <struct_field_list> ','
+
+<impl_declaration> ::= T_IMPL <identifier> '{' <struct_methods> '}'
+
+<struct_methods> ::= λ
+                   | <struct_method_list>
+
+<struct_method_list> ::= <function_declaration>
+                       | <struct_method_list> <function_declaration>
+
+<struct_literal> ::= <identifier> '{' <struct_inits> '}'
+
+<struct_inits> ::= λ
+                 | <struct_init_list>
+
+<struct_init_list> ::= <identifier> ':' <expression>
+                     | <struct_init_list> ',' <identifier> ':' <expression>
+```
+
 ## Memory Management
 
-TODO
+KriolLang does not expose manual memory allocation or `free` in the language API.
+
+Local scalar values, fixed-size arrays, and variables are scoped normally. Heap-backed runtime values, such as formatted strings and pointer-backed struct values, are allocated through the runtime and reclaimed by the Boehm garbage collector when unreachable. The compiler emits GC initialization for `inisiu` automatically.
+
+Taking the address of a local value with `&` may promote that storage so the pointer cannot outlive invalid stack memory. From the user side, the rule is simple: memory is managed by scope and reachability, not by explicit release calls.
 
 ---
 
@@ -215,7 +261,6 @@ Below are the keywords and types in the language mapped to standard C.
 | num         | double       | Number       |
 | nter        | int64_t      | Integer      |
 | textu       | char*        | String       |
-| vaziu       | void         | Void         |
 | bool        | bool         | Boolean      |
 | sin         | true / 1     | True         |
 | nau         | false / 0    | False        |
@@ -233,3 +278,7 @@ Below are the keywords and types in the language mapped to standard C.
 | sai         | exit()       | Exit program |
 | konfirma    | assert()     | Assert       |
 | inisiu      | main         | Entry point  |
+| molda       | struct       | Struct declaration |
+| impl        | impl         | Method block |
+| komu        | as/cast      | Explicit cast |
+| nada        | NULL/nullptr | Null pointer |

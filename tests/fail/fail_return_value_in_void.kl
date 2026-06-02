@@ -1,4 +1,4 @@
-// ERROR: returning a value from a void function.
+// ERROR: returning a value from a function without a return type.
 fn inisiu() {
     divolvi 5;
 }

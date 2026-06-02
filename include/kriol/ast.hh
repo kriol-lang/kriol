@@ -38,6 +38,15 @@ namespace ast {
     class UnaryExpr;
     class SaiSttmt;
     class KonfirmaSttmt;
+    class CastExpr;
+    class StructDeclSttmt;
+    class ImplSttmt;
+    class StructLiteralExpr;
+    class FieldAccessExpr;
+    class MethodCallExpr;
+
+
+
 
     class Visitor {
     public:
@@ -68,7 +77,14 @@ namespace ast {
         virtual void visit(UnaryExpr& node) = 0;
         virtual void visit(SaiSttmt& node) = 0;
         virtual void visit(KonfirmaSttmt& node) = 0;
+        virtual void visit(CastExpr& node) = 0;
+        virtual void visit(StructDeclSttmt& node) = 0;
+        virtual void visit(ImplSttmt& node) = 0;
+        virtual void visit(StructLiteralExpr& node) = 0;
+        virtual void visit(FieldAccessExpr& node) = 0;
+        virtual void visit(MethodCallExpr& node) = 0;
     };
+
 
     class Sttmt {
     public:
@@ -91,6 +107,7 @@ namespace ast {
         bool IsParam = false;
         bool IsArray = false;
         std::size_t ArraySize = 0;
+        bool IsAddressTaken = false;
 
         VarDeclSttmt(std::string Type, std::string Name, std::unique_ptr<Expr> Value)
             : Type(std::move(Type)), Name(std::move(Name)), Value(std::move(Value)) {}
@@ -340,6 +357,82 @@ namespace ast {
         KonfirmaSttmt(std::unique_ptr<Expr> cond) : Cond(std::move(cond)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
+
+    class CastExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Expression;
+        std::string TargetType;
+
+        CastExpr(std::unique_ptr<Expr> expression, std::string targetType)
+            : Expression(std::move(expression)), TargetType(std::move(targetType)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class StructField {
+    public:
+        std::string Type;
+        std::string Name;
+        StructField(std::string type, std::string name)
+            : Type(std::move(type)), Name(std::move(name)) {}
+    };
+
+    class StructDeclSttmt : public Sttmt {
+    public:
+        std::string Name;
+        std::vector<StructField> Fields;
+
+        StructDeclSttmt(std::string name, std::vector<StructField> fields)
+            : Name(std::move(name)), Fields(std::move(fields)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class ImplSttmt : public Sttmt {
+    public:
+        std::string StructName;
+        std::vector<std::unique_ptr<FuncDeclSttmt>> Methods;
+
+        ImplSttmt(std::string structName, std::vector<std::unique_ptr<FuncDeclSttmt>> methods)
+            : StructName(std::move(structName)), Methods(std::move(methods)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class StructLiteralExpr : public Expr {
+    public:
+        std::string StructName;
+        struct FieldInit {
+            std::string Name;
+            std::unique_ptr<Expr> Value;
+        };
+        std::vector<FieldInit> Inits;
+
+        StructLiteralExpr(std::string structName, std::vector<FieldInit> inits)
+            : StructName(std::move(structName)), Inits(std::move(inits)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class FieldAccessExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Object;
+        std::string FieldName;
+
+        FieldAccessExpr(std::unique_ptr<Expr> object, std::string fieldName)
+            : Object(std::move(object)), FieldName(std::move(fieldName)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class MethodCallExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Object;
+        std::string MethodName;
+        std::unique_ptr<FuncCallArgs> Args;
+
+        MethodCallExpr(std::unique_ptr<Expr> object, std::string methodName, std::unique_ptr<FuncCallArgs> args)
+            : Object(std::move(object)), MethodName(std::move(methodName)), Args(std::move(args)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+
+
 
     /// Strips any number of ParExpr wrappers and returns the underlying
     /// IdentExpr, or nullptr if the expression is not a bare identifier.

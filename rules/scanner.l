@@ -49,7 +49,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "nkuantu"       return TOKENIZE(NKUANTU);
 "num"           SAVE_TOKEN;   return TYPE_NUM;
 "nter"          SAVE_TOKEN;   return TYPE_NTER;
-"vaziu"         SAVE_TOKEN;   return TYPE_VOID;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
@@ -58,15 +57,21 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "konfirma"      return TOKENIZE(KONFIRMA);
 "para"          return TOKENIZE(PARA);
 "kontinua"      return TOKENIZE(CONTINUA);
+"komu"          return TOKENIZE(KOMU);
+"nada"          return TOKENIZE(NADA);
+"molda"         return TOKENIZE(MOLDA);
+"impl"          return TOKENIZE(IMPL);
 "+"             return TOKENIZE(PLUS);
 "-"             return TOKENIZE(MINUS);
 "*"             return TOKENIZE(MUL);
+"&"             return TOKENIZE(AMP);
 "/"             return TOKENIZE(DIV);
 "("             return TOKENIZE(LPAR);
 ")"             return TOKENIZE(RPAR);
 "."             return TOKENIZE(DOT);
 ","             return TOKENIZE(COMMA);
 ";"             return TOKENIZE(SEMIC);
+":"             return TOKENIZE(COLON);
 "{"             return TOKENIZE(LCURLY);
 "}"             { if (g_fstr_depth > 0) { --g_fstr_depth; yy_pop_state(); return TOKENIZE(FSTR_RBRACE); } return TOKENIZE(RCURLY); }
 "["             return TOKENIZE(LBRAC);

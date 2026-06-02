@@ -1,0 +1,14 @@
+molda Mesa {
+    nter largura,
+}
+
+impl Mesa {
+    fn area(Mesa* self) nter {
+        divolvi self.largura;
+    }
+}
+
+fn inisiu() {
+    Mesa mesa = Mesa { largura: 10 };
+    mostran(mesa.area());
+}

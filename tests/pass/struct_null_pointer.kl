@@ -1,0 +1,11 @@
+molda No {
+    nter valor,
+    No* proksimu,
+}
+
+fn inisiu() {
+    No no = No { valor: 1, proksimu: nada };
+    si no.proksimu == nada {
+        mostran(no.valor);
+    }
+}

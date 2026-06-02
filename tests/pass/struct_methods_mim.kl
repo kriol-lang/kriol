@@ -1,0 +1,39 @@
+molda Mesa {
+    nter largura,
+    nter altura,
+}
+
+impl Mesa {
+    fn area(Mesa* mim) nter {
+        divolvi mim.largura * mim.altura;
+    }
+
+    fn redimensiona(Mesa* mim, nter largura, nter altura) {
+        mim.largura = largura;
+        mim.altura = altura;
+    }
+
+    // TODO: this should not need a `Mesa* mim` and then become a static method
+    fn from(Mesa* mim, nter largura, nter altura) Mesa {
+        divolvi Mesa { largura: largura, altura: altura };
+    }
+}
+
+fn funky(Mesa mesa) Mesa {
+    //Mesa mesa = Mesa { largura: 10, altura: 5 };
+    mostran(f"A área da mesa é: {mesa.area()}");
+    mesa.redimensiona(3, 4);
+    mostran(f"Agora a área da mesa é: {mesa.area()}");
+    divolvi mesa;
+}
+
+fn inisiu() {
+    Mesa* mesa = funky(Mesa { largura: 10, altura: 5 });
+    mostran(f"A área da mesa é: {mesa.area()}");
+    /*
+    mesa.redimensiona(3, 4);
+    mostran(f"Agora a área da mesa é: {mesa.area()}");
+    Mesa* pointer = mesa;
+    mostran(f"A área do pointer da mesa é: {pointer.area()}");
+    */
+}

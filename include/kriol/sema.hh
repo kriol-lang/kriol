@@ -15,8 +15,14 @@ namespace sema {
 
     class SemanticAnalyzer : public ast::Visitor {
     private:
-        // Scoped symbol table: each entry is one scope level (name -> Kriol type)
-        std::vector<std::unordered_map<std::string, std::string>> SymbolScopes;
+        struct VarInfo {
+            std::string type;
+            ast::VarDeclSttmt* decl = nullptr;
+        };
+
+        // Scoped symbol table: each entry is one scope level
+        std::vector<std::unordered_map<std::string, VarInfo>> SymbolScopes;
+
 
         struct VarInitState {
             bool isArray = false;
@@ -66,10 +72,11 @@ namespace sema {
             if (!InitScopes.empty()) InitScopes.pop_back();
         }
 
-        void declareVar(const std::string& name, const std::string& type) {
+        void declareVar(const std::string& name, const std::string& type, ast::VarDeclSttmt* decl = nullptr) {
             if (!SymbolScopes.empty())
-                SymbolScopes.back()[name] = type;
+                SymbolScopes.back()[name] = {type, decl};
         }
+
 
         void declareInitState(const std::string& name, VarInitState state) {
             if (!InitScopes.empty())
@@ -80,10 +87,28 @@ namespace sema {
         std::optional<std::string> lookupVar(const std::string& name) const {
             for (auto it = SymbolScopes.rbegin(); it != SymbolScopes.rend(); ++it) {
                 auto found = it->find(name);
-                if (found != it->end()) return found->second;
+                if (found != it->end()) return found->second.type;
             }
             return std::nullopt;
         }
+
+        ast::VarDeclSttmt* lookupVarDecl(const std::string& name) const {
+            for (auto it = SymbolScopes.rbegin(); it != SymbolScopes.rend(); ++it) {
+                auto found = it->find(name);
+                if (found != it->end()) return found->second.decl;
+            }
+            return nullptr;
+        }
+
+        struct StructInfo {
+            std::string Name;
+            std::vector<std::pair<std::string, std::string>> Fields; // name -> type
+            std::unordered_map<std::string, ast::FuncDeclSttmt*> Methods; // name -> method decl
+        };
+        std::unordered_map<std::string, StructInfo> StructTable;
+
+        bool isValidType(const std::string& type) const;
+
 
         const VarInitState* lookupInitState(const std::string& name) const {
             for (auto it = InitScopes.rbegin(); it != InitScopes.rend(); ++it) {
@@ -171,6 +196,12 @@ namespace sema {
         void visit(ast::UnaryExpr&         node) override;
         void visit(ast::SaiSttmt&          node) override;
         void visit(ast::KonfirmaSttmt&     node) override;
+        void visit(ast::CastExpr&          node) override;
+        void visit(ast::StructDeclSttmt&   node) override;
+        void visit(ast::ImplSttmt&         node) override;
+        void visit(ast::StructLiteralExpr& node) override;
+        void visit(ast::FieldAccessExpr&   node) override;
+        void visit(ast::MethodCallExpr&    node) override;
     };
 
 } // namespace sema
