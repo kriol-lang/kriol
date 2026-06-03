@@ -80,6 +80,10 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "<="            return TOKENIZE(LE);
 "&&"            return TOKENIZE(AND);
 "||"            return TOKENIZE(OR);
+"+="            return TOKENIZE(PLUS_ASSIGN);
+"-="            return TOKENIZE(MINUS_ASSIGN);
+"*="            return TOKENIZE(MUL_ASSIGN);
+"/="            return TOKENIZE(DIV_ASSIGN);
 
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;

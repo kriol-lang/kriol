@@ -72,41 +72,45 @@ extern int yydebug;
     LE = 273,                      /* "<="  */
     GT = 274,                      /* ">"  */
     GE = 275,                      /* ">="  */
-    AND = 276,                     /* "&&"  */
-    OR = 277,                      /* "||"  */
-    ASSIGN = 278,                  /* "="  */
-    LCURLY = 279,                  /* "{"  */
-    RCURLY = 280,                  /* "}"  */
-    COMMA = 281,                   /* ","  */
-    SEMIC = 282,                   /* ";"  */
-    LBRAC = 283,                   /* "["  */
-    RBRAC = 284,                   /* "]"  */
-    TYPE_NUM = 285,                /* TYPE_NUM  */
-    TYPE_BOOL = 286,               /* TYPE_BOOL  */
-    TYPE_VOID = 287,               /* TYPE_VOID  */
-    TYPE_NTER = 288,               /* TYPE_NTER  */
-    TYPE_TEXTU = 289,              /* TYPE_TEXTU  */
-    DIVOLVI = 290,                 /* "divolvi"  */
-    PA = 291,                      /* "pa"  */
-    NKUANTU = 292,                 /* "nkuantu"  */
-    SI = 293,                      /* "si"  */
-    SINON = 294,                   /* "sinon"  */
-    IMPRISTAN = 295,               /* "inpristan"  */
-    PARA = 296,                    /* "para"  */
-    CONTINUA = 297,                /* "kontinua"  */
-    DOT = 298,                     /* "."  */
-    RPAR = 299,                    /* ")"  */
-    LPAR = 300,                    /* "("  */
-    FN = 301,                      /* "fn"  */
-    NOT = 302,                     /* "!"  */
-    SAI = 303,                     /* "sai"  */
-    KONFIRMA = 304,                /* "konfirma"  */
-    DIPOZ = 305,                   /* "dipoz"  */
-    FSTR_START = 306,              /* "f-string"  */
-    FSTR_END = 307,                /* "end of f-string"  */
-    FSTR_LBRACE = 308,             /* "start of interpolation"  */
-    FSTR_RBRACE = 309,             /* "end of interpolation"  */
-    UMINUS = 310                   /* UMINUS  */
+    PLUS_ASSIGN = 276,             /* "+="  */
+    MINUS_ASSIGN = 277,            /* "-="  */
+    MUL_ASSIGN = 278,              /* "*="  */
+    DIV_ASSIGN = 279,              /* "/="  */
+    AND = 280,                     /* "&&"  */
+    OR = 281,                      /* "||"  */
+    ASSIGN = 282,                  /* "="  */
+    LCURLY = 283,                  /* "{"  */
+    RCURLY = 284,                  /* "}"  */
+    COMMA = 285,                   /* ","  */
+    SEMIC = 286,                   /* ";"  */
+    LBRAC = 287,                   /* "["  */
+    RBRAC = 288,                   /* "]"  */
+    TYPE_NUM = 289,                /* TYPE_NUM  */
+    TYPE_BOOL = 290,               /* TYPE_BOOL  */
+    TYPE_VOID = 291,               /* TYPE_VOID  */
+    TYPE_NTER = 292,               /* TYPE_NTER  */
+    TYPE_TEXTU = 293,              /* TYPE_TEXTU  */
+    DIVOLVI = 294,                 /* "divolvi"  */
+    PA = 295,                      /* "pa"  */
+    NKUANTU = 296,                 /* "nkuantu"  */
+    SI = 297,                      /* "si"  */
+    SINON = 298,                   /* "sinon"  */
+    IMPRISTAN = 299,               /* "inpristan"  */
+    PARA = 300,                    /* "para"  */
+    CONTINUA = 301,                /* "kontinua"  */
+    DOT = 302,                     /* "."  */
+    RPAR = 303,                    /* ")"  */
+    LPAR = 304,                    /* "("  */
+    FN = 305,                      /* "fn"  */
+    NOT = 306,                     /* "!"  */
+    SAI = 307,                     /* "sai"  */
+    KONFIRMA = 308,                /* "konfirma"  */
+    DIPOZ = 309,                   /* "dipoz"  */
+    FSTR_START = 310,              /* "f-string"  */
+    FSTR_END = 311,                /* "end of f-string"  */
+    FSTR_LBRACE = 312,             /* "start of interpolation"  */
+    FSTR_RBRACE = 313,             /* "end of interpolation"  */
+    UMINUS = 314                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -129,7 +133,7 @@ union YYSTYPE
     kriol::ast::FuncCallArgs* args;
     kriol::ast::LiteralExpr* litexpr;
 
-#line 133 "parser.hh"
+#line 137 "parser.hh"
 
 };
 typedef union YYSTYPE YYSTYPE;

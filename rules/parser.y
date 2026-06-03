@@ -39,7 +39,7 @@
 %token<floatingpoint> FLOAT_LIT "floating-point literal "
 %token<string> BOOL_LIT "boolean literal"
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
-%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">="
+%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
 %token<token>  DIVOLVI "divolvi" PA "pa"
@@ -182,7 +182,11 @@ assignment_expression : constant_expression { $$ = $1; }
                       | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $2; }
                       ;
 
-assignment_operator : ASSIGN { $$ = new std::string("=", 2); }
+assignment_operator : ASSIGN { $$ = new std::string("="); }
+                    | PLUS_ASSIGN { $$ = new std::string("+="); }
+                    | MINUS_ASSIGN { $$ = new std::string("-="); }
+                    | MUL_ASSIGN { $$ = new std::string("*="); }
+                    | DIV_ASSIGN { $$ = new std::string("/="); }
                     ;
 
 function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(*$6, *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = yylineno; $$ = n; delete $6; delete $2; }

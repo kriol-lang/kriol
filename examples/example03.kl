@@ -1,7 +1,7 @@
 fn dizenhaLinha(num tamanhu, bool dizenhaLinhaNaFin) {
     dipoz num i;
 
-    pa i = 0 ; i < tamanhu ; i = i + 1 {
+    pa i = 0 ; i < tamanhu ; i += 1 {
         mostra("-");
     }
 
@@ -15,7 +15,7 @@ fn mostraMensagem() {
 
     nkuantu i < 10 {
         dizenhaLinha(i, sin);
-        i = i + 1;
+        i += 1;
     }
 
     dizenhaLinha(i, nau);
