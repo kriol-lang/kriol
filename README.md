@@ -2,9 +2,20 @@
 
 **KriolLang** or **Kriol** is a programming language based on the **Cape Verdean Creole**. It was made to be easy for anyone who understands Cape Verdean Creole while keeping the same versatility as some other languages, such as C, Go, and Rust.
 
-### Project status
+```kriol
+fn ola(textu nomi, bool naKriolu) {
+    si naKriolu {
+        mostran(f"Olá {nomi}, ami nta programa na Kriolu!");
+    } sinon {
+        mostran(f"Hello {nomi}, I program in Kriol!");
+    }
+}
 
-Under development.
+fn inisiu() {
+    ola("Visitanti", sin);
+    ola("Guest", nau);
+}
+```
 
 ### Description
 
