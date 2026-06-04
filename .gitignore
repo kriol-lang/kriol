@@ -24,3 +24,6 @@ rules/parser
 
 # Test error output
 *.err
+
+# Cmake Build dir
+build/

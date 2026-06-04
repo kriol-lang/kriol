@@ -11,6 +11,9 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Bitcode/BitcodeReader.h>
+#include <llvm/Linker/Linker.h>
+#include <llvm/Support/MemoryBuffer.h>
 
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
@@ -18,6 +21,12 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <cstdio>
+
+// NOTE: these are generated and injected in compile time by
+// the build system.
+#include "kriol_runtime.bc.h"
+#include "libgc_static.h"
+
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
 static std::string processEscapes(const std::string& raw) {
@@ -64,7 +73,7 @@ namespace {
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::parseType;
 
-} // namespace
+}
 
 using namespace kriol::ast;
 
@@ -72,11 +81,10 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
     : Mod(std::make_unique<llvm::Module>(moduleName, Context)),
       Builder(std::make_unique<llvm::IRBuilder<>>(Context))
 {
-    llvm::InitializeAllTargetInfos();
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetMCs();
-    llvm::InitializeAllAsmParsers();
-    llvm::InitializeAllAsmPrinters();
+    // NOTE: Only the native builds are supported for now
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
 }
 
 llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
@@ -94,8 +102,6 @@ llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
     if (t == "textu") return llvm::PointerType::getUnqual(Context);
     if (t == "vaziu") return llvm::Type::getVoidTy(Context);
 
-    // Future-friendly default for non-native/user-defined types (e.g. molda):
-    // lower as references until first-class layout is introduced.
     return llvm::PointerType::getUnqual(Context);
 }
 
@@ -173,76 +179,92 @@ std::string CodeGenVisitor::emitIR() {
 }
 
 void CodeGenVisitor::emitNative(const std::string& outputPath, const char* argv0) {
-    auto triple = llvm::sys::getDefaultTargetTriple();
-    Mod->setTargetTriple(triple);
+    llvm::StringRef bcData(reinterpret_cast<const char*>(kriol_runtime_bc), kriol_runtime_bc_len);
+    auto memBuf = llvm::MemoryBuffer::getMemBuffer(bcData, "kriol_runtime", false);
 
-    std::string err;
-    auto* target = llvm::TargetRegistry::lookupTarget(triple, err);
-    if (!target)
-        throw std::runtime_error("LLVM target lookup failed: " + err);
+    auto expectedMod = llvm::parseBitcodeFile(*memBuf, Context);
+    if (!expectedMod) {
+        std::string errDetail = llvm::toString(expectedMod.takeError());
+        throw std::runtime_error("Failed to parse runtime bitcode: " + errDetail);
+    }
 
-    llvm::TargetOptions opt;
-    std::unique_ptr<llvm::TargetMachine> tm(
-        target->createTargetMachine(triple, "generic", "", opt, llvm::Reloc::PIC_)
-    );
-    Mod->setDataLayout(tm->createDataLayout());
+    bool linkErr = llvm::Linker::linkModules(*Mod, std::move(expectedMod.get()));
+    if (linkErr) {
+        throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
+    }
 
     std::string objPath = outputPath + ".o";
-    std::error_code ec;
-    llvm::raw_fd_ostream dest(objPath, ec, llvm::sys::fs::OF_None);
-    if (ec)
-        throw std::runtime_error("Cannot open output file: " + ec.message());
 
-    llvm::legacy::PassManager pm;
-    if (tm->addPassesToEmitFile(pm, dest, nullptr, llvm::CodeGenFileType::ObjectFile))
-        throw std::runtime_error("TargetMachine cannot emit an object file");
+    auto TargetTriple = llvm::sys::getDefaultTargetTriple();
+    Mod->setTargetTriple(TargetTriple);
 
-    pm.run(*Mod);
+    std::string Error;
+    auto Target = llvm::TargetRegistry::lookupTarget(TargetTriple, Error);
+    if (!Target) {
+        throw std::runtime_error("Failed to find Target: " + Error);
+    }
+
+    auto CPU = "generic";
+    auto Features = "";
+    llvm::TargetOptions opt;
+    auto RM = std::optional<llvm::Reloc::Model>();
+    auto TargetMachine = Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+
+    Mod->setDataLayout(TargetMachine->createDataLayout());
+
+    std::error_code EC;
+    llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
+    if (EC) {
+        throw std::runtime_error("The object file could not be opened: " + EC.message());
+    }
+
+    llvm::legacy::PassManager pass;
+    auto FileType = llvm::CodeGenFileType::ObjectFile;
+    if (TargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+        throw std::runtime_error("The TargetMachine cannot output a file of such type.");
+    }
+
+    pass.run(*Mod);
     dest.flush();
 
+    llvm::SmallString<128> tempLibGc;
+    std::error_code ecLib = llvm::sys::fs::createTemporaryFile("embedded_libgc", "a", tempLibGc);
+    if (ecLib) {
+        throw std::runtime_error("Failed to allocate libgc to temporary folder: " + ecLib.message());
+    }
+
+    llvm::raw_fd_ostream libOut(tempLibGc, ecLib, llvm::sys::fs::OF_None);
+    libOut.write(reinterpret_cast<const char*>(embedded_libgc_a), embedded_libgc_a_len);
+    libOut.close();
+
     auto ccPath = llvm::sys::findProgramByName("clang");
-
-    if (!ccPath)
-        throw std::runtime_error("Cannot find 'clang': " + ccPath.getError().message());
-
-#ifdef KRIOL_RUNTIME_OBJ
-    // Resolve the runtime object relative to the running executable.
-    static int anchor;
-    std::string exePath = llvm::sys::fs::getMainExecutable(argv0, (void*)&anchor);
-    llvm::SmallString<256> runtimePath(llvm::sys::path::parent_path(exePath));
-    llvm::sys::path::append(runtimePath, KRIOL_RUNTIME_OBJ);
-    std::string runtimeObj(runtimePath);
-#endif
+    if (!ccPath) {
+        ccPath = llvm::sys::findProgramByName("cc");
+        if (!ccPath) throw std::runtime_error("The linker 'clang' or 'cc' could not be found in the system.");
+    }
 
     std::vector<llvm::StringRef> linkArgs = {
         *ccPath,
+        "-no-pie",
         objPath,
-#ifdef KRIOL_RUNTIME_OBJ
-        runtimeObj,
-#endif
+        tempLibGc.str(),
         "-o",
         outputPath,
-        "-lm",
-        "-lgc"
+        "-lm"
     };
 
-    std::string linkErr;
+    std::string linkErrStr;
     bool execFailed = false;
     int ret = llvm::sys::ExecuteAndWait(
-        *ccPath,
-        linkArgs,
-        /*Env=*/std::nullopt,
-        /*Redirects=*/{},
-        /*SecondsToWait=*/0,
-        /*MemoryLimit=*/0,
-        &linkErr,
-        &execFailed
+        *ccPath, linkArgs, std::nullopt, {}, 0, 0, &linkErrStr, &execFailed
     );
 
-    if (execFailed || ret != 0)
-        throw std::runtime_error("Linking failed" + (linkErr.empty() ? "" : ": " + linkErr));
+    if (execFailed || ret != 0) {
+        throw std::runtime_error("Failure in the final linkage: " + linkErrStr);
+    }
 
     std::remove(objPath.c_str());
+    llvm::sys::fs::remove(tempLibGc);
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {

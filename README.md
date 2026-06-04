@@ -31,27 +31,27 @@ It isn't directly installable on any OS yet, but it still can be tested using a 
 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
-```bash
-apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev
+```sh
+apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd
 ```
 
 NOTE: now pre-generated parser and scanner codes are provided in the repository, so, **flex** and **bison** can be omitted from the installation above, but if you are planning to make changes to the parser or scanner rules, they will still be necessary.
 
 After installing the dependencies, compile the compiler using:
 
-```bash
-make
+```sh
+cmake -B build && cmake --build build
 ```
 
 For a release build use:
 
-```bash
-make release
+```sh
+cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DKRIOL_STATIC=ON && cmake --build build/release
 ```
 
 The result of the compilation will be an executable named **kriol** which you can execute using:
 
-```bash
+```sh
 ./kriol
 ```
 
@@ -59,7 +59,7 @@ The result of the compilation will be an executable named **kriol** which you ca
 
 The first thing to do after compiling the compiler is to execute the help command:
 
-```bash
+```sh
 ./kriol --help
 ```
 
@@ -67,27 +67,36 @@ After executing that command you may see the usage section and some of its optio
 
 An example of how it could be used is to compile one of the example files in the examples folder:
 
-```bash
+```sh
 ./kriol examples/fibonacci-recursive.kl
 ```
 
 This compiles `fibonacci-recursive.kl` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
 
-```bash
+```sh
 ./kriol examples/fibonacci-recursive.kl -o fibonacci-recursive
 ```
 
 Then execute the compiled binary with:
 
-```bash
+```sh
 ./fibonacci-recursive
 ```
 
 To inspect the generated LLVM IR instead of producing a binary:
 
-```bash
+```sh
 ./kriol examples/example03.kl --emit-ir
 ```
+
+## Tests
+
+You can run tests with the following command:
+
+```sh
+cmake -B build && cmake --build build --target check
+```
+
 <!--
 ## Visuals
 
