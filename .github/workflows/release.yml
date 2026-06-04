@@ -39,6 +39,8 @@ jobs:
           STAGEDIR="kriol-${{ github.ref_name }}-linux-x86_64"
           mkdir -p "$STAGEDIR"
           cp build/release/kriol "$STAGEDIR/"
+          cp LICENSE "$STAGEDIR/"
+          cp README.md "$STAGEDIR/"
 
       - name: Pack archives
         run: |
@@ -48,7 +50,7 @@ jobs:
 
       - name: Generate checksums
         run: |
-          sha256sum *.tar.gz *.tar.xz > SHA256SUMS
+          sha256sum *.tar.gz *.tar.xz > SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -57,4 +59,4 @@ jobs:
           files: |
             kriol-${{ github.ref_name }}-linux-x86_64.tar.gz
             kriol-${{ github.ref_name }}-linux-x86_64.tar.xz
-            SHA256SUMS
+            SHA256SUMS.txt
