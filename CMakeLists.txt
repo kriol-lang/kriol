@@ -122,8 +122,6 @@ target_include_directories(
     ${BDWGC_DIR}/include
 )
 
-set(KRIOL_RUNTIME_REL_PATH "runtime/kriol_runtime.o")
-
 # -----------------------------------------------------------------------------
 # Sources
 # -----------------------------------------------------------------------------
@@ -177,27 +175,11 @@ target_include_directories(
     ${LLVM_INCLUDE_DIRS}
 )
 
-target_compile_definitions(
-    kriol
-    PRIVATE
-    KRIOL_RUNTIME_OBJ="${KRIOL_RUNTIME_REL_PATH}"
-)
-
 target_compile_options(
     kriol
     PRIVATE
     $<$<CONFIG:Debug>:-g -Wall>
     $<$<CONFIG:Release>:-O2 -DNDEBUG>
-)
-
-add_custom_command(
-    TARGET kriol
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:kriol>/runtime
-    COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_OBJECTS:kriol_runtime>
-            $<TARGET_FILE_DIR:kriol>/runtime/kriol_runtime.o
 )
 
 # -----------------------------------------------------------------------------
