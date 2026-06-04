@@ -81,16 +81,22 @@ After installing the dependencies, compile the compiler using:
 cmake -B build && cmake --build build
 ```
 
+And then run with:
+
+```sh
+./build/kriol --help
+```
+
 For a release build use:
 
 ```sh
 cmake -B build/release -DCMAKE_BUILD_TYPE=Release -DKRIOL_STATIC=ON && cmake --build build/release
 ```
 
-The result of the compilation will be an executable named **kriol** which you can execute using:
+And run with:
 
 ```sh
-./kriol
+./build/release/kriol --help
 ```
 
 ## Tests
