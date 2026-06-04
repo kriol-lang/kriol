@@ -21,6 +21,9 @@ jobs:
       - name: Add LLVM 19 to PATH
         run: echo "/usr/lib/llvm-19/bin" >> $GITHUB_PATH
 
+      - name: Clone submodules
+        run: git submodule update --init
+
       - name: Build release
         run: |
           cmake -B build/release \
