@@ -32,7 +32,7 @@ It isn't directly installable on any OS yet, but it still can be tested using a 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```sh
-apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd
+apt install make flex bison clang-19 clang++-19 llvm-19 llvm-19-dev libgc-dev xxd cmake
 ```
 
 NOTE: now pre-generated parser and scanner codes are provided in the repository, so, **flex** and **bison** can be omitted from the installation above, but if you are planning to make changes to the parser or scanner rules, they will still be necessary.
