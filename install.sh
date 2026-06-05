@@ -2,7 +2,7 @@
 
 set -eu
 
-REPO="anaximeno/KriolLang"
+REPO="kriol-lang/kriol"
 INSTALL_DIR="$HOME/.kriol"
 
 require() {
