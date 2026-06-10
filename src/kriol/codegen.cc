@@ -35,6 +35,10 @@ LLD_HAS_DRIVER(wasm)
 #if KRIOL_ENABLE_WASM
 #include "kriol_runtime_wasm32_wasi_gc.bc.h"
 #include "libgc_wasm32_wasi.h"
+#include "wasi_crt1_command.o.h"
+#include "wasi_libc.a.h"
+#include "wasi_libm.a.h"
+#include "wasi_builtins.a.h"
 #endif
 
 
@@ -101,6 +105,13 @@ struct WasiLinkPlan {
     std::vector<std::string> Args;
 };
 
+struct WasiInputs {
+    std::string Crt1Command;
+    std::string Libc;
+    std::string Libm;
+    std::string Builtins;
+};
+
 static void initializeTargets() {
     static bool initialized = false;
     if (initialized) return;
@@ -134,7 +145,7 @@ static std::string findProgramOptional(std::initializer_list<const char*> names)
         auto path = llvm::sys::findProgramByName(name);
         if (path) return *path;
     }
-    return {}; // ???: is this a valid string?
+    return {};
 }
 #endif
 
@@ -175,72 +186,9 @@ static void runProgram(const std::string& program,
         throw std::runtime_error(failurePrefix + err);
 }
 
-static std::string runProgramCaptureStdout(const std::string& program,
-                                           const std::vector<std::string>& ownedArgs,
-                                           const std::string& failurePrefix) {
-    llvm::SmallString<128> stdoutPath;
-    std::error_code ec = llvm::sys::fs::createTemporaryFile("kriol_tool_stdout", "txt", stdoutPath);
-    if (ec)
-        throw std::runtime_error("Failed to allocate temporary stdout file: " + ec.message());
-
-    std::string stdoutPathStr(stdoutPath.str());
-    std::vector<llvm::StringRef> args;
-    args.reserve(ownedArgs.size());
-    for (const auto& arg : ownedArgs)
-        args.push_back(arg);
-
-    std::vector<std::optional<llvm::StringRef>> redirects = {
-        std::nullopt,
-        llvm::StringRef(stdoutPathStr),
-        std::nullopt
-    };
-
-    std::string err;
-    bool execFailed = false;
-    int ret = llvm::sys::ExecuteAndWait(
-        program, args, std::nullopt, redirects, 0, 0, &err, &execFailed
-    );
-
-    auto cleanup = [&]() { llvm::sys::fs::remove(stdoutPathStr); };
-
-    if (execFailed || ret != 0) {
-        cleanup();
-        throw std::runtime_error(failurePrefix + err);
-    }
-
-    auto outputBuffer = llvm::MemoryBuffer::getFile(stdoutPathStr);
-    cleanup();
-    if (!outputBuffer)
-        throw std::runtime_error("Failed to read captured tool output: " + outputBuffer.getError().message());
-
-    return outputBuffer.get()->getBuffer().trim().str();
-}
-
-static std::string getWasiLibDir() {
-    llvm::SmallString<128> libDir(KRIOL_WASI_SYSROOT);
-    llvm::sys::path::append(libDir, "lib", "wasm32-wasi");
-    return std::string(libDir.str());
-}
-
-static std::string getWasiCompilerRtBuiltins(const std::string& clangPath) {
-    std::vector<std::string> args = {
-        clangPath,
-        "--target=" + std::string(KRIOL_WASI_TARGET),
-        "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
-        "--print-libgcc-file-name"
-    };
-    std::string builtins = runProgramCaptureStdout(
-        clangPath,
-        args,
-        "Failed to locate WASI compiler-rt builtins: "
-    );
-    if (builtins.empty())
-        throw std::runtime_error("Failed to locate WASI compiler-rt builtins.");
-    return builtins;
-}
-
 static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
                                       const std::string& tempLibGc,
+                                      const WasiInputs& wasiInputs,
                                       const std::string& outputPath) {
 #if KRIOL_USE_EMBEDDED_LLD
     std::string wasmLdPath = findProgramOptional({"wasm-ld-20", "wasm-ld-19", "wasm-ld"});
@@ -252,12 +200,6 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
     );
     std::string linkerArg0 = wasmLdPath;
 #endif
-    std::string clangPath = findProgram({"clang-20", "clang-19", "clang"},
-                                        "WASI toolchain driver 'clang-20', 'clang-19', or 'clang'");
-    std::string wasiLibDir = getWasiLibDir();
-    llvm::SmallString<128> crtPath(wasiLibDir);
-    llvm::sys::path::append(crtPath, "crt1-command.o");
-
     WasiLinkPlan plan;
     plan.LinkerPath = wasmLdPath;
     plan.OutputPath = outputPath;
@@ -265,13 +207,12 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
-        "-L" + wasiLibDir,
-        std::string(crtPath.str()),
+        wasiInputs.Crt1Command,
         objPath,
         tempLibGc,
-        "-lm",
-        "-lc",
-        getWasiCompilerRtBuiltins(clangPath),
+        wasiInputs.Libm,
+        wasiInputs.Libc,
+        wasiInputs.Builtins,
         "-o",
         outputPath
     };
@@ -324,6 +265,40 @@ static void linkWasm(const WasiLinkPlan& plan) {
 #endif
     linkWasmWithWasmLd(plan);
 }
+
+#if KRIOL_ENABLE_WASM
+static WasiInputs writeWasiInputs() {
+    return WasiInputs{
+        writeTempBlob(
+            "kriol_wasi_crt1_command",
+            "o",
+            EmbeddedBlob{wasi_crt1_command_o, wasi_crt1_command_o_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_libc",
+            "a",
+            EmbeddedBlob{wasi_libc_a, wasi_libc_a_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_libm",
+            "a",
+            EmbeddedBlob{wasi_libm_a, wasi_libm_a_len}
+        ),
+        writeTempBlob(
+            "kriol_wasi_builtins",
+            "a",
+            EmbeddedBlob{wasi_builtins_a, wasi_builtins_a_len}
+        )
+    };
+}
+
+static void removeWasiInputs(const WasiInputs& inputs) {
+    if (!inputs.Crt1Command.empty()) llvm::sys::fs::remove(inputs.Crt1Command);
+    if (!inputs.Libc.empty()) llvm::sys::fs::remove(inputs.Libc);
+    if (!inputs.Libm.empty()) llvm::sys::fs::remove(inputs.Libm);
+    if (!inputs.Builtins.empty()) llvm::sys::fs::remove(inputs.Builtins);
+}
+#endif
 
 static TargetResources selectTargetResources(CodegenTarget target) {
     switch (target) {
@@ -526,6 +501,34 @@ void CodeGenVisitor::emitNative(const std::string& outputPath) {
     emit(outputPath, {});
 }
 
+std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& options) {
+    llvm::SmallString<128> outputPath;
+    std::error_code ec = llvm::sys::fs::createTemporaryFile(
+        options.Target == CodegenTarget::Wasm32Wasi ? "kriol_wasm_output" : "kriol_output",
+        options.Target == CodegenTarget::Wasm32Wasi ? "wasm" : "out",
+        outputPath
+    );
+    if (ec)
+        throw std::runtime_error("Failed to allocate temporary output file: " + ec.message());
+
+    std::string outputPathStr(outputPath.str());
+    try {
+        emit(outputPathStr, options);
+
+        auto outputBuffer = llvm::MemoryBuffer::getFile(outputPathStr);
+        if (!outputBuffer)
+            throw std::runtime_error("Failed to read compiler output: " + outputBuffer.getError().message());
+
+        llvm::StringRef bytes = outputBuffer.get()->getBuffer();
+        std::vector<unsigned char> result(bytes.bytes_begin(), bytes.bytes_end());
+        llvm::sys::fs::remove(outputPathStr);
+        return result;
+    } catch (...) {
+        llvm::sys::fs::remove(outputPathStr);
+        throw;
+    }
+}
+
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
     std::string objPath = outputPath + ".o";
     TargetResources resources = selectTargetResources(options.Target);
@@ -533,21 +536,38 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
     linkRuntimeBitcode(*Mod, Context, resources.Runtime);
     emitObjectFile(*Mod, resources.Triple, objPath);
     std::string tempLibGc = writeGcArchive(options.Target, resources.GcArchive);
+#if KRIOL_ENABLE_WASM
+    WasiInputs wasiInputs;
+    if (options.Target == CodegenTarget::Wasm32Wasi)
+        wasiInputs = writeWasiInputs();
+#endif
 
     try {
         if (options.Target == CodegenTarget::Wasm32Wasi) {
-            linkWasm(buildWasiLinkPlan(objPath, tempLibGc, outputPath));
+#if KRIOL_ENABLE_WASM
+            linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
+#else
+            throw std::runtime_error("kriol was built without wasm32-wasi support.");
+#endif
         } else {
             linkNativeExecutable(objPath, tempLibGc, outputPath);
         }
     } catch (...) {
         std::remove(objPath.c_str());
         if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
+#if KRIOL_ENABLE_WASM
+        if (options.Target == CodegenTarget::Wasm32Wasi)
+            removeWasiInputs(wasiInputs);
+#endif
         throw;
     }
 
     std::remove(objPath.c_str());
     if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
+#if KRIOL_ENABLE_WASM
+    if (options.Target == CodegenTarget::Wasm32Wasi)
+        removeWasiInputs(wasiInputs);
+#endif
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {

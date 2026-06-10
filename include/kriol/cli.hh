@@ -56,11 +56,13 @@ namespace kriol
             std::string outfile;
             std::string target = "native";
             bool emitIR = false;
+            bool outputToMemory = false;
         };
 
         struct CompileResult {
             std::string ir;
             std::string outputPath;
+            std::vector<unsigned char> outputBytes;
             std::vector<std::string> diagnostics;
         };
 

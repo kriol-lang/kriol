@@ -17,9 +17,17 @@ if(KRIOL_ENABLE_WASM)
     set(RUNTIME_WASM32_WASI_GC_BC     ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc)
     set(RUNTIME_WASM32_WASI_GC_HEADER ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc.h)
     set(GC_WASM32_WASI_HEADER         ${GENERATED_DIR}/libgc_wasm32_wasi.h)
+    set(WASI_CRT1_COMMAND_HEADER      ${GENERATED_DIR}/wasi_crt1_command.o.h)
+    set(WASI_LIBC_HEADER              ${GENERATED_DIR}/wasi_libc.a.h)
+    set(WASI_LIBM_HEADER              ${GENERATED_DIR}/wasi_libm.a.h)
+    set(WASI_BUILTINS_HEADER          ${GENERATED_DIR}/wasi_builtins.a.h)
     list(APPEND KRIOL_EMBEDDED_RESOURCE_HEADERS
         ${RUNTIME_WASM32_WASI_GC_HEADER}
         ${GC_WASM32_WASI_HEADER}
+        ${WASI_CRT1_COMMAND_HEADER}
+        ${WASI_LIBC_HEADER}
+        ${WASI_LIBM_HEADER}
+        ${WASI_BUILTINS_HEADER}
     )
 endif()
 
@@ -82,6 +90,36 @@ add_custom_command(
 )
 
 if(KRIOL_ENABLE_WASM)
+    set(WASI_LIB_DIR ${KRIOL_WASI_SYSROOT}/lib/wasm32-wasi)
+    set(WASI_CRT1_COMMAND ${WASI_LIB_DIR}/crt1-command.o)
+    set(WASI_LIBC ${WASI_LIB_DIR}/libc.a)
+    set(WASI_LIBM ${WASI_LIB_DIR}/libm.a)
+
+    execute_process(
+        COMMAND
+            ${CLANG_PROGRAM}
+            --target=${KRIOL_WASI_TARGET}
+            --sysroot=${KRIOL_WASI_SYSROOT}
+            --print-libgcc-file-name
+        OUTPUT_VARIABLE WASI_BUILTINS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE WASI_BUILTINS_RESULT
+    )
+
+    if(NOT WASI_BUILTINS_RESULT EQUAL 0 OR NOT EXISTS "${WASI_BUILTINS}")
+        message(FATAL_ERROR "Could not locate WASI compiler-rt builtins with ${CLANG_PROGRAM}")
+    endif()
+
+    foreach(_KRIOL_WASI_INPUT IN ITEMS
+        "${WASI_CRT1_COMMAND}"
+        "${WASI_LIBC}"
+        "${WASI_LIBM}"
+    )
+        if(NOT EXISTS "${_KRIOL_WASI_INPUT}")
+            message(FATAL_ERROR "Required WASI input not found: ${_KRIOL_WASI_INPUT}")
+        endif()
+    endforeach()
+
     add_custom_command(
         OUTPUT ${RUNTIME_WASM32_WASI_GC_BC}
 
@@ -102,6 +140,38 @@ if(KRIOL_ENABLE_WASM)
     )
 
     kriol_embed_file(${RUNTIME_WASM32_WASI_GC_BC} ${RUNTIME_WASM32_WASI_GC_HEADER})
+
+    add_custom_command(
+        OUTPUT ${WASI_CRT1_COMMAND_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_CRT1_COMMAND} ${GENERATED_DIR}/wasi_crt1_command.o
+        COMMAND ${XXD_PROGRAM} -i wasi_crt1_command.o > ${WASI_CRT1_COMMAND_HEADER}
+        WORKING_DIRECTORY ${GENERATED_DIR}
+        DEPENDS ${WASI_CRT1_COMMAND}
+    )
+
+    add_custom_command(
+        OUTPUT ${WASI_LIBC_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_LIBC} ${GENERATED_DIR}/wasi_libc.a
+        COMMAND ${XXD_PROGRAM} -i wasi_libc.a > ${WASI_LIBC_HEADER}
+        WORKING_DIRECTORY ${GENERATED_DIR}
+        DEPENDS ${WASI_LIBC}
+    )
+
+    add_custom_command(
+        OUTPUT ${WASI_LIBM_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_LIBM} ${GENERATED_DIR}/wasi_libm.a
+        COMMAND ${XXD_PROGRAM} -i wasi_libm.a > ${WASI_LIBM_HEADER}
+        WORKING_DIRECTORY ${GENERATED_DIR}
+        DEPENDS ${WASI_LIBM}
+    )
+
+    add_custom_command(
+        OUTPUT ${WASI_BUILTINS_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_BUILTINS} ${GENERATED_DIR}/wasi_builtins.a
+        COMMAND ${XXD_PROGRAM} -i wasi_builtins.a > ${WASI_BUILTINS_HEADER}
+        WORKING_DIRECTORY ${GENERATED_DIR}
+        DEPENDS ${WASI_BUILTINS}
+    )
 
     set(WASI_GC_BUILD_DIR ${GENERATED_DIR}/_bdwgc_wasm32_wasi_cross)
     set(WASI_GC_LIB ${WASI_GC_BUILD_DIR}/libgc.a)

@@ -271,8 +271,17 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         ? "a.wasm"
         : "a.out";
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
-    codegenVisitor.emit(outfile, emitOptions);
-    result.outputPath = outfile;
+    if (options.outputToMemory)
+    {
+        if (emitOptions.Target != ast::CodegenTarget::Wasm32Wasi)
+            throw std::runtime_error("In-memory output is currently supported only for wasm32-wasi.");
+        result.outputBytes = codegenVisitor.emitToMemory(emitOptions);
+    }
+    else
+    {
+        codegenVisitor.emit(outfile, emitOptions);
+        result.outputPath = outfile;
+    }
     return result;
 }
 
