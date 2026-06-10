@@ -1,4 +1,4 @@
-# Kriol Browser Compiler
+# Kriol Browser Compiler (Experimental)
 
 Experimental notes for the browser-facing Kriol compiler module:
 
