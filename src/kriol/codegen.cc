@@ -147,6 +147,99 @@ static void runProgram(const std::string& program,
         throw std::runtime_error(failurePrefix + err);
 }
 
+static std::string runProgramCaptureStdout(const std::string& program,
+                                           const std::vector<std::string>& ownedArgs,
+                                           const std::string& failurePrefix) {
+    llvm::SmallString<128> stdoutPath;
+    std::error_code ec = llvm::sys::fs::createTemporaryFile("kriol_tool_stdout", "txt", stdoutPath);
+    if (ec)
+        throw std::runtime_error("Failed to allocate temporary stdout file: " + ec.message());
+
+    std::string stdoutPathStr(stdoutPath.str());
+    std::vector<llvm::StringRef> args;
+    args.reserve(ownedArgs.size());
+    for (const auto& arg : ownedArgs)
+        args.push_back(arg);
+
+    std::vector<std::optional<llvm::StringRef>> redirects = {
+        std::nullopt,
+        llvm::StringRef(stdoutPathStr),
+        std::nullopt
+    };
+
+    std::string err;
+    bool execFailed = false;
+    int ret = llvm::sys::ExecuteAndWait(
+        program, args, std::nullopt, redirects, 0, 0, &err, &execFailed
+    );
+
+    auto cleanup = [&]() { llvm::sys::fs::remove(stdoutPathStr); };
+
+    if (execFailed || ret != 0) {
+        cleanup();
+        throw std::runtime_error(failurePrefix + err);
+    }
+
+    auto outputBuffer = llvm::MemoryBuffer::getFile(stdoutPathStr);
+    cleanup();
+    if (!outputBuffer)
+        throw std::runtime_error("Failed to read captured tool output: " + outputBuffer.getError().message());
+
+    return outputBuffer.get()->getBuffer().trim().str();
+}
+
+static std::string getWasiLibDir() {
+    llvm::SmallString<128> libDir(KRIOL_WASI_SYSROOT);
+    llvm::sys::path::append(libDir, "lib", "wasm32-wasi");
+    return std::string(libDir.str());
+}
+
+static std::string getWasiCompilerRtBuiltins(const std::string& clangPath) {
+    std::vector<std::string> args = {
+        clangPath,
+        "--target=" + std::string(KRIOL_WASI_TARGET),
+        "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
+        "--print-libgcc-file-name"
+    };
+    std::string builtins = runProgramCaptureStdout(
+        clangPath,
+        args,
+        "Failed to locate WASI compiler-rt builtins: "
+    );
+    if (builtins.empty())
+        throw std::runtime_error("Failed to locate WASI compiler-rt builtins.");
+    return builtins;
+}
+
+static void linkWasmWithWasmLd(const std::string& objPath,
+                               const std::string& tempLibGc,
+                               const std::string& outputPath) {
+    std::string wasmLdPath = findProgram({"wasm-ld-20", "wasm-ld-19", "wasm-ld"},
+                                         "WASI linker 'wasm-ld-20', 'wasm-ld-19', or 'wasm-ld'");
+    std::string clangPath = findProgram({"clang-20", "clang-19", "clang"},
+                                        "WASI toolchain driver 'clang-20', 'clang-19', or 'clang'");
+    std::string wasiLibDir = getWasiLibDir();
+    llvm::SmallString<128> crtPath(wasiLibDir);
+    llvm::sys::path::append(crtPath, "crt1-command.o");
+
+    std::vector<std::string> linkArgs = {
+        wasmLdPath,
+        "-m",
+        "wasm32",
+        "-L" + wasiLibDir,
+        std::string(crtPath.str()),
+        objPath,
+        tempLibGc,
+        "-lm",
+        "-lc",
+        getWasiCompilerRtBuiltins(clangPath),
+        "-o",
+        outputPath
+    };
+
+    runProgram(wasmLdPath, linkArgs, "Failure in the final WASI linkage: ");
+}
+
 }
 
 using namespace kriol::ast;
@@ -329,18 +422,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
     try {
         if (options.Target == CodegenTarget::Wasm32Wasi) {
-            std::string ccPath = findProgram({"clang-20", "clang-19", "clang"}, "WASI linker 'clang-20', 'clang-19', or 'clang'");
-            std::vector<std::string> linkArgs = {
-                ccPath,
-                "--target=" + std::string(KRIOL_WASI_TARGET),
-                "--sysroot=" + std::string(KRIOL_WASI_SYSROOT),
-                objPath
-            };
-            linkArgs.push_back(tempLibGc);
-            linkArgs.push_back("-o");
-            linkArgs.push_back(outputPath);
-            linkArgs.push_back("-lm");
-            runProgram(ccPath, linkArgs, "Failure in the final WASI linkage: ");
+            linkWasmWithWasmLd(objPath, tempLibGc, outputPath);
         } else {
             std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
             std::vector<std::string> linkArgs = {
