@@ -92,19 +92,11 @@ void cli::Compiler::DefineArgs(void)
         .default_value(false)
         .implicit_value(true);
 
-#if KRIOL_ENABLE_WASM
     Parser->add_argument("--target")
-        .help("Output target: native or wasm32-wasi.")
+        .help("Output target: 'native' or 'wasm32-wasi' (experimental).")
         .default_value(std::string("native"))
         .nargs(1)
         .choices("native", "wasm32-wasi");
-#else
-    Parser->add_argument("--target")
-        .help("Output target: native.")
-        .default_value(std::string("native"))
-        .nargs(1)
-        .choices("native");
-#endif
 
     Parser->add_argument("-T", "--ignore-extension")
         .help("Without this flag, only files with extensions '." +

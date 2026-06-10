@@ -272,7 +272,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
             gcBlob = EmbeddedBlob{libgc_wasm32_wasi_a, libgc_wasm32_wasi_a_len};
             break;
 #else
-            throw std::runtime_error("This kriol compiler was built without wasm32-wasi support.");
+            throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
 #endif
     }
 
