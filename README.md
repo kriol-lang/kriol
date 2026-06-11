@@ -21,7 +21,7 @@ fn inisiu() {
 
 The syntax of this programming language was initially based on C, Go, and Rust, but other programming languages such as Liquid played a good role in the initial design.
 
-For more concrete specifications about the language, you are recommended to read the [KriolLang Language Documentation](https://github.com/kriol-lang/kriol-docs).
+For more concrete specifications about the language, you are recommended to read the [KriolLang Language Documentation](https://docs.kriol.dev).
 
 The file extension of the KriolLang programming language is `.kriol` or `.kr` and the name of the lang's compiler is **kriol**.
 
