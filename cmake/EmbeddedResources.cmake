@@ -15,6 +15,16 @@ if(KRIOL_ENABLE_WASM)
     include(ExternalProject)
 
     if(KRIOL_WASI_ENABLE_GC)
+        file(READ "${BDWGC_DIR}/include/private/gcconfig.h" KRIOL_BDWGC_GCCONFIG)
+        string(FIND "${KRIOL_BDWGC_GCCONFIG}" "__wasi__" KRIOL_BDWGC_HAS_WASI_CONFIG)
+        if(KRIOL_BDWGC_HAS_WASI_CONFIG EQUAL -1)
+            message(FATAL_ERROR
+                "KRIOL_WASI_ENABLE_GC=ON requires a Boehm GC checkout with wasm32-wasi support. "
+                "The current stable Boehm GC checkout does not support wasm32-wasi; use the default "
+                "WASI no-GC runtime or switch Boehm GC to a WASI-capable release/branch."
+            )
+        endif()
+
         set(RUNTIME_WASM32_WASI_BC     ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc)
         set(RUNTIME_WASM32_WASI_HEADER ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc.h)
         set(GC_WASM32_WASI_HEADER      ${GENERATED_DIR}/libgc_wasm32_wasi.h)
@@ -200,14 +210,14 @@ if(KRIOL_ENABLE_WASM)
                 -DCMAKE_C_COMPILER_TARGET=${KRIOL_WASI_TARGET}
                 -DCMAKE_SYSROOT=${KRIOL_WASI_SYSROOT}
                 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-                -DGC_BUILD_SHARED_LIBS=OFF
+                -DBUILD_SHARED_LIBS=OFF
                 -Denable_threads=OFF
                 -Denable_docs=OFF
                 -Dbuild_cord=OFF
                 -Denable_cplusplus=OFF
                 -Denable_gcj_support=OFF
                 -Denable_java_finalization=OFF
-                -DBUILD_TESTING=OFF
+                -Dbuild_tests=OFF
             BUILD_BYPRODUCTS ${WASI_GC_LIB}
             INSTALL_COMMAND ""
         )
