@@ -31,7 +31,6 @@ option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
 option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
 option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
-option(KRIOL_BUILD_BROWSER_WASM "Build the browser-facing kriol compiler wasm module" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -43,15 +42,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_program(CLANG_PROGRAM NAMES clang-20 clang-19 clang REQUIRED)
 find_program(XXD_PROGRAM xxd REQUIRED)
 find_program(VALGRIND valgrind)
-
-if(KRIOL_BUILD_BROWSER_WASM)
-    if(NOT EMSCRIPTEN)
-        message(FATAL_ERROR "KRIOL_BUILD_BROWSER_WASM requires an Emscripten CMake toolchain")
-    endif()
-    if(NOT KRIOL_ENABLE_WASM OR NOT KRIOL_USE_EMBEDDED_LLD)
-        message(FATAL_ERROR "KRIOL_BUILD_BROWSER_WASM requires KRIOL_ENABLE_WASM=ON and KRIOL_USE_EMBEDDED_LLD=ON")
-    endif()
-endif()
 
 # -----------------------------------------------------------------------------
 # LLVM
@@ -239,15 +229,6 @@ add_executable(
     ${KRIOL_LLVM_SOURCES}
 )
 
-if(KRIOL_BUILD_BROWSER_WASM)
-    add_executable(
-        kriol_browser
-        src/kriol/browser_api.cc
-        ${KRIOL_CORE_SOURCES}
-        ${KRIOL_LLVM_SOURCES}
-    )
-endif()
-
 set_source_files_properties(
     ${KRIOL_LLVM_SOURCES}
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
@@ -255,9 +236,6 @@ set_source_files_properties(
 
 add_dependencies(kriol kriol_embedded_resources)
 add_dependencies(kriol_api_compile_memory_test kriol_embedded_resources)
-if(KRIOL_BUILD_BROWSER_WASM)
-    add_dependencies(kriol_browser kriol_embedded_resources)
-endif()
 
 function(kriol_configure_target TARGET_NAME)
     target_include_directories(
@@ -295,9 +273,6 @@ endfunction()
 
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
-if(KRIOL_BUILD_BROWSER_WASM)
-    kriol_configure_target(kriol_browser)
-endif()
 
 # -----------------------------------------------------------------------------
 # Linking
@@ -330,37 +305,6 @@ target_link_libraries(
     gc
     m
 )
-
-if(KRIOL_BUILD_BROWSER_WASM)
-    target_link_libraries(
-        kriol_browser
-        PRIVATE
-        ${KRIOL_LLD_LIBS}
-        ${LLVM_LIBS}
-        gc
-        m
-    )
-
-    target_link_options(
-        kriol_browser
-        PRIVATE
-        -sMODULARIZE=1
-        -sEXPORT_ES6=1
-        -sENVIRONMENT=web,worker
-        -sALLOW_MEMORY_GROWTH=1
-        -sFILESYSTEM=1
-        -sNO_EXIT_RUNTIME=1
-        "-sEXPORTED_FUNCTIONS=['_kriol_compile_source_to_wasm','_kriol_free','_malloc','_free']"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8','UTF8ToString','stringToUTF8','lengthBytesUTF8']"
-    )
-
-    set_target_properties(
-        kriol_browser
-        PROPERTIES
-        OUTPUT_NAME kriol
-        SUFFIX ".js"
-    )
-endif()
 
 # -----------------------------------------------------------------------------
 # Installation
