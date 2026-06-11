@@ -23,7 +23,7 @@ echo "==> Building ${IMAGE_NAME} with ${ENGINE}"
 "${ENGINE}" build \
     --build-arg LLVM_VERSION="${LLVM_VERSION}" \
     --build-arg CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
-    -f "${ROOT_DIR}/Dockerfile.ubuntu-26.04" \
+    -f "${ROOT_DIR}/Dockerfile" \
     -t "${IMAGE_NAME}" \
     "${ROOT_DIR}"
 
