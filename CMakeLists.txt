@@ -29,6 +29,7 @@ endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
 option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
+option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 option(KRIOL_BUILD_BROWSER_WASM "Build the browser-facing kriol compiler wasm module" OFF)
 
@@ -285,6 +286,7 @@ function(kriol_configure_target TARGET_NAME)
         ${TARGET_NAME}
         PRIVATE
         KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
+        KRIOL_WASI_ENABLE_GC=$<BOOL:${KRIOL_WASI_ENABLE_GC}>
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
         KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"

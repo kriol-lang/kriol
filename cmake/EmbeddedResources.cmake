@@ -3,9 +3,9 @@ set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(KRIOL_WASI_TARGET "wasm32-wasi" CACHE STRING "Target triple used for Kriol WASI output")
 set(KRIOL_WASI_SYSROOT "/usr" CACHE PATH "WASI sysroot used for Kriol WASI output")
 
-set(RUNTIME_NATIVE_GC_BC          ${GENERATED_DIR}/kriol_runtime_native_gc.bc)
-set(RUNTIME_NATIVE_GC_HEADER        ${GENERATED_DIR}/kriol_runtime_native_gc.bc.h)
-set(GC_NATIVE_HEADER      ${GENERATED_DIR}/libgc_native.h)
+set(RUNTIME_NATIVE_GC_BC     ${GENERATED_DIR}/kriol_runtime_native_gc.bc)
+set(RUNTIME_NATIVE_GC_HEADER ${GENERATED_DIR}/kriol_runtime_native_gc.bc.h)
+set(GC_NATIVE_HEADER         ${GENERATED_DIR}/libgc_native.h)
 set(KRIOL_EMBEDDED_RESOURCE_HEADERS
     ${RUNTIME_NATIVE_GC_HEADER}
     ${GC_NATIVE_HEADER}
@@ -14,21 +14,32 @@ set(KRIOL_EMBEDDED_RESOURCE_HEADERS
 if(KRIOL_ENABLE_WASM)
     include(ExternalProject)
 
-    set(RUNTIME_WASM32_WASI_GC_BC     ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc)
-    set(RUNTIME_WASM32_WASI_GC_HEADER ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc.h)
-    set(GC_WASM32_WASI_HEADER         ${GENERATED_DIR}/libgc_wasm32_wasi.h)
+    if(KRIOL_WASI_ENABLE_GC)
+        set(RUNTIME_WASM32_WASI_BC     ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc)
+        set(RUNTIME_WASM32_WASI_HEADER ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_gc.bc.h)
+        set(GC_WASM32_WASI_HEADER      ${GENERATED_DIR}/libgc_wasm32_wasi.h)
+    else()
+        set(RUNTIME_WASM32_WASI_BC     ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_nogc.bc)
+        set(RUNTIME_WASM32_WASI_HEADER ${GENERATED_DIR}/kriol_runtime_wasm32_wasi_nogc.bc.h)
+    endif()
+
     set(WASI_CRT1_COMMAND_HEADER      ${GENERATED_DIR}/wasi_crt1_command.o.h)
     set(WASI_LIBC_HEADER              ${GENERATED_DIR}/wasi_libc.a.h)
     set(WASI_LIBM_HEADER              ${GENERATED_DIR}/wasi_libm.a.h)
     set(WASI_BUILTINS_HEADER          ${GENERATED_DIR}/wasi_builtins.a.h)
     list(APPEND KRIOL_EMBEDDED_RESOURCE_HEADERS
-        ${RUNTIME_WASM32_WASI_GC_HEADER}
-        ${GC_WASM32_WASI_HEADER}
+        ${RUNTIME_WASM32_WASI_HEADER}
         ${WASI_CRT1_COMMAND_HEADER}
         ${WASI_LIBC_HEADER}
         ${WASI_LIBM_HEADER}
         ${WASI_BUILTINS_HEADER}
     )
+
+    if(KRIOL_WASI_ENABLE_GC)
+        list(APPEND KRIOL_EMBEDDED_RESOURCE_HEADERS
+            ${GC_WASM32_WASI_HEADER}
+        )
+    endif()
 endif()
 
 add_custom_command(
@@ -121,7 +132,7 @@ if(KRIOL_ENABLE_WASM)
     endforeach()
 
     add_custom_command(
-        OUTPUT ${RUNTIME_WASM32_WASI_GC_BC}
+        OUTPUT ${RUNTIME_WASM32_WASI_BC}
 
         COMMAND
             ${CLANG_PROGRAM}
@@ -132,14 +143,15 @@ if(KRIOL_ENABLE_WASM)
             -c
             ${CMAKE_SOURCE_DIR}/runtime/kriol_runtime.c
             -o
-            ${RUNTIME_WASM32_WASI_GC_BC}
-            -I${BDWGC_DIR}/include
+            ${RUNTIME_WASM32_WASI_BC}
+            $<$<BOOL:${KRIOL_WASI_ENABLE_GC}>:-I${BDWGC_DIR}/include>
+            -DKRIOL_RUNTIME_NO_GC=$<NOT:$<BOOL:${KRIOL_WASI_ENABLE_GC}>>
 
         DEPENDS
             ${CMAKE_SOURCE_DIR}/runtime/kriol_runtime.c
     )
 
-    kriol_embed_file(${RUNTIME_WASM32_WASI_GC_BC} ${RUNTIME_WASM32_WASI_GC_HEADER})
+    kriol_embed_file(${RUNTIME_WASM32_WASI_BC} ${RUNTIME_WASM32_WASI_HEADER})
 
     add_custom_command(
         OUTPUT ${WASI_CRT1_COMMAND_HEADER}
@@ -173,52 +185,54 @@ if(KRIOL_ENABLE_WASM)
         DEPENDS ${WASI_BUILTINS}
     )
 
-    set(WASI_GC_BUILD_DIR ${GENERATED_DIR}/_bdwgc_wasm32_wasi_cross)
-    set(WASI_GC_LIB ${WASI_GC_BUILD_DIR}/libgc.a)
+    if(KRIOL_WASI_ENABLE_GC)
+        set(WASI_GC_BUILD_DIR ${GENERATED_DIR}/_bdwgc_wasm32_wasi_cross)
+        set(WASI_GC_LIB ${WASI_GC_BUILD_DIR}/libgc.a)
 
-    ExternalProject_Add(
-        kriol_bdwgc_wasm32_wasi
-        SOURCE_DIR ${BDWGC_DIR}
-        BINARY_DIR ${WASI_GC_BUILD_DIR}
-        CMAKE_ARGS
-            -DCMAKE_SYSTEM_NAME=WASI
-            -DCMAKE_SYSTEM_PROCESSOR=wasm32
-            -DCMAKE_C_COMPILER=${CLANG_PROGRAM}
-            -DCMAKE_C_COMPILER_TARGET=${KRIOL_WASI_TARGET}
-            -DCMAKE_SYSROOT=${KRIOL_WASI_SYSROOT}
-            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-            -DGC_BUILD_SHARED_LIBS=OFF
-            -Denable_threads=OFF
-            -Denable_docs=OFF
-            -Dbuild_cord=OFF
-            -Denable_cplusplus=OFF
-            -Denable_gcj_support=OFF
-            -Denable_java_finalization=OFF
-            -DBUILD_TESTING=OFF
-        BUILD_BYPRODUCTS ${WASI_GC_LIB}
-        INSTALL_COMMAND ""
-    )
-
-    add_custom_command(
-        OUTPUT ${GC_WASM32_WASI_HEADER}
-
-        COMMAND
-            ${CMAKE_COMMAND}
-            -E copy
-            ${WASI_GC_LIB}
-            ${GENERATED_DIR}/libgc_wasm32_wasi.a
-
-        COMMAND
-            ${XXD_PROGRAM}
-            -i
-            libgc_wasm32_wasi.a
-            > ${GC_WASM32_WASI_HEADER}
-
-        WORKING_DIRECTORY ${GENERATED_DIR}
-
-        DEPENDS
+        ExternalProject_Add(
             kriol_bdwgc_wasm32_wasi
-    )
+            SOURCE_DIR ${BDWGC_DIR}
+            BINARY_DIR ${WASI_GC_BUILD_DIR}
+            CMAKE_ARGS
+                -DCMAKE_SYSTEM_NAME=WASI
+                -DCMAKE_SYSTEM_PROCESSOR=wasm32
+                -DCMAKE_C_COMPILER=${CLANG_PROGRAM}
+                -DCMAKE_C_COMPILER_TARGET=${KRIOL_WASI_TARGET}
+                -DCMAKE_SYSROOT=${KRIOL_WASI_SYSROOT}
+                -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+                -DGC_BUILD_SHARED_LIBS=OFF
+                -Denable_threads=OFF
+                -Denable_docs=OFF
+                -Dbuild_cord=OFF
+                -Denable_cplusplus=OFF
+                -Denable_gcj_support=OFF
+                -Denable_java_finalization=OFF
+                -DBUILD_TESTING=OFF
+            BUILD_BYPRODUCTS ${WASI_GC_LIB}
+            INSTALL_COMMAND ""
+        )
+
+        add_custom_command(
+            OUTPUT ${GC_WASM32_WASI_HEADER}
+
+            COMMAND
+                ${CMAKE_COMMAND}
+                -E copy
+                ${WASI_GC_LIB}
+                ${GENERATED_DIR}/libgc_wasm32_wasi.a
+
+            COMMAND
+                ${XXD_PROGRAM}
+                -i
+                libgc_wasm32_wasi.a
+                > ${GC_WASM32_WASI_HEADER}
+
+            WORKING_DIRECTORY ${GENERATED_DIR}
+
+            DEPENDS
+                kriol_bdwgc_wasm32_wasi
+        )
+    endif()
 endif()
 
 add_custom_target(

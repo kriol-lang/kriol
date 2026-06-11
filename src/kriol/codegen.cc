@@ -1,6 +1,3 @@
-#include "../../include/kriol/codegen.hh"
-#include "../../include/kriol/type_utils.hh"
-
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/raw_ostream.h>
@@ -19,8 +16,10 @@
 #include <llvm/Support/Path.h>
 
 #if KRIOL_USE_EMBEDDED_LLD
+
 #include <lld/Common/Driver.h>
 LLD_HAS_DRIVER(wasm)
+
 #endif
 
 #include <stdexcept>
@@ -28,17 +27,28 @@ LLD_HAS_DRIVER(wasm)
 #include <cstdio>
 #include <initializer_list>
 
-// NOTE: these are generated and injected in compile time by
-// the build system.
+#include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/type_utils.hh"
+
+// NOTE: these includes below are generated and
+// injected in compile time by the build system.
 #include "kriol_runtime_native_gc.bc.h"
 #include "libgc_native.h"
+
 #if KRIOL_ENABLE_WASM
+
+#if KRIOL_WASI_ENABLE_GC
 #include "kriol_runtime_wasm32_wasi_gc.bc.h"
 #include "libgc_wasm32_wasi.h"
+#else
+#include "kriol_runtime_wasm32_wasi_nogc.bc.h"
+#endif
+
 #include "wasi_crt1_command.o.h"
 #include "wasi_libc.a.h"
 #include "wasi_libm.a.h"
 #include "wasi_builtins.a.h"
+
 #endif
 
 
@@ -210,13 +220,16 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         "--export=__main_argc_argv",
         wasiInputs.Crt1Command,
         objPath,
-        tempLibGc,
+    };
+    if (!tempLibGc.empty())
+        plan.Args.push_back(tempLibGc);
+    plan.Args.insert(plan.Args.end(), {
         wasiInputs.Libm,
         wasiInputs.Libc,
         wasiInputs.Builtins,
         "-o",
         outputPath
-    };
+    });
 
     return plan;
 }
@@ -311,11 +324,19 @@ static TargetResources selectTargetResources(CodegenTarget target) {
             };
         case CodegenTarget::Wasm32Wasi:
 #if KRIOL_ENABLE_WASM
+#if KRIOL_WASI_ENABLE_GC
             return TargetResources{
                 KRIOL_WASI_TARGET,
                 EmbeddedBlob{kriol_runtime_wasm32_wasi_gc_bc, kriol_runtime_wasm32_wasi_gc_bc_len},
                 EmbeddedBlob{libgc_wasm32_wasi_a, libgc_wasm32_wasi_a_len}
             };
+#else
+            return TargetResources{
+                KRIOL_WASI_TARGET,
+                EmbeddedBlob{kriol_runtime_wasm32_wasi_nogc_bc, kriol_runtime_wasm32_wasi_nogc_bc_len},
+                EmbeddedBlob{nullptr, 0}
+            };
+#endif
 #else
             throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
 #endif
@@ -374,6 +395,9 @@ static void emitObjectFile(llvm::Module& module,
 }
 
 static std::string writeGcArchive(CodegenTarget target, EmbeddedBlob gcBlob) {
+    if (!gcBlob.Data || gcBlob.Len == 0)
+        return {};
+
     const char* stem = target == CodegenTarget::Wasm32Wasi
         ? "embedded_libgc_wasm32_wasi"
         : "embedded_libgc_native";
@@ -389,7 +413,8 @@ static void linkNativeExecutable(const std::string& objPath,
         "-no-pie",
         objPath
     };
-    linkArgs.push_back(tempLibGc);
+    if (!tempLibGc.empty())
+        linkArgs.push_back(tempLibGc);
     linkArgs.push_back("-o");
     linkArgs.push_back(outputPath);
     linkArgs.push_back("-lm");
