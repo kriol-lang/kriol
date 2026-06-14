@@ -51,6 +51,8 @@ LLD_HAS_DRIVER(wasm)
 
 #endif // KRIOL_ENABLE_WASM
 
+#define __WASI_MAIN "__main_argc_argv"
+
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
 static std::string processEscapes(const std::string& raw) {
@@ -215,7 +217,7 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
-        "--export=__main_argc_argv",
+        "--export=" __WASI_MAIN,
         wasiInputs.Crt1Command,
         objPath,
     };
@@ -728,23 +730,13 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
-    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
-    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
-    // define their own main — which we do, causing the stub to win.
-    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
-    std::string name = isMain
-        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
-        : node.Name;
+    std::string name = isMain ? "main" : node.Name;
 
     // already declared
     if (Mod->getFunction(name)) return;
 
     std::vector<llvm::Type*> paramTypes;
-    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
-        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
-        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
-    } else if (node.Args) {
+    if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
     }
@@ -785,7 +777,6 @@ void CodeGenVisitor::visit(FuncArgs& node) {
     // Handled inside FuncDeclSttmt
 }
 
-// Declare (or retrieve) __kriol_gc_init -> void __kriol_gc_init(void)
 static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_gc_init")) return fn;
@@ -794,22 +785,40 @@ static llvm::Function* getOrDeclareKriolGcInit(llvm::Module& Mod, llvm::LLVMCont
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_gc_init", Mod);
 }
 
+static llvm::Function* emitWasiMainWrapper(
+    llvm::Module& Mod,
+    llvm::LLVMContext& Context,
+    llvm::IRBuilder<>& Builder,
+    llvm::Function* mainFn
+) {
+    if (auto* wrapper = Mod.getFunction(__WASI_MAIN)) return wrapper;
+
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* wrapperTy = llvm::FunctionType::get(i32Ty, {i32Ty, ptrTy}, false);
+    auto* wrapper = llvm::Function::Create(
+        wrapperTy,
+        llvm::Function::ExternalLinkage,
+        __WASI_MAIN,
+        Mod
+    );
+
+    auto arg = wrapper->arg_begin();
+    arg->setName("argc");
+    (++arg)->setName("argv");
+
+    auto* entry = llvm::BasicBlock::Create(Context, "entry", wrapper);
+    Builder.SetInsertPoint(entry);
+    Builder.CreateRet(Builder.CreateCall(mainFn, {}));
+    return wrapper;
+}
+
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    // NOTE: WASI's crt1-command.o (wasi-sdk >= 16 or so) expects the user entry point
-    // as __main_argc_argv(i32, ptr) rather than main(). "main" exists in libc as
-    // a weak wrapper that calls __main_argc_argv, but only if the user doesn't
-    // define their own main — which we do, causing the stub to win.
-    // When eventually argc/argv is exposed to the Kriol language, this stays the same.
-    std::string name = isMain
-        ? (CurrentTarget == CodegenTarget::Wasm32Wasi ? "__main_argc_argv" : "main")
-        : node.Name;
+    std::string name = isMain ? "main" : node.Name;
 
     std::vector<llvm::Type*> paramTypes;
-    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
-        paramTypes.push_back(llvm::Type::getInt32Ty(Context));
-        paramTypes.push_back(llvm::PointerType::getUnqual(Context));
-    } else if (node.Args) {
+    if (node.Args) {
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
     }
@@ -826,11 +835,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
     }
 
-    if (isMain && (CurrentTarget == CodegenTarget::Wasm32Wasi)) {
-        auto it = fn->arg_begin();
-        it->setName("argc"); ++it;
-        it->setName("argv");
-    } else if (node.Args) {
+    if (node.Args) {
         size_t i = 0;
         for (auto& llvmArg : fn->args())
             llvmArg.setName(node.Args->Args[i++]->Name);
@@ -845,7 +850,6 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     if (nodeArgCount > 0) {
         size_t i = 0;
         for (auto& llvmArg : fn->args()) {
-            if (i >= nodeArgCount) break; // XXX: skip hidden WASI argc/argv for main fn
             auto& p = node.Args->Args[i++];
             auto* a = createEntryAlloca(fn, p->Name, llvmArg.getType());
             Builder->CreateStore(&llvmArg, a);
@@ -897,6 +901,14 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     if (verificationFailed) {
         fn->print(llvm::errs());
         throw std::runtime_error("Function verification failed for '" + node.Name + "'");
+    }
+
+    if (isMain && CurrentTarget == CodegenTarget::Wasm32Wasi) {
+        auto* wrapper = emitWasiMainWrapper(*Mod, Context, *Builder, fn);
+        if (llvm::verifyFunction(*wrapper)) {
+            wrapper->print(llvm::errs());
+            throw std::runtime_error("WASI main wrapper verification failed");
+        }
     }
 
     CurrentFunction = nullptr;
@@ -1179,7 +1191,6 @@ void CodeGenVisitor::visit(ForSttmt& node) {
     LastValue = nullptr;
 }
 
-// Declare (or retrieve) one of the __kriol_print(n)_TYPE runtime functions.
 static llvm::Function* getOrDeclareKriolPrint(llvm::Module& Mod, llvm::LLVMContext& Context,
         const std::string& suffix, llvm::Type* argTy, bool newline)
 {
@@ -1199,7 +1210,6 @@ static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext&
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
 }
 
-// Declare (or retrieve) __kriol_bool_to_str: const char* __kriol_bool_to_str(int)
 static llvm::Function* getOrDeclareKriolBoolToStr(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_bool_to_str")) return fn;
@@ -1209,7 +1219,6 @@ static llvm::Function* getOrDeclareKriolBoolToStr(llvm::Module& Mod, llvm::LLVMC
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_bool_to_str", Mod);
 }
 
-// Declare (or retrieve) __kriol_format -> char* __kriol_format(const char* fmt, ...)
 static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_format")) return fn;
@@ -1430,7 +1439,6 @@ void CodeGenVisitor::visit(UnaryExpr& node) {
     }
 }
 
-// Declare (or retrieve) libc exit
 static llvm::Function* getOrDeclareExit(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("exit")) return fn;
@@ -1442,7 +1450,6 @@ static llvm::Function* getOrDeclareExit(llvm::Module& Mod, llvm::LLVMContext& Co
     return fn;
 }
 
-// Declare (or retrieve) __kriol_konfirma -> void __kriol_konfirma(i32 cond, i32 line)
 static llvm::Function* getOrDeclareKriolKonfirma(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_konfirma")) return fn;
