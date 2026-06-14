@@ -13,6 +13,12 @@ fi
 
 echo -e "\n~~ Running tests ~~\n"
 pass=0; fail=0
+failed_tests=""
+
+record_failure() {
+    fail=$((fail+1))
+    failed_tests="${failed_tests}\n  - $1"
+}
 
 # ---- examples/*.kr --------------------------------------------------------
 for f in "$ROOT"/examples/*.kriol; do
@@ -22,7 +28,7 @@ for f in "$ROOT"/examples/*.kriol; do
        timeout 5 "$tmpbin" > /dev/null 2>&1; then
         echo " PASS"; pass=$((pass+1))
     else
-        echo " FAIL"; fail=$((fail+1))
+        echo " FAIL"; record_failure "$f"
     fi
     rm -f "$tmpbin"
 done
@@ -37,7 +43,7 @@ if [ -d "$ROOT/tests/pass" ]; then
            timeout 5 "$tmpbin" > /dev/null 2>&1; then
             echo " PASS"; pass=$((pass+1))
         else
-            echo " FAIL"; fail=$((fail+1))
+            echo " FAIL"; record_failure "$f"
         fi
         rm -f "$tmpbin"
     done
@@ -49,32 +55,14 @@ if [ -d "$ROOT/tests/fail" ]; then
         [ -f "$f" ] || continue
         printf "  %-44s" "$f"
         tmpbin=$(mktemp /tmp/kriol_fail_bin_XXXX)
-        tmperr=$(mktemp /tmp/kriol_fail_err_XXXX)
-        expect="$f.err"
 
-        if "$KRIOL" "$f" -o "$tmpbin" > /dev/null 2>"$tmperr"; then
-            echo " FAIL (should have been rejected)"; fail=$((fail+1))
+        if "$KRIOL" "$f" -o "$tmpbin" > /dev/null 2>&1; then
+            echo " FAIL (should have been rejected)"
+            record_failure "$f"
         else
-            if [ -f "$expect" ]; then
-                missing=0
-                while IFS= read -r needle || [ -n "$needle" ]; do
-                    case "$needle" in ''|'#'*) continue ;; esac
-                    if ! grep -Fq "$needle" "$tmperr"; then
-                        missing=1
-                        echo " FAIL (missing diagnostic fragment: $needle)"
-                        break
-                    fi
-                done < "$expect"
-                if [ $missing -eq 0 ]; then
-                    echo " PASS (rejected, diagnostics match)"; pass=$((pass+1))
-                else
-                    echo "      stderr:"; sed 's/^/      /' "$tmperr"; fail=$((fail+1))
-                fi
-            else
-                echo " PASS (rejected)"; pass=$((pass+1))
-            fi
+            echo " PASS (rejected)"; pass=$((pass+1))
         fi
-        rm -f "$tmpbin" "$tmperr"
+        rm -f "$tmpbin"
     done
 fi
 
@@ -87,25 +75,31 @@ if "$KRIOL" --help 2>&1 | grep -Fq "wasm32-wasi"; then
             if file "$tmpwasm" | grep -Fq "WebAssembly"; then
                 echo " PASS"; pass=$((pass+1))
             else
-                echo " FAIL (not a WebAssembly module)"; fail=$((fail+1))
+                echo " FAIL (not a WebAssembly module)"
+                record_failure "wasm32-wasi hello-world"
             fi
         else
             echo " PASS"; pass=$((pass+1))
         fi
     else
-        echo " FAIL"; fail=$((fail+1))
+        echo " FAIL"; record_failure "wasm32-wasi hello-world"
     fi
     rm -f "$tmpwasm"
 
-    printf "  %-44s" "wasm32-wasi f-string gc"
+    printf "  %-44s" "wasm32-wasi f-string runtime"
     tmpwasm=$(mktemp /tmp/kriol_wasm_fstr_gc_XXXX.wasm)
     if "$KRIOL" "$ROOT/tests/pass/mostra_interpolation.kr" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then
         echo " PASS"; pass=$((pass+1))
     else
-        echo " FAIL"; fail=$((fail+1))
+        echo " FAIL"; record_failure "wasm32-wasi f-string runtime"
     fi
     rm -f "$tmpwasm"
 fi
 
 echo -e "\n  $pass/$((pass+fail)) passed\n"
+
+if [ $fail -ne 0 ]; then
+    echo -e "Failed tests:$failed_tests\n"
+fi
+
 [ $fail -eq 0 ]

@@ -88,7 +88,11 @@ The generated module is a WASI command module. For a browser playground, run it
 through a WASI preview1 JavaScript shim and capture stdout to display
 `mostra`/`mostran` output.
 
-Formatted strings use the embedded Boehm GC runtime, including for WASI output.
+Native formatted strings use the embedded Boehm GC runtime. The default WASI
+configuration currently uses `malloc` instead: formatted strings are not
+reclaimed before process exit, so no-GC WASI output is intended for short-lived
+command modules. `KRIOL_WASI_ENABLE_GC=ON` remains experimental and requires a
+Boehm GC checkout with WASI support.
 
 ## Build
 
@@ -97,7 +101,7 @@ If you want to build the project, currently it only works mostly on Linux based 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```sh
-apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 libgc-dev zlib1g-dev libzstd-dev xxd cmake
+apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 zlib1g-dev libzstd-dev xxd cmake
 ```
 
 WASI output also needs the WASI libc and compiler runtime packages:

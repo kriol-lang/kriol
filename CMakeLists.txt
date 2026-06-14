@@ -234,6 +234,12 @@ add_executable(
     tests/api/type_model.cc
 )
 
+add_executable(
+    kriol_gc_runtime_test
+    tests/runtime/gc_stress.c
+    runtime/kriol_runtime.c
+)
+
 set_source_files_properties(
     ${KRIOL_LLVM_SOURCES}
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
@@ -279,6 +285,7 @@ endfunction()
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_type_model_test)
+kriol_configure_target(kriol_gc_runtime_test)
 
 # -----------------------------------------------------------------------------
 # Linking
@@ -299,7 +306,6 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    gc
     m
 )
 
@@ -308,8 +314,13 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    gc
     m
+)
+
+target_link_libraries(
+    kriol_gc_runtime_test
+    PRIVATE
+    gc
 )
 
 # -----------------------------------------------------------------------------
@@ -350,9 +361,11 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:kriol_type_model_test>
     COMMAND
+        $<TARGET_FILE:kriol_gc_runtime_test>
+    COMMAND
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}
-    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test
+    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_gc_runtime_test
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

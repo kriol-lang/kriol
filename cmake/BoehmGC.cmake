@@ -8,11 +8,9 @@ if(NOT EXISTS "${BDWGC_DIR}/CMakeLists.txt")
     )
 endif()
 
-if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(_GC_SHARED OFF)
-else()
-    set(_GC_SHARED ON)
-endif()
+# Generated Kriol programs link this artifact after it is embedded in the
+# compiler. Keep it static so their runtime does not depend on a host libgc.
+set(_GC_SHARED OFF)
 
 if(DEFINED BUILD_SHARED_LIBS)
     set(_KRIOL_OLD_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
@@ -26,7 +24,7 @@ set(BUILD_SHARED_LIBS ${_GC_SHARED} CACHE BOOL "" FORCE)
 set(enable_docs              OFF CACHE BOOL "" FORCE)
 set(enable_gcj_support       OFF CACHE BOOL "" FORCE)
 set(enable_java_finalization OFF CACHE BOOL "" FORCE)
-set(enable_threads           ON  CACHE BOOL "" FORCE)
+set(enable_threads           OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(
     ${BDWGC_DIR}

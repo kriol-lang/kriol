@@ -17,8 +17,36 @@
 #include <gc.h>
 #endif
 
+_Noreturn void __kriol_panic(const char* message) {
+    fputs("kriol: panic", stderr);
+    if (message && message[0] != '\0') {
+        fputs(": ", stderr);
+        fputs(message, stderr);
+    }
+    putc('\n', stderr);
+    exit(1);
+}
+
+_Noreturn void __kriol_panic_at(const char* message, int line) {
+    fprintf(stderr, "kriol: panic at line %d", line);
+    if (message && message[0] != '\0') {
+        fputs(": ", stderr);
+        fputs(message, stderr);
+    }
+    putc('\n', stderr);
+    exit(1);
+}
+
+#if !KRIOL_RUNTIME_NO_GC
+static void* __kriol_gc_out_of_memory(size_t requested_bytes) {
+    (void)requested_bytes;
+    __kriol_panic("garbage-collected heap exhausted");
+}
+#endif
+
 void __kriol_gc_init(void) {
 #if !KRIOL_RUNTIME_NO_GC
+    GC_set_oom_fn(__kriol_gc_out_of_memory);
     GC_INIT();
 #endif
 }
@@ -77,23 +105,28 @@ char* __kriol_format(const char* fmt, ...) {
 #if KRIOL_RUNTIME_NO_GC
     char* buf = (char*)malloc((size_t)needed + 1);
 #else
-    char* buf = (char*)GC_malloc((size_t)needed + 1);
+    char* buf = (char*)GC_MALLOC_ATOMIC((size_t)needed + 1);
 #endif
 
-    if (!buf) return NULL;
+    if (!buf) __kriol_panic("out of memory while formatting text");
 
     va_start(args, fmt);
-    vsnprintf(buf, (size_t)needed + 1, fmt, args);
+    int written = vsnprintf(buf, (size_t)needed + 1, fmt, args);
     va_end(args);
+
+    if (written < 0 || written != needed)
+        __kriol_panic("failed to format text");
 
     return buf;
 }
 
+void __kriol_konfirma_message(int cond, int line, const char* message) {
+    if (!cond)
+        __kriol_panic_at(message && message[0] != '\0' ? message : "konfirma failed", line);
+}
+
 void __kriol_konfirma(int cond, int line) {
-    if (!cond) {
-        fprintf(stderr, "kriol: konfirma (assertion):  failed at the line %d\n", line);
-        exit(1);
-    }
+    __kriol_konfirma_message(cond, line, NULL);
 }
 
 void __kriol_check_bounds(int64_t index, int64_t size, int line) {
