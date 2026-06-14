@@ -9,9 +9,10 @@ fn linha(nter tamanhu, bool kebra_linha) {
 }
 
 fn mensage_special(textu mensage, nter tamanhu_maximu) {
-    nter i = 0;
+    nter i = 1;
     nkuantu i < tamanhu_maximu {
-        i += 1; linha(i, sin);
+        linha(i, sin);
+        i += 1;
     }
 
     linha(i, nau);
