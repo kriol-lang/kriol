@@ -9,12 +9,10 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
-#include <fstream>
 #include <memory>
-#include <algorithm>
-#include <cstdlib>
 #include <cstdio>
 #include <sstream>
+#include <stdexcept>
 
 #include <llvm/Support/ManagedStatic.h>
 
@@ -60,36 +58,27 @@ void cli::PrintErr(const std::string& file, int line, const std::string& msg, in
     if (exitNum >= 0) throw cli::FatalError(location + msg, exitNum);
 }
 
-void cli::ExecuteCommand(std::string command)
+void cli::Compiler::DefineArgs()
 {
-    int out = system(command.c_str());
-    if (out != 0)
-    {
-        cli::PrintErr("Could not execute the following command '" + command + "'", out);
-    }
-}
+    Parser->add_description("Compile Kriol source code from a file or inline text.");
+    Parser->add_epilog("Provide either a source file or --text, but not both.");
+    Parser->set_usage_max_line_width(100);
 
-std::string cli::ConvertToHex(std::string str)
-{
-    std::stringstream sstrm;
-
-    for (const auto &ch : str)
-    {
-        sstrm << std::hex << int(ch);
-    }
-
-    return sstrm.str();
-}
-
-void cli::Compiler::DefineArgs(void)
-{
+    Parser->add_group("Input");
     Parser->add_argument("file")
-        .help("Name of the target compilation file.")
-        .required()
+        .help("Kriol source file to compile.")
+        .metavar("[file]")
+        .nargs(ap::nargs_pattern::optional);
+
+    Parser->add_argument("--text")
+        .help("Compile the provided Kriol source text instead of reading a file.")
+        .metavar("SOURCE")
         .nargs(1);
 
+    Parser->add_group("Output");
     Parser->add_argument("-o", "--output")
-        .help("Option used to specify the name of the output file.")
+        .help("Write the generated output to this file.")
+        .metavar("FILE")
         .nargs(1);
 
     Parser->add_argument("--emit-ir")
@@ -97,24 +86,25 @@ void cli::Compiler::DefineArgs(void)
         .default_value(false)
         .implicit_value(true);
 
+    Parser->add_group("Compilation");
     Parser->add_argument("--target")
-        .help("Output target: 'native' or 'wasm32-wasi' (experimental).")
+        .help("Select native or wasm32-wasi output.")
+        .metavar("TARGET")
         .default_value(std::string("native"))
         .nargs(1)
         .choices("native", "wasm32-wasi");
 
-    Parser->add_argument("-T", "--ignore-extension")
-        .help("Without this flag, only files with extensions '." +
-             std::string(KR_STANDARD_FILE_EXTENSION) + "' or '." +
-             std::string(KR_ALTERNATIVE_FILE_EXTENSION) +
-             "' will be allowed by the compiler.")
+    Parser->add_argument("--ignore-extension")
+        .help("Allow a source file without a ." +
+              std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
+              std::string(KR_ALTERNATIVE_FILE_EXTENSION) + " extension.")
         .default_value(false)
         .implicit_value(true);
 }
 
-void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
+void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 {
-    this->DefineArgs();
+    DefineArgs();
 
     try
     {
@@ -129,58 +119,59 @@ void cli::Compiler::ParseArgs(const int argc, const char *const *argv)
         cli::PrintErr(std::string(e.what()) + "\n\n" + sstrm.str(), 1);
     }
 
-    try
-    {
-        Args.filename = Parser->get<std::string>("file");
-    }
-    catch (const std::exception &err)
-    {
-        Args.filename = "";
-    }
+    auto file = Parser->present<std::string>("file");
+    auto text = Parser->present<std::string>("--text");
+    if (file.has_value() == text.has_value())
+        cli::PrintErr("Provide exactly one input: a source file or --text <source>.", 1);
 
-    try
+    if (text)
     {
-        Args.outfile = Parser->get<std::string>("--output");
-    }
-    catch (const std::exception &err)
-    {
-        Args.outfile = "";
-    }
-
-    Args.target               = Parser->get<std::string>("--target");
-    Args.emitIR               = Parser->get<bool>("--emit-ir");
-    Args.shouldCheckExtension = !Parser->get<bool>("--ignore-extension");
-}
-
-ast::BlockSttmt *cli::KriolLangParserWrapper::ParseCode(std::string Content, bool isFile)
-{
-    ast::BlockSttmt* ProgramAST = nullptr;
-    if (isFile)
-    {
-        ParseFile(Content, &ProgramAST);
+        Args.inputKind = CompileInputKind::SourceText;
+        Args.input = std::move(*text);
+        Args.sourceName = "<command-line>";
     }
     else
     {
-        ParseText(Content, &ProgramAST);
+        Args.inputKind = CompileInputKind::File;
+        Args.input = std::move(*file);
+        Args.sourceName = Args.input;
     }
-    return ProgramAST;
+
+    Args.outfile = Parser->present<std::string>("--output").value_or("");
+    Args.target = Parser->get<std::string>("--target");
+    Args.emitIR = Parser->get<bool>("--emit-ir");
+    Args.ignoreExtension = Parser->get<bool>("--ignore-extension");
 }
 
-void cli::Compiler::SaveCodeToFile(std::string Code, std::string Filename)
+ast::BlockSttmt* cli::KriolLangParserWrapper::ParseCode(
+    const std::string& input,
+    CompileInputKind inputKind
+)
 {
-    FILE *file = fopen(Filename.c_str(), "w");
+    ast::BlockSttmt* program = nullptr;
+    if (inputKind == CompileInputKind::File)
+        ParseFile(input, &program);
+    else
+        ParseText(input, &program);
+    return program;
+}
+
+void cli::Compiler::SaveCodeToFile(const std::string& code, const std::string& filename)
+{
+    FILE* file = fopen(filename.c_str(), "w");
 
     if (file == NULL)
-    {
-        cli::PrintErr("Couldn't create file '" + Filename + "'!", 1);
-    }
+        cli::PrintErr("Couldn't create file '" + filename + "'!", 1);
 
-    fputs(Code.c_str(), file);
+    fputs(code.c_str(), file);
 
     fclose(file);
 }
 
-void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttmt** Program)
+void cli::KriolLangParserWrapper::ParseFile(
+    const std::string& filename,
+    ast::BlockSttmt** program
+)
 {
     if (!fs::exists(filename))
     {
@@ -198,7 +189,7 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
     cli::SetSourceFile(filename);
     yylineno = 1;
     try {
-        yyparse(Program);
+        yyparse(program);
     } catch (...) {
         fclose(file);
         throw;
@@ -206,7 +197,10 @@ void cli::KriolLangParserWrapper::ParseFile(std::string filename, ast::BlockSttm
     fclose(file);
 }
 
-void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** Program)
+void cli::KriolLangParserWrapper::ParseText(
+    const std::string& text,
+    ast::BlockSttmt** program
+)
 {
     YY_BUFFER_STATE buffer = yy_scan_string(text.c_str());
     if (!buffer)
@@ -214,7 +208,7 @@ void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** 
 
     yylineno = 1;
     try {
-        yyparse(Program);
+        yyparse(program);
     } catch (...) {
         yy_delete_buffer(buffer);
         throw;
@@ -224,6 +218,17 @@ void cli::KriolLangParserWrapper::ParseText(std::string text, ast::BlockSttmt** 
 
 cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 {
+    if (options.input.empty())
+        throw std::invalid_argument("Compilation input cannot be empty.");
+    if (options.target != "native" && options.target != "wasm32-wasi")
+        throw std::invalid_argument("Unknown compilation target '" + options.target + "'.");
+    if (options.emitIR && options.outputToMemory)
+        throw std::invalid_argument("emitIR and outputToMemory cannot be used together.");
+    if (options.outputToMemory && !options.outfile.empty())
+        throw std::invalid_argument("outfile cannot be used with outputToMemory.");
+    if (options.outputToMemory && options.target != "wasm32-wasi")
+        throw std::invalid_argument("In-memory output is currently supported only for wasm32-wasi.");
+
     CompileResult result;
     std::string sourceName = options.sourceName.empty()
         ? (options.inputKind == CompileInputKind::File ? options.input : "<memory>")
@@ -232,7 +237,7 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 
     ast::BlockSttmt *ProgramAST = KriolLangParserWrapper::ParseCode(
         options.input,
-        options.inputKind == CompileInputKind::File
+        options.inputKind
     );
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
@@ -268,8 +273,8 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
     }
 
     std::string defaultOutfile = Target == ast::CodegenTarget::Wasm32Wasi
-        ? "a.wasm"
-        : "a.out";
+        ? KR_DEFAULT_WASM_OUT_FILE
+        : KR_DEFAULT_OUT_FILE;
 
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
 
@@ -277,8 +282,6 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 
     if (options.outputToMemory)
     {
-        if (emitOptions.Target != ast::CodegenTarget::Wasm32Wasi)
-            throw std::runtime_error("In-memory output is currently supported only for wasm32-wasi.");
         result.outputBytes = codegenVisitor.emitToMemory(emitOptions);
     }
     else
@@ -289,36 +292,43 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
     return result;
 }
 
-
-
-void cli::Compiler::Run(const int argc, const char *const *argv)
+void cli::Compiler::ValidateInput() const
 {
-    this->ParseArgs(argc, argv);
+    if (Args.inputKind != CompileInputKind::File || Args.ignoreExtension)
+        return;
 
-    auto matchAtEndOfFilename = [name = Args.filename](std::string endstr)
-    {
-        return name.find(endstr, name.size() - endstr.size());
-    };
+    const std::string extension = fs::path(Args.input).extension().string();
+    const bool supported = extension == "." + std::string(KR_STANDARD_FILE_EXTENSION) ||
+                           extension == "." + std::string(KR_ALTERNATIVE_FILE_EXTENSION);
+    if (!supported)
+        cli::PrintErr(
+            "File format not recognized. Expected a ." +
+            std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
+            std::string(KR_ALTERNATIVE_FILE_EXTENSION) + " source file.",
+            1
+        );
+}
 
-    if (Args.shouldCheckExtension &&
-        (matchAtEndOfFilename(KR_STANDARD_FILE_EXTENSION) == std::string::npos) &&
-        (matchAtEndOfFilename(KR_ALTERNATIVE_FILE_EXTENSION) == std::string::npos))
-    {
-        cli::PrintErr("File format not recognized. Filename should end with a '" +
-            std::string(KR_STANDARD_FILE_EXTENSION) + "' or '" + std::string(KR_ALTERNATIVE_FILE_EXTENSION) + "' file extension.", 1);
-    }
+cli::CompileOptions cli::Compiler::MakeCompileOptions() const
+{
+    CompileOptions options;
+    options.inputKind = Args.inputKind;
+    options.input = Args.input;
+    options.sourceName = Args.sourceName;
+    options.outfile = Args.outfile;
+    options.target = Args.target;
+    options.emitIR = Args.emitIR;
+    return options;
+}
+
+void cli::Compiler::Run(int argc, const char* const* argv)
+{
+    ParseArgs(argc, argv);
+    ValidateInput();
 
     try
     {
-        CompileOptions options;
-        options.inputKind = CompileInputKind::File;
-        options.input = Args.filename;
-        options.sourceName = Args.filename;
-        options.outfile = Args.outfile;
-        options.target = Args.target;
-        options.emitIR = Args.emitIR;
-
-        CompileResult result = Compile(options);
+        CompileResult result = Compile(MakeCompileOptions());
         if (!result.diagnostics.empty())
         {
             for (const auto& err : result.diagnostics)
@@ -326,7 +336,7 @@ void cli::Compiler::Run(const int argc, const char *const *argv)
             throw cli::FatalError("semantic errors", 1);
         }
 
-        if (Args.emitIR && Args.outfile == "")
+        if (Args.emitIR && Args.outfile.empty())
             std::cout << result.ir;
     }
     catch (std::exception &err)

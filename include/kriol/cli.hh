@@ -5,113 +5,113 @@
 
 #include "../external/argparse.hpp"
 
-#include <iostream>
-#include <string>
-#include <filesystem>
+#include <exception>
 #include <memory>
-#include <algorithm>
-#include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace ap = argparse;
 
-namespace kriol
+namespace kriol::cli
 {
-    namespace cli
+    class FatalError : public std::exception
     {
-        /// Exception thrown instead of exit() so RAII cleanup runs
-        class FatalError : public std::exception {
-            std::string msg_;
-            int code_;
-        public:
-            FatalError(std::string msg, int code) : msg_(std::move(msg)), code_(code) {}
-            const char* what() const noexcept override { return msg_.c_str(); }
-            int exitCode() const noexcept { return code_; }
-        };
+        std::string Message;
+        int ExitCode;
 
-        /// Prints an error message to the stderr
-        void PrintErr(std::string message);
-        /// Prints an error message to the stderr and exits returning the `exitNum`
-        void PrintErr(std::string message, int exitNum);
-        /// Prints a source-located error message (file:line: msg) and optionally exits
-        void PrintErr(const std::string& file, int line, const std::string& msg, int exitNum = -1);
-        /// Sets the source filename used by PrintErr and yyerror for location context
-        void SetSourceFile(const std::string& filename);
-        /// Returns the currently active source filename
-        const std::string& GetSourceFile();
-        /// Exectutes a command on the terminal
-        void ExecuteCommand(std::string command);
-        /// Encodes a string to hexadecimal string
-        std::string ConvertToHex(std::string str);
+    public:
+        FatalError(std::string message, int exitCode)
+            : Message(std::move(message)), ExitCode(exitCode) {}
 
-        enum class CompileInputKind {
-            File,
-            SourceText
-        };
+        const char* what() const noexcept override { return Message.c_str(); }
+        int exitCode() const noexcept { return ExitCode; }
+    };
 
-        struct CompileOptions {
+    void PrintErr(std::string message);
+    void PrintErr(std::string message, int exitNum);
+    void PrintErr(
+        const std::string& file,
+        int line,
+        const std::string& message,
+        int exitNum = -1
+    );
+
+    void SetSourceFile(const std::string& filename);
+    const std::string& GetSourceFile();
+
+    enum class CompileInputKind
+    {
+        File,
+        SourceText
+    };
+
+    struct CompileOptions
+    {
+        CompileInputKind inputKind = CompileInputKind::File;
+        std::string input;
+        std::string sourceName;
+        std::string outfile;
+        std::string target = "native";
+        bool emitIR = false;
+        bool outputToMemory = false;
+    };
+
+    struct CompileResult
+    {
+        std::string ir;
+        std::string outputPath;
+        std::vector<unsigned char> outputBytes;
+        std::vector<std::string> diagnostics;
+    };
+
+    CompileResult Compile(const CompileOptions& options);
+
+    class KriolLangParserWrapper
+    {
+        static void ParseFile(const std::string& filename, ast::BlockSttmt** program);
+        static void ParseText(const std::string& text, ast::BlockSttmt** program);
+
+    public:
+        static ast::BlockSttmt* ParseCode(
+            const std::string& input,
+            CompileInputKind inputKind
+        );
+    };
+
+    class Compiler
+    {
+        struct CommandLineOptions
+        {
             CompileInputKind inputKind = CompileInputKind::File;
             std::string input;
             std::string sourceName;
             std::string outfile;
             std::string target = "native";
             bool emitIR = false;
-            bool outputToMemory = false;
+            bool ignoreExtension = false;
         };
 
-        struct CompileResult {
-            std::string ir;
-            std::string outputPath;
-            std::vector<unsigned char> outputBytes;
-            std::vector<std::string> diagnostics;
-        };
+        std::unique_ptr<ap::ArgumentParser> Parser;
+        CommandLineOptions Args;
 
-        CompileResult Compile(const CompileOptions& options);
+    public:
+        Compiler(std::string name, std::string version)
+            : Parser(std::make_unique<ap::ArgumentParser>(
+                std::move(name),
+                std::move(version)
+            )) {}
 
-        class KriolLangParserWrapper
-        {
-            /// Parses a code on a file
-            static void ParseFile(std::string filename, ast::BlockSttmt** Program);
-            /// Parses as text
-            static void ParseText(std::string text, ast::BlockSttmt** Program);
+        void Run(int argc, const char* const* argv);
+        static void Cleanup();
+        static void SaveCodeToFile(const std::string& code, const std::string& filename);
 
-        public:
-            /// Used to parse the code
-            static ast::BlockSttmt *ParseCode(std::string Content, bool isFile);
-        };
-
-        class Compiler
-        {
-            std::string Name;
-            std::string Version;
-            std::unique_ptr<ap::ArgumentParser> Parser;
-
-            struct
-            {
-                std::string filename;
-                std::string outfile;
-                std::string target;
-                bool emitIR;
-                bool shouldCheckExtension;
-            } Args;
-
-        public:
-            Compiler(std::string Name, std::string Ver)
-                : Name(Name), Version(Ver), Parser(std::make_unique<ap::ArgumentParser>(Name, Ver)) {}
-            /// Used to run the compiler
-            void Run(const int argc, const char *const *argv);
-            /// Cleans up left over resources
-            static void Cleanup();
-            /// Save compiler output into a file.
-            static void SaveCodeToFile(std::string Code, std::string Filename);
-
-        private:
-            /// Used to parse the command-line args
-            void ParseArgs(const int argc, const char *const *argv);
-            /// Used to define the arguments
-            void DefineArgs(void);
-        };
+    private:
+        void DefineArgs();
+        void ParseArgs(int argc, const char* const* argv);
+        void ValidateInput() const;
+        CompileOptions MakeCompileOptions() const;
     };
-};
+}
 
 #endif // _KRIOL_CLI_HEADER

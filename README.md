@@ -78,6 +78,12 @@ To inspect the generated LLVM IR instead of producing a binary:
 kriol examples/mensage_special.kriol --emit-ir
 ```
 
+Source text can also be compiled directly without creating a source file:
+
+```sh
+kriol --text 'fn inisiu() { mostran("Kuale, Mundu!"); }' -o hello
+```
+
 To compile a Kriol program to a WASI WebAssembly module:
 
 ```sh

@@ -11,6 +11,15 @@ int main() {
         "}\n";
     options.sourceName = "<api-memory-test>";
     options.target = "wasm32-wasi";
+
+    options.emitIR = true;
+    kriol::cli::CompileResult irResult = kriol::cli::Compile(options);
+    if (irResult.ir.find("define i32 @main()") == std::string::npos) {
+        std::cerr << "expected source-text compile to emit main in LLVM IR\n";
+        return 1;
+    }
+
+    options.emitIR = false;
     options.outputToMemory = true;
 
     kriol::cli::CompileResult result = kriol::cli::Compile(options);

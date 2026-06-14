@@ -49,6 +49,18 @@ if [ -d "$ROOT/tests/pass" ]; then
     done
 fi
 
+# ---- command-line source text ---------------------------------------------
+printf "  %-44s" "inline source text"
+tmpbin=$(mktemp /tmp/kriol_text_XXXX)
+if "$KRIOL" --text 'fn inisiu() { mostran("Kuale, Mundu!"); }' -o "$tmpbin" 2>/dev/null && \
+   [ "$(timeout 5 "$tmpbin")" = "Kuale, Mundu!" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "inline source text"
+fi
+rm -f "$tmpbin"
+
+
 # ---- tests/fail/*.kr -------------------------------------------------------
 if [ -d "$ROOT/tests/fail" ]; then
     for f in "$ROOT"/tests/fail/*.kr; do
