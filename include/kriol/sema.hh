@@ -16,7 +16,7 @@ namespace sema {
     class SemanticAnalyzer : public ast::Visitor {
     private:
         // Scoped symbol table: each entry is one scope level (name -> Kriol type)
-        std::vector<std::unordered_map<std::string, std::string>> SymbolScopes;
+        std::vector<std::unordered_map<std::string, Type>> SymbolScopes;
 
         struct VarInitState {
             bool isArray = false;
@@ -30,15 +30,15 @@ namespace sema {
 
         // Signature record for a user-defined function
         struct FuncInfo {
-            std::string retType;
-            std::vector<std::string> paramTypes;
+            Type retType;
+            std::vector<Type> paramTypes;
         };
 
         // Known user-defined functions (name -> signature)
         std::unordered_map<std::string, FuncInfo> FunctionTable;
 
         // Return type of the function currently being analysed ("" at top level)
-        std::string CurrFuncRetType;
+        Type CurrFuncRetType;
         std::string CurrFuncName;
 
         // How many loops deep we currently are (used for break/continue validation)
@@ -66,7 +66,7 @@ namespace sema {
             if (!InitScopes.empty()) InitScopes.pop_back();
         }
 
-        void declareVar(const std::string& name, const std::string& type) {
+        void declareVar(const std::string& name, const Type& type) {
             if (!SymbolScopes.empty())
                 SymbolScopes.back()[name] = type;
         }
@@ -77,7 +77,7 @@ namespace sema {
         }
 
         // Returns the Kriol type of the variable if found in any scope, or empty string.
-        std::optional<std::string> lookupVar(const std::string& name) const {
+        std::optional<Type> lookupVar(const std::string& name) const {
             for (auto it = SymbolScopes.rbegin(); it != SymbolScopes.rend(); ++it) {
                 auto found = it->find(name);
                 if (found != it->end()) return found->second;
@@ -108,7 +108,7 @@ namespace sema {
 
         // Returns true if assigning/returning `from` where `to` is expected
         // is a legal implicit widening (nter->num, bool->nter, bool->num).
-        static bool isWideningCoercion(const std::string& from, const std::string& to);
+        static bool isWideningCoercion(const Type& from, const Type& to);
 
         // Pre-registers a function's full signature into FunctionTable without
         // visiting the body. Called in the first pass of Check().
@@ -161,6 +161,8 @@ namespace sema {
         void visit(ast::IdentExpr&         node) override;
         void visit(ast::ParExpr&           node) override;
         void visit(ast::ArrayAccessExpr&   node) override;
+        void visit(ast::MemberAccessExpr&  node) override;
+        void visit(ast::QualifiedAccessExpr& node) override;
         void visit(ast::ArrayLiteralExpr&  node) override;
         void visit(ast::ArrayRepeatExpr&   node) override;
         void visit(ast::AssignExpr&        node) override;

@@ -66,12 +66,11 @@ bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
     return false;
 }
 
-bool SemanticAnalyzer::isWideningCoercion(const std::string& from,
-                                          const std::string& to) {
+bool SemanticAnalyzer::isWideningCoercion(const Type& from, const Type& to) {
     if (from == to) return true;
-    if (from == "nter" && to == "num")  return true;
-    if (from == "bool" && to == "nter") return true;
-    if (from == "bool" && to == "num")  return true;
+    if (from == Type::Integer() && to == Type::Number()) return true;
+    if (from == Type::Bool() && to == Type::Integer()) return true;
+    if (from == Type::Bool() && to == Type::Number()) return true;
     return false;
 }
 
@@ -160,11 +159,11 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
                          + std::to_string(initRep->Count) + " has a different count");
                 canDeclare = false;
             }
-            const std::string elemType = arrayElementType(node.Type);
-            const auto& fillType = initRep->Fill ? initRep->Fill->ResolvedType : "";
-            if (!fillType.empty() && fillType != elemType && !isWideningCoercion(fillType, elemType))
-                addError(errLoc(node.LineNum) + "repeat initializer fill type '" + fillType
-                         + "' does not match array element type '" + elemType + "'");
+            const Type elemType = arrayElementType(node.Type);
+            const Type fillType = initRep->Fill ? initRep->Fill->ResolvedType : Type::Invalid();
+            if (fillType.valid() && fillType != elemType && !isWideningCoercion(fillType, elemType))
+                addError(errLoc(node.LineNum) + "repeat initializer fill type '" + fillType.str()
+                         + "' does not match array element type '" + elemType.str() + "'");
             initState.elementInitialized.assign(expected, true);
             initState.fullyInitialized = true;
         } else {
@@ -178,12 +177,12 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
                 canDeclare = false;
             }
 
-            const std::string elemType = arrayElementType(node.Type);
+            const Type elemType = arrayElementType(node.Type);
             for (size_t i = 0; i < initLit->Elements.size(); ++i) {
                 const auto& t = initLit->Elements[i]->ResolvedType;
-                if (!t.empty() && t != elemType && !isWideningCoercion(t, elemType)) {
+                if (t.valid() && t != elemType && !isWideningCoercion(t, elemType)) {
                     addError(errLoc(node.LineNum) + "array initializer element " + std::to_string(i + 1)
-                             + ": expected '" + elemType + "', got '" + t + "'");
+                             + ": expected '" + elemType.str() + "', got '" + t.str() + "'");
                 }
                 if (i < initState.elementInitialized.size()) initState.elementInitialized[i] = true;
             }
@@ -213,7 +212,7 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
 
     if (node.Value) {
         node.Value->accept(*this);
-        if (!node.Value->ResolvedType.empty() && node.Value->ResolvedType == "vaziu")
+        if (node.Value->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
     }
 }
@@ -240,7 +239,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
             registerFuncSignature(node);
     }
 
-    std::string savedRetType = CurrFuncRetType;
+    Type savedRetType = CurrFuncRetType;
     std::string savedName    = CurrFuncName;
     CurrFuncRetType = node.Type;
     CurrFuncName    = node.Name;
@@ -258,7 +257,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
 
     // Check that non-void, non-entry functions return on all paths
     bool isEntry = (node.Name == "inisiu");
-    bool isVoid  = (node.Type == "vaziu");
+    bool isVoid  = node.Type.isVoid();
     if (!isEntry && !isVoid && !blockDefinitelyReturns(node.Body.get()))
         addError(errLoc(node.LineNum) + "function '" + node.Name + "' does not return on all paths");
 
@@ -270,7 +269,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
 void SemanticAnalyzer::visit(IfSttmt& node) {
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType == "vaziu")
+        if (node.Cond->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
     }
     if (node.Then) node.Then->accept(*this);
@@ -280,7 +279,7 @@ void SemanticAnalyzer::visit(IfSttmt& node) {
 void SemanticAnalyzer::visit(WhileSttmt& node) {
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType == "vaziu")
+        if (node.Cond->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
     }
     ++LoopDepth;
@@ -297,21 +296,21 @@ void SemanticAnalyzer::visit(JumpSttmt& node) {
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
     const std::string loc = errLoc(node.LineNum);
 
-    if (!CurrFuncRetType.empty() && CurrFuncRetType == "vaziu" && node.ReturnValue)
+    if (CurrFuncRetType.valid() && CurrFuncRetType.isVoid() && node.ReturnValue)
         addError(loc + "returning a value from void function '" + CurrFuncName + "'");
 
-    if (!CurrFuncRetType.empty() && CurrFuncRetType != "vaziu" && !node.ReturnValue)
+    if (CurrFuncRetType.valid() && !CurrFuncRetType.isVoid() && !node.ReturnValue)
         addError(loc + "missing return value in non-void function '" + CurrFuncName + "'");
 
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
-        const std::string& got = node.ReturnValue->ResolvedType;
-        if (!got.empty() && !CurrFuncRetType.empty()
-                && CurrFuncRetType != "vaziu"
+        const Type& got = node.ReturnValue->ResolvedType;
+        if (got.valid() && CurrFuncRetType.valid()
+                && !CurrFuncRetType.isVoid()
                 && got != CurrFuncRetType
                 && !isWideningCoercion(got, CurrFuncRetType))
-            addError(loc + "returning '" + got + "' from function '" + CurrFuncName
-                     + "' declared as '" + CurrFuncRetType + "'");
+            addError(loc + "returning '" + got.str() + "' from function '" + CurrFuncName
+                     + "' declared as '" + CurrFuncRetType.str() + "'");
     }
 }
 
@@ -324,9 +323,16 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
         for (auto& arg : node.Args->Args)
             if (arg) arg->accept(*this);
 
-    auto it = FunctionTable.find(node.Name);
+    auto* callee = unwrapIdentExpr(node.Callee.get());
+    if (!callee) {
+        if (node.Callee) node.Callee->accept(*this);
+        addError(errLoc(node.LineNum) + "expression is not callable");
+        return;
+    }
+
+    auto it = FunctionTable.find(callee->Name);
     if (it == FunctionTable.end()) {
-        addError(errLoc(node.LineNum) + "undeclared function '" + node.Name + "'");
+        addError(errLoc(node.LineNum) + "undeclared function '" + callee->Name + "'");
         return;
     }
 
@@ -338,19 +344,19 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     size_t want = info.paramTypes.size();
 
     if (got != want) {
-        addError(loc + "function '" + node.Name + "' expects " + std::to_string(want)
+        addError(loc + "function '" + callee->Name + "' expects " + std::to_string(want)
                  + " argument(s), got " + std::to_string(got));
         return; // type checks make no sense if counts differ
     }
 
     if (node.Args) {
         for (size_t i = 0; i < node.Args->Args.size(); ++i) {
-            const std::string& argType   = node.Args->Args[i]->ResolvedType;
-            const std::string& paramType = info.paramTypes[i];
-            if (!argType.empty() && argType != paramType
+            const Type& argType   = node.Args->Args[i]->ResolvedType;
+            const Type& paramType = info.paramTypes[i];
+            if (argType.valid() && argType != paramType
                     && !isWideningCoercion(argType, paramType))
-                addError(loc + "argument " + std::to_string(i + 1) + " of '" + node.Name
-                         + "': expected '" + paramType + "', got '" + argType + "'");
+                addError(loc + "argument " + std::to_string(i + 1) + " of '" + callee->Name
+                         + "': expected '" + paramType.str() + "', got '" + argType.str() + "'");
         }
     }
 }
@@ -359,26 +365,25 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     if (node.LHS) node.LHS->accept(*this);
     if (node.RHS) node.RHS->accept(*this);
 
-    const std::string lt = node.LHS ? node.LHS->ResolvedType : "";
-    const std::string rt = node.RHS ? node.RHS->ResolvedType : "";
+    const Type lt = node.LHS ? node.LHS->ResolvedType : Type::Invalid();
+    const Type rt = node.RHS ? node.RHS->ResolvedType : Type::Invalid();
 
-    if (lt == "vaziu")
+    if (lt.isVoid())
         addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
-    if (rt == "vaziu")
+    if (rt.isVoid())
         addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
 
-    // Comparison and logical operators always yield bool
     static const std::unordered_set<std::string> boolOps = {
         "==", "!=", "<", "<=", ">", ">=", "&&", "||"
     };
 
     if (boolOps.count(node.Op)) {
-        node.ResolvedType = "bool";
+        node.ResolvedType = Type::Bool();
     } else {
         // Arithmetic: promote nter+num -> num, otherwise keep operand type
-        if (lt == "num" || rt == "num")
-            node.ResolvedType = "num";
-        else if (!lt.empty())
+        if (lt == Type::Number() || rt == Type::Number())
+            node.ResolvedType = Type::Number();
+        else if (lt.valid())
             node.ResolvedType = lt;
         else
             node.ResolvedType = rt;
@@ -386,8 +391,7 @@ void SemanticAnalyzer::visit(BinExpr& node) {
 }
 
 void SemanticAnalyzer::visit(LiteralExpr& node) {
-    if (node.Type == "char*") node.ResolvedType = "textu";
-    else                      node.ResolvedType = node.Type;
+    node.ResolvedType = node.Type;
 }
 
 void SemanticAnalyzer::visit(ExprSttmt& node) {
@@ -426,36 +430,46 @@ void SemanticAnalyzer::visit(ParExpr& node) {
 void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     if (node.Index) {
         node.Index->accept(*this);
-        const std::string& indexType = node.Index->ResolvedType;
-        if (!indexType.empty() && indexType != "nter")
-            addError(errLoc(node.LineNum) + "array index for '" + node.Name + "' must be an integer");
+        const Type& indexType = node.Index->ResolvedType;
+        if (indexType.valid() && indexType != Type::Integer())
+            addError(errLoc(node.LineNum) + "array index must be an integer");
     }
 
-    auto arrayType = lookupVar(node.Name);
-    if (!arrayType) {
-        addError(errLoc(node.LineNum) + "undefined array name '" + node.Name + "'");
+    auto* baseIdent = unwrapIdentExpr(node.Base.get());
+    Type arrayType = Type::Invalid();
+    if (baseIdent) {
+        auto found = lookupVar(baseIdent->Name);
+        if (!found) {
+            addError(errLoc(node.LineNum) + "undefined array name '" + baseIdent->Name + "'");
+            return;
+        }
+        arrayType = *found;
+        baseIdent->ResolvedType = arrayType;
+    } else if (node.Base) {
+        node.Base->accept(*this);
+        arrayType = node.Base->ResolvedType;
+    }
+
+    if (!isArrayType(arrayType)) {
+        addError(errLoc(node.LineNum) + "indexed expression is not an array");
         return;
     }
 
-    if (!isArrayType(*arrayType)) {
-        addError(errLoc(node.LineNum) + "'" + node.Name + "' is not an array");
-        return;
-    }
+    node.ResolvedType = arrayElementType(arrayType);
 
-    node.ResolvedType = arrayElementType(*arrayType);
-
-    auto firstDim = firstArrayDim(*arrayType);
+    auto firstDim = firstArrayDim(arrayType);
     if (!firstDim || *firstDim == 0) {
-        addError(errLoc(node.LineNum) + "array '" + node.Name + "' has invalid size metadata");
+        addError(errLoc(node.LineNum) + "array has invalid size metadata");
     }
 
-    auto* init = lookupInitState(node.Name);
+    if (!baseIdent) return;
+    auto* init = lookupInitState(baseIdent->Name);
     if (!init || !init->isArray) return;
     if (init->fullyInitialized) return;
 
     auto* lit = dynamic_cast<LiteralExpr*>(node.Index.get());
-    if (!lit || lit->Type != "nter") {
-        addError(errLoc(node.LineNum) + "array '" + node.Name + "' may contain uninitialized elements");
+    if (!lit || lit->Type != Type::Integer()) {
+        addError(errLoc(node.LineNum) + "array '" + baseIdent->Name + "' may contain uninitialized elements");
         return;
     }
 
@@ -463,7 +477,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     try {
         idx = std::stoll(lit->Value);
     } catch (...) {
-        addError(errLoc(node.LineNum) + "array index for '" + node.Name + "' must be an integer literal");
+        addError(errLoc(node.LineNum) + "array index for '" + baseIdent->Name + "' must be an integer literal");
         return;
     }
 
@@ -473,23 +487,32 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     }
 
     if (!init->elementInitialized[static_cast<std::size_t>(idx)])
-        addError(errLoc(node.LineNum) + "array element '" + node.Name + "[" + std::to_string(idx) + "]' is not initialized");
+        addError(errLoc(node.LineNum) + "array element '" + baseIdent->Name + "[" + std::to_string(idx) + "]' is not initialized");
+}
+
+void SemanticAnalyzer::visit(MemberAccessExpr& node) {
+    if (node.Base) node.Base->accept(*this);
+    addError(errLoc(node.LineNum) + "member access is not supported yet");
+}
+
+void SemanticAnalyzer::visit(QualifiedAccessExpr& node) {
+    addError(errLoc(node.LineNum) + "qualified item access is not supported yet");
 }
 
 void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
     for (auto& element : node.Elements) {
         if (element) element->accept(*this);
     }
-    node.ResolvedType = "array_literal";
+    node.ResolvedType = Type::ArrayLiteral();
 }
 
 void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
     if (node.Fill) node.Fill->accept(*this);
-    node.ResolvedType = "array_repeat";
+    node.ResolvedType = Type::ArrayRepeat();
 }
 
 void SemanticAnalyzer::visit(AssignExpr& node) {
-    std::string assigneeType;
+    Type assigneeType;
     bool canMarkInitialized = true;
 
     if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
@@ -507,36 +530,38 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
     } else if (auto* arr = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
         if (arr->Index) {
             arr->Index->accept(*this);
-            if (arr->Index->ResolvedType != "nter") {
-                addError(errLoc(node.LineNum) + "array index for '" + arr->Name + "' must be an integer");
+            if (arr->Index->ResolvedType != Type::Integer()) {
+                addError(errLoc(node.LineNum) + "array index must be an integer");
                 canMarkInitialized = false;
             }
         }
 
-        auto t = lookupVar(arr->Name);
+        auto* baseIdent = unwrapIdentExpr(arr->Base.get());
+        auto t = baseIdent ? lookupVar(baseIdent->Name) : std::optional<Type>{};
         if (!t) {
-            addError(errLoc(node.LineNum) + "undefined array name '" + arr->Name + "'");
+            addError(errLoc(node.LineNum) + "array assignment target must be a variable");
             canMarkInitialized = false;
         } else if (!isArrayType(*t)) {
-            addError(errLoc(node.LineNum) + "'" + arr->Name + "' is not an array");
+            addError(errLoc(node.LineNum) + "indexed assignment target is not an array");
             canMarkInitialized = false;
         } else {
             assigneeType = arrayElementType(*t);
         }
     } else if (node.Assignee) {
         node.Assignee->accept(*this);
-        assigneeType = node.Assignee->ResolvedType;
+        addError(errLoc(node.LineNum) + "invalid assignment target");
+        canMarkInitialized = false;
     }
 
     if (node.Assigned) {
         node.Assigned->accept(*this);
         node.ResolvedType = node.Assigned->ResolvedType;
 
-        if (!assigneeType.empty() && !node.Assigned->ResolvedType.empty()
+        if (assigneeType.valid() && node.Assigned->ResolvedType.valid()
                 && assigneeType != node.Assigned->ResolvedType
                 && !isWideningCoercion(node.Assigned->ResolvedType, assigneeType)) {
-            addError(errLoc(node.LineNum) + "cannot assign value of type '" + node.Assigned->ResolvedType
-                     + "' to target of type '" + assigneeType + "'");
+            addError(errLoc(node.LineNum) + "cannot assign value of type '" + node.Assigned->ResolvedType.str()
+                     + "' to target of type '" + assigneeType.str() + "'");
             canMarkInitialized = false;
         }
     }
@@ -547,10 +572,11 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
         auto* init = lookupInitStateMutable(ident->Name);
         if (init && !init->isArray) init->fullyInitialized = true;
     } else if (auto* arr = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
-        auto* init = lookupInitStateMutable(arr->Name);
+        auto* baseIdent = unwrapIdentExpr(arr->Base.get());
+        auto* init = baseIdent ? lookupInitStateMutable(baseIdent->Name) : nullptr;
         if (init && init->isArray && !init->fullyInitialized) {
             auto* lit = dynamic_cast<LiteralExpr*>(arr->Index.get());
-            if (lit && lit->Type == "nter") {
+            if (lit && lit->Type == Type::Integer()) {
                 try {
                     long long idx = std::stoll(lit->Value);
                     if (idx >= 0 && static_cast<std::size_t>(idx) < init->elementInitialized.size()) {
@@ -571,7 +597,7 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
     if (node.Start) node.Start->accept(*this);
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType == "vaziu")
+        if (node.Cond->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
     }
     ++LoopDepth;
@@ -585,7 +611,7 @@ void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
         for (auto& arg : node.Args->Args)
             if (arg && !handleArrayIdentArg(*arg))
                 arg->accept(*this);
-    node.ResolvedType = "vaziu";
+    node.ResolvedType = Type::Void();
 }
 
 void SemanticAnalyzer::visit(ImportSttmt& node) {
@@ -593,36 +619,35 @@ void SemanticAnalyzer::visit(ImportSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(FStringExpr& node) {
-    static const std::unordered_set<std::string> printableTypes = {
-        "nter", "num", "bool", "textu"
-    };
     for (auto& seg : node.Parts) {
         if (!seg.expr) continue;
         if (!handleArrayIdentArg(*seg.expr)) {
             seg.expr->accept(*this);
-            const std::string& t = seg.expr->ResolvedType;
-            if (!t.empty() && !printableTypes.count(t))
-                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t + "'");
+            const Type& t = seg.expr->ResolvedType;
+            const bool printable = t == Type::Integer() || t == Type::Number()
+                || t == Type::Bool() || t == Type::Text();
+            if (t.valid() && !printable)
+                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
         }
     }
-    node.ResolvedType = "textu";
+    node.ResolvedType = Type::Text();
 }
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {
     if (node.Operand) node.Operand->accept(*this);
     if (node.Op == "!")
-        node.ResolvedType = "bool";
+        node.ResolvedType = Type::Bool();
     else // "-" (numeric negation) keeps operand type, default to num if unknown
-        node.ResolvedType = node.Operand ? node.Operand->ResolvedType : "num";
+        node.ResolvedType = node.Operand ? node.Operand->ResolvedType : Type::Number();
 }
 
 void SemanticAnalyzer::visit(SaiSttmt& node) {
     if (node.Code) {
         node.Code->accept(*this);
-        const std::string& t = node.Code->ResolvedType;
-        if (t != "nter") {
+        const Type& t = node.Code->ResolvedType;
+        if (t != Type::Integer()) {
             std::string err = "sai() expects an integer exit code";
-            if (!t.empty()) err += ", got value of type '" + t + "'";
+            if (t.valid()) err += ", got value of type '" + t.str() + "'";
             addError(errLoc(node.LineNum) + err);
         }
     }
@@ -631,10 +656,10 @@ void SemanticAnalyzer::visit(SaiSttmt& node) {
 void SemanticAnalyzer::visit(KonfirmaSttmt& node) {
     if (node.Cond) {
         node.Cond->accept(*this);
-        const std::string& t = node.Cond->ResolvedType;
-        if (t != "bool" && t != "nter" && t != "num") {
+        const Type& t = node.Cond->ResolvedType;
+        if (t != Type::Bool() && t != Type::Integer() && t != Type::Number()) {
             std::string err = "konfirma() expects a boolean condition";
-            if (!t.empty()) err += ", got value of type '" + t + "'";
+            if (t.valid()) err += ", got value of type '" + t.str() + "'";
             addError(errLoc(node.LineNum) + err);
         }
     };

@@ -229,6 +229,11 @@ add_executable(
     ${KRIOL_LLVM_SOURCES}
 )
 
+add_executable(
+    kriol_type_model_test
+    tests/api/type_model.cc
+)
+
 set_source_files_properties(
     ${KRIOL_LLVM_SOURCES}
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
@@ -273,6 +278,7 @@ endfunction()
 
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
+kriol_configure_target(kriol_type_model_test)
 
 # -----------------------------------------------------------------------------
 # Linking
@@ -342,9 +348,11 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:kriol_api_compile_memory_test>
     COMMAND
+        $<TARGET_FILE:kriol_type_model_test>
+    COMMAND
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}
-    DEPENDS kriol kriol_api_compile_memory_test
+    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

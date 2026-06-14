@@ -1,0 +1,7 @@
+fn identidade(nter valor) nter {
+    divolvi valor;
+}
+
+fn inisiu() {
+    identidade(1) = 2;
+}

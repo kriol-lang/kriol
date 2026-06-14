@@ -1,0 +1,10 @@
+fn identidade(nter valor) nter {
+    divolvi valor;
+}
+
+fn inisiu() {
+    nter[2] valores = [7, 9];
+    nter chamada = (identidade)(valores[0]);
+    nter indice = (valores)[1];
+    konfirma(chamada == 7 && indice == 9);
+}

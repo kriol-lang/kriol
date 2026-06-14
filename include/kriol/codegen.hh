@@ -58,10 +58,7 @@ namespace ast {
         };
         std::vector<DeferredGlobalInit> DeferredGlobalInits;
 
-        // Type table: variable name -> Kriol type string
-        std::unordered_map<std::string, std::string> TypeTable;
-
-        llvm::Type*          mapType(const std::string& kriolType);
+        llvm::Type*          mapType(const Type& kriolType);
         llvm::AllocaInst*    createEntryAlloca(llvm::Function* fn,
                                                const std::string& name,
                                                llvm::Type* ty);
@@ -134,6 +131,8 @@ namespace ast {
         void visit(IdentExpr&         node) override;
         void visit(ParExpr&           node) override;
         void visit(ArrayAccessExpr&   node) override;
+        void visit(MemberAccessExpr&  node) override;
+        void visit(QualifiedAccessExpr& node) override;
         void visit(ArrayLiteralExpr&  node) override;
         void visit(ArrayRepeatExpr&   node) override;
         void visit(AssignExpr&        node) override;

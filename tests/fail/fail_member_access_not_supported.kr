@@ -1,0 +1,4 @@
+fn inisiu() {
+    nter valor = 1;
+    mostra(valor.campo);
+}

@@ -1,10 +1,12 @@
-#ifndef _KRIOL_AST_TRANSPILER_HEADER
-#define _KRIOL_AST_TRANSPILER_HEADER
+#ifndef _KRIOL_AST_HEADER
+#define _KRIOL_AST_HEADER
 
 #include <string>
 #include <vector>
 #include <memory>
 #include <utility>
+
+#include "type.hh"
 
 
 namespace kriol {
@@ -32,6 +34,8 @@ namespace ast {
     class MostraFunCallExpr;
     class ImportSttmt;
     class ArrayAccessExpr;
+    class MemberAccessExpr;
+    class QualifiedAccessExpr;
     class ArrayLiteralExpr;
     class ArrayRepeatExpr;
     class FStringExpr;
@@ -62,6 +66,8 @@ namespace ast {
         virtual void visit(MostraFunCallExpr& node) = 0;
         virtual void visit(ImportSttmt& node) = 0;
         virtual void visit(ArrayAccessExpr& node) = 0;
+        virtual void visit(MemberAccessExpr& node) = 0;
+        virtual void visit(QualifiedAccessExpr& node) = 0;
         virtual void visit(ArrayLiteralExpr& node) = 0;
         virtual void visit(ArrayRepeatExpr& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
@@ -79,23 +85,23 @@ namespace ast {
 
     class Expr : public Sttmt {
     public:
-        std::string ResolvedType;
+        Type ResolvedType;
         virtual ~Expr() = default;
     };
 
     class VarDeclSttmt : public Sttmt {
     public:
-        std::string Type;
+        kriol::Type Type;
         std::string Name;
         std::unique_ptr<Expr> Value;
         bool IsParam = false;
         bool IsArray = false;
         std::size_t ArraySize = 0;
 
-        VarDeclSttmt(std::string Type, std::string Name, std::unique_ptr<Expr> Value)
+        VarDeclSttmt(kriol::Type Type, std::string Name, std::unique_ptr<Expr> Value)
             : Type(std::move(Type)), Name(std::move(Name)), Value(std::move(Value)) {}
         void accept(Visitor& v) override { v.visit(*this); }
-        void SetType(std::string type) { Type = std::move(type); }
+        void SetType(kriol::Type type) { Type = std::move(type); }
     };
 
     class BlockSttmt : public Sttmt {
@@ -118,12 +124,12 @@ namespace ast {
 
     class FuncDeclSttmt : public Sttmt {
     public:
-        std::string Type;
+        kriol::Type Type;
         std::string Name;
         std::unique_ptr<FuncArgs> Args;
         std::unique_ptr<BlockSttmt> Body;
 
-        FuncDeclSttmt(std::string Type, std::string Name, std::unique_ptr<FuncArgs> Args, std::unique_ptr<BlockSttmt> Body)
+        FuncDeclSttmt(kriol::Type Type, std::string Name, std::unique_ptr<FuncArgs> Args, std::unique_ptr<BlockSttmt> Body)
             : Type(std::move(Type)), Name(std::move(Name)), Args(std::move(Args)), Body(std::move(Body)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
@@ -175,11 +181,11 @@ namespace ast {
 
     class FunCallExpr : public Expr {
     public:
-        std::string Name;
+        std::unique_ptr<Expr> Callee;
         std::unique_ptr<FuncCallArgs> Args;
 
-        FunCallExpr(std::string Name, std::unique_ptr<FuncCallArgs> Args)
-            : Name(std::move(Name)), Args(std::move(Args)) {}
+        FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
+            : Callee(std::move(Callee)), Args(std::move(Args)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -188,7 +194,7 @@ namespace ast {
         bool AddNewline = false;
 
         MostraFunCallExpr(std::unique_ptr<FuncCallArgs> Args, bool addNewline = false)
-            : FunCallExpr("printf", std::move(Args)), AddNewline(addNewline) {}
+            : FunCallExpr(nullptr, std::move(Args)), AddNewline(addNewline) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -205,10 +211,10 @@ namespace ast {
 
     class LiteralExpr : public Expr {
     public:
-        std::string Type;
+        kriol::Type Type;
         std::string Value;
 
-        LiteralExpr(std::string Type, std::string Value)
+        LiteralExpr(kriol::Type Type, std::string Value)
             : Type(std::move(Type)), Value(std::move(Value)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
@@ -240,11 +246,31 @@ namespace ast {
 
     class ArrayAccessExpr : public Expr {
     public:
-        std::string Name;
+        std::unique_ptr<Expr> Base;
         std::unique_ptr<Expr> Index;
 
-        ArrayAccessExpr(std::string Name, std::unique_ptr<Expr> Index)
-            : Name(std::move(Name)), Index(std::move(Index)) {}
+        ArrayAccessExpr(std::unique_ptr<Expr> Base, std::unique_ptr<Expr> Index)
+            : Base(std::move(Base)), Index(std::move(Index)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class MemberAccessExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Base;
+        std::string Member;
+
+        MemberAccessExpr(std::unique_ptr<Expr> base, std::string member)
+            : Base(std::move(base)), Member(std::move(member)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class QualifiedAccessExpr : public Expr {
+    public:
+        std::unique_ptr<Expr> Qualifier;
+        std::string Member;
+
+        QualifiedAccessExpr(std::unique_ptr<Expr> qualifier, std::string member)
+            : Qualifier(std::move(qualifier)), Member(std::move(member)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -352,4 +378,4 @@ namespace ast {
 }
 }
 
-#endif // _KRIOL_AST_TRANSPILER_HEADER
+#endif // _KRIOL_AST_HEADER

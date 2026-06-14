@@ -20,7 +20,7 @@
 #include <lld/Common/Driver.h>
 LLD_HAS_DRIVER(wasm)
 
-#endif
+#endif // KRIOL_USE_EMBEDDED_LLD
 
 #include <stdexcept>
 #include <cstdlib>
@@ -40,16 +40,16 @@ LLD_HAS_DRIVER(wasm)
 #if KRIOL_WASI_ENABLE_GC
 #include "kriol_runtime_wasm32_wasi_gc.bc.h"
 #include "libgc_wasm32_wasi.h"
-#else
+#else // !KRIOL_WASI_ENABLE_GC
 #include "kriol_runtime_wasm32_wasi_nogc.bc.h"
-#endif
+#endif // KRIOL_WASI_ENABLE_GC
 
 #include "wasi_crt1_command.o.h"
 #include "wasi_libc.a.h"
 #include "wasi_libm.a.h"
 #include "wasi_builtins.a.h"
 
-#endif
+#endif // KRIOL_ENABLE_WASM
 
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
@@ -78,24 +78,22 @@ static std::string processEscapes(const std::string& raw) {
 }
 
 // Returns the printf format specifier for a Kriol type.
-static const char* fmtSpec(const std::string& kriolType) {
-    if (kriolType == "nter") return "%lld";
-    if (kriolType == "num")  return "%g";
+static const char* fmtSpec(const kriol::Type& kriolType) {
+    if (kriolType == kriol::Type::Integer()) return "%lld";
+    if (kriolType == kriol::Type::Number())  return "%g";
     return "%s"; // textu / fallback
 }
 
 // Reverse-map an LLVM type to the corresponding Kriol type string.
-static std::string llvmTypeToKriol(llvm::Type* ty) {
-    if (ty->isDoubleTy())    return "num";
-    if (ty->isIntegerTy(64)) return "nter";
-    if (ty->isIntegerTy(1))  return "bool";
-    return "textu"; // pointer / fallback
+static kriol::Type llvmTypeToKriol(llvm::Type* ty) {
+    if (ty->isDoubleTy())    return kriol::Type::Number();
+    if (ty->isIntegerTy(64)) return kriol::Type::Integer();
+    if (ty->isIntegerTy(1))  return kriol::Type::Bool();
+    return kriol::Type::Text(); // pointer / fallback
 }
 
 namespace {
 
-using kriol::typeutils::arrayElementType;
-using kriol::typeutils::parseType;
 using kriol::ast::CodegenTarget;
 
 struct EmbeddedBlob {
@@ -432,20 +430,15 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
     initializeTargets();
 }
 
-llvm::Type* CodeGenVisitor::mapType(const std::string& t) {
-    auto parsed = parseType(t);
-    if (parsed && parsed->isArray()) {
-        llvm::Type* current = mapType(parsed->Base);
-        for (auto it = parsed->ArrayDims.rbegin(); it != parsed->ArrayDims.rend(); ++it)
-            current = llvm::ArrayType::get(current, *it);
-        return current;
-    }
+llvm::Type* CodeGenVisitor::mapType(const Type& t) {
+    if (t.isArray())
+        return llvm::ArrayType::get(mapType(t.elementType()), t.arraySize());
 
-    if (t == "num")   return llvm::Type::getDoubleTy(Context);
-    if (t == "nter")  return llvm::Type::getInt64Ty(Context);
-    if (t == "bool")  return llvm::Type::getInt1Ty(Context);
-    if (t == "textu") return llvm::PointerType::getUnqual(Context);
-    if (t == "vaziu") return llvm::Type::getVoidTy(Context);
+    if (t == Type::Number())  return llvm::Type::getDoubleTy(Context);
+    if (t == Type::Integer()) return llvm::Type::getInt64Ty(Context);
+    if (t == Type::Bool())    return llvm::Type::getInt1Ty(Context);
+    if (t == Type::Text())    return llvm::PointerType::getUnqual(Context);
+    if (t == Type::Void())    return llvm::Type::getVoidTy(Context);
 
     return llvm::PointerType::getUnqual(Context);
 }
@@ -597,7 +590,6 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {
-    TypeTable[node.Name] = node.Type;
     if (node.IsParam) return; // params are handled inside FuncDeclSttmt
 
     llvm::Type* ty = mapType(node.Type);
@@ -691,7 +683,9 @@ llvm::Value* CodeGenVisitor::createArrayElementPtr(llvm::Value* storage,
 }
 
 void CodeGenVisitor::visit(ArrayAccessExpr& node) {
-    auto* storage = getArrayStorage(node.Name);
+    auto* ident = unwrapIdentExpr(node.Base.get());
+    if (!ident) { LastValue = nullptr; return; }
+    auto* storage = getArrayStorage(ident->Name);
     if (!storage) { LastValue = nullptr; return; }
 
     llvm::Type* storageTy = nullptr;
@@ -710,7 +704,15 @@ void CodeGenVisitor::visit(ArrayAccessExpr& node) {
     Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
 
     llvm::Value* elemPtr = createArrayElementPtr(storage, storageTy, idx);
-    LastValue = Builder->CreateLoad(storageTy->getArrayElementType(), elemPtr, node.Name + "[idx]");
+    LastValue = Builder->CreateLoad(storageTy->getArrayElementType(), elemPtr, ident->Name + "[idx]");
+}
+
+void CodeGenVisitor::visit(MemberAccessExpr& node) {
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
+    LastValue = nullptr;
 }
 
 void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
@@ -843,9 +845,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     if (nodeArgCount > 0) {
         size_t i = 0;
         for (auto& llvmArg : fn->args()) {
-            if (i >= nodeArgCount) break; // XXX: skip hidden WASI argc/argv
+            if (i >= nodeArgCount) break; // XXX: skip hidden WASI argc/argv for main fn
             auto& p = node.Args->Args[i++];
-            TypeTable[p->Name] = p->Type;
             auto* a = createEntryAlloca(fn, p->Name, llvmArg.getType());
             Builder->CreateStore(&llvmArg, a);
             declareVar(p->Name, a);
@@ -983,7 +984,9 @@ void CodeGenVisitor::visit(FuncCallArgs& node) {
 }
 
 void CodeGenVisitor::visit(FunCallExpr& node) {
-    auto* fn = Mod->getFunction(node.Name);
+    auto* callee = unwrapIdentExpr(node.Callee.get());
+    if (!callee) { LastValue = nullptr; return; }
+    auto* fn = Mod->getFunction(callee->Name);
     if (!fn) { LastValue = nullptr; return; }
 
     std::vector<llvm::Value*> callArgs;
@@ -1041,15 +1044,15 @@ void CodeGenVisitor::visit(LiteralExpr& node) {
     const auto& t = node.Type;
     const auto& v = node.Value;
 
-    if (t == "num") {
+    if (t == Type::Number()) {
         LastValue = llvm::ConstantFP::get(Context, llvm::APFloat(std::stod(v)));
-    } else if (t == "nter") {
+    } else if (t == Type::Integer()) {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context),
                                            std::stoll(v), /*isSigned=*/true);
-    } else if (t == "bool") {
+    } else if (t == Type::Bool()) {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt1Ty(Context),
                                            std::stoi(v) != 0);
-    } else if (t == "char*") {
+    } else if (t == Type::Text()) {
         std::string s = v;
         if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front())
             s = s.substr(1, s.size() - 2);
@@ -1102,7 +1105,8 @@ void CodeGenVisitor::visit(AssignExpr& node) {
             destTy = gv->getValueType();
         }
     } else if (arrayAccess) {
-        auto* storage = getArrayStorage(arrayAccess->Name);
+        auto* baseIdent = unwrapIdentExpr(arrayAccess->Base.get());
+        auto* storage = baseIdent ? getArrayStorage(baseIdent->Name) : nullptr;
         if (storage) {
             if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) destTy = alloca->getAllocatedType();
             else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) destTy = gv->getValueType();
@@ -1240,8 +1244,8 @@ void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
         }
 
         llvm::Value* elem      = Builder->CreateLoad(elemTy, elemPtr, "fstr_array_elem");
-        std::string  elemType  = llvmTypeToKriol(elemTy);
-        if (elemType == "bool") {
+        Type elemType = llvmTypeToKriol(elemTy);
+        if (elemType == Type::Bool()) {
             auto* i32Ty = llvm::Type::getInt32Ty(Context);
             llvm::Value* ext = elem->getType()->isIntegerTy(1)
                 ? Builder->CreateZExt(elem, i32Ty)
@@ -1269,8 +1273,7 @@ void CodeGenVisitor::visit(FStringExpr& node) {
                 fmtStr += c;
             }
         } else { // Interpolated expression
-            auto parsedType = parseType(seg.expr->ResolvedType);
-            if (parsedType && parsedType->isArray()) {
+            if (seg.expr->ResolvedType.isArray()) {
                 auto* ident = unwrapIdentExpr(seg.expr.get());
                 if (!ident)
                     throw std::runtime_error("array interpolation currently supports array variables only");
@@ -1289,10 +1292,10 @@ void CodeGenVisitor::visit(FStringExpr& node) {
             llvm::Value* val = LastValue;
             if (!val) continue;
 
-            std::string kriolType = seg.expr->ResolvedType;
-            if (kriolType.empty()) kriolType = llvmTypeToKriol(val->getType());
+            Type kriolType = seg.expr->ResolvedType;
+            if (!kriolType.valid()) kriolType = llvmTypeToKriol(val->getType());
 
-            if (kriolType == "bool") {
+            if (kriolType == Type::Bool()) {
                 auto* i32Ty = llvm::Type::getInt32Ty(Context);
                 llvm::Value* ext = val->getType()->isIntegerTy(1)
                     ? Builder->CreateZExt(val, i32Ty) : val;
@@ -1319,14 +1322,14 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     auto* i32Ty    = llvm::Type::getInt32Ty(Context);
     auto* putcharFn = getOrDeclarePutchar(*Mod, Context);
 
-    auto emitPrintValue = [&](llvm::Value* val, const std::string& resolvedType, bool newline) {
-        if (resolvedType == "nter") {
+    auto emitPrintValue = [&](llvm::Value* val, const Type& resolvedType, bool newline) {
+        if (resolvedType == Type::Integer()) {
             if (val->getType() != i64Ty) val = coerce(val, i64Ty);
             Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "nter", i64Ty, newline), {val});
-        } else if (resolvedType == "num") {
+        } else if (resolvedType == Type::Number()) {
             if (val->getType() != doubleTy) val = coerce(val, doubleTy);
             Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "num", doubleTy, newline), {val});
-        } else if (resolvedType == "bool") {
+        } else if (resolvedType == Type::Bool()) {
             llvm::Value* ext = val->getType()->isIntegerTy(1)
                 ? Builder->CreateZExt(val, i32Ty, "bool_ext")
                 : Builder->CreateTrunc(val, i32Ty, "bool_ext");
@@ -1382,8 +1385,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         bool addNlHere = (i == lastIdx) && node.AddNewline;
         auto& arg = args[i];
 
-        auto parsedType = parseType(arg->ResolvedType);
-        if (parsedType && parsedType->isArray()) {
+        if (arg->ResolvedType.isArray()) {
             auto* ident = unwrapIdentExpr(arg.get());
             if (!ident)
                 throw std::runtime_error("array printing currently supports array variables only");

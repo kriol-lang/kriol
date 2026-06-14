@@ -64,6 +64,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "("             return TOKENIZE(LPAR);
 ")"             return TOKENIZE(RPAR);
 "."             return TOKENIZE(DOT);
+"::"            return TOKENIZE(COLONCOLON);
 ","             return TOKENIZE(COMMA);
 ";"             return TOKENIZE(SEMIC);
 "{"             return TOKENIZE(LCURLY);
