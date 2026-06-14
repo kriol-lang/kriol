@@ -49,7 +49,7 @@ Then close and reopen the shell and try `kriol --version`.
 The first thing to do after compiling the compiler is to execute the help command:
 
 ```sh
-./kriol --help
+kriol --help
 ```
 
 After executing that command you may see the usage section and some of its options.
@@ -57,31 +57,31 @@ After executing that command you may see the usage section and some of its optio
 An example of how it could be used is to compile one of the example files in the examples folder:
 
 ```sh
-./kriol examples/fibonacci-recursive.kriol
+kriol examples/fibonacci_recursive.kriol
 ```
 
-This compiles `fibonacci-recursive.kriol` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
+This compiles `fibonacci_recursive.kriol` to a native binary named `a.out` by default. Use `-o` to specify a different output name:
 
 ```sh
-./kriol examples/fibonacci-recursive.kriol -o fibonacci-recursive
+kriol examples/fibonacci_recursive.kriol -o fibonacci_recursive
 ```
 
 Then execute the compiled binary with:
 
 ```sh
-./fibonacci-recursive
+./fibonacci_recursive
 ```
 
 To inspect the generated LLVM IR instead of producing a binary:
 
 ```sh
-./kriol examples/example03.kriol --emit-ir
+kriol examples/mensage_special.kriol --emit-ir
 ```
 
 To compile a Kriol program to a WASI WebAssembly module:
 
 ```sh
-./kriol examples/hello-world.kriol --target wasm32-wasi -o hello.wasm
+kriol examples/hello_world.kriol --target wasm32-wasi -o hello.wasm
 ```
 
 The generated module is a WASI command module. For a browser playground, run it
