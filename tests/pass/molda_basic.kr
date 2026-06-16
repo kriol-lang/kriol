@@ -1,0 +1,15 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn envelhece(Pessoa pessoa) nter {
+    divolvi pessoa.idadi + 1;
+}
+
+fn inisiu() {
+    Pessoa pessoa = Pessoa::{nomi: 'jose', idadi: 60};
+    mostra(pessoa.nomi);
+    mostra(" ");
+    mostran(envelhece(pessoa));
+}

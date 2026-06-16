@@ -50,6 +50,14 @@ namespace ast {
         // Module-scope globals: variable name -> GlobalVariable*
         std::unordered_map<std::string, llvm::GlobalVariable*> GlobalVars;
 
+        struct RecordInfo {
+            std::vector<ast::VarDeclSttmt*> fields;
+            std::unordered_map<std::string, std::size_t> fieldIndex;
+            llvm::StructType* llvmType = nullptr;
+        };
+
+        std::unordered_map<std::string, RecordInfo> Records;
+
         // Non-constant global initializers deferred until inisiu's preamble
         struct DeferredGlobalInit {
             llvm::GlobalVariable*  Var;
@@ -59,6 +67,7 @@ namespace ast {
         std::vector<DeferredGlobalInit> DeferredGlobalInits;
 
         llvm::Type*          mapType(const Type& kriolType);
+        llvm::StructType*    getOrCreateRecordType(const std::string& name);
         llvm::AllocaInst*    createEntryAlloca(llvm::Function* fn,
                                                const std::string& name,
                                                llvm::Type* ty);
@@ -81,6 +90,7 @@ namespace ast {
         // Forward-declare a user function in the LLVM module (type + name, no body).
         // Called in the program-root pre-pass so mutual/forward calls resolve.
         void forwardDeclareFunc(ast::FuncDeclSttmt& node);
+        void registerRecord(ast::MoldaDeclSttmt& node);
 
         // Central scalar coercion table: convert v to targetTy.
         // Supported pairs: nter->num (SIToFP), bool->nter (ZExt),
@@ -116,6 +126,7 @@ namespace ast {
         void emitNative(const std::string& outputPath);
 
         void visit(VarDeclSttmt&      node) override;
+        void visit(MoldaDeclSttmt&    node) override;
         void visit(BlockSttmt&        node) override;
         void visit(FuncArgs&          node) override;
         void visit(FuncDeclSttmt&     node) override;
@@ -135,6 +146,7 @@ namespace ast {
         void visit(QualifiedAccessExpr& node) override;
         void visit(ArrayLiteralExpr&  node) override;
         void visit(ArrayRepeatExpr&   node) override;
+        void visit(RecordLiteralExpr& node) override;
         void visit(AssignExpr&        node) override;
         void visit(ForSttmt&          node) override;
         void visit(MostraFunCallExpr& node) override;

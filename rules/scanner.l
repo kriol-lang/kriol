@@ -24,7 +24,8 @@ INT [+|-]?[0-9]+
 
 FLOAT {INT}\.[0-9]+
 
-IDENT [a-zA-Z_][a-zA-Z0-9_]*
+TYPE_IDENT [A-Z][a-zA-Z0-9_]*
+IDENT [a-z_][a-zA-Z0-9_]*
 
 STRING_DQ   ["]([^"\\\n]|\\.|\\\n)*["]
 STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
@@ -38,6 +39,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 
 "fn"            return TOKENIZE(FN);
+"molda"         return TOKENIZE(MOLDA);
 "mostran"       return TOKENIZE(MOSTRAN);
 "mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
@@ -65,6 +67,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 ")"             return TOKENIZE(RPAR);
 "."             return TOKENIZE(DOT);
 "::"            return TOKENIZE(COLONCOLON);
+":"             return TOKENIZE(COLON);
 ","             return TOKENIZE(COMMA);
 ";"             return TOKENIZE(SEMIC);
 "{"             return TOKENIZE(LCURLY);
@@ -88,6 +91,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;
+{TYPE_IDENT}    SAVE_TOKEN;   return TYPE_IDENT;
 {IDENT}         SAVE_TOKEN;   return IDENT;
 f["]            { yy_push_state(FSTRING_DQ); return TOKENIZE(FSTR_START); }
 f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }

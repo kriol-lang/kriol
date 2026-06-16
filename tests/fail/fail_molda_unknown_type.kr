@@ -1,0 +1,4 @@
+fn inisiu() {
+    Pessoa pessoa = Pessoa::{nomi: "jose", idadi: 60};
+    mostra(pessoa.nomi);
+}

@@ -44,7 +44,7 @@ static const std::unordered_set<std::string> reservedKeywords = {
     "mostra", "mostran", "sai", "konfirma",
 
     // Language keywords.
-    "si", "sinon", "nkuantu", "pa", "fn", "divolvi", "inpristan",
+    "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
     "para", "kontinua", "dipoz",
 
     // Type names and literals.
@@ -84,14 +84,69 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
 
     FuncInfo info;
     info.retType = node.Type;
+    validateTypeKnown(node.Type, node.LineNum, "return type of function '" + node.Name + "'");
     if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg) info.paramTypes.push_back(arg->Type);
+        for (auto& arg : node.Args->Args) {
+            if (!arg) continue;
+            validateTypeKnown(arg->Type, arg->LineNum, "parameter '" + arg->Name + "'");
+            info.paramTypes.push_back(arg->Type);
+        }
     FunctionTable[node.Name] = std::move(info);
+}
+
+void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node) {
+    if (!checkDeclaredNameValid(node.Name, "molda", node.LineNum)) return;
+
+    if (RecordTable.count(node.Name)) {
+        addError(errLoc(node.LineNum) + "duplicate molda declaration '" + node.Name + "'");
+        return;
+    }
+
+    if (FunctionTable.count(node.Name))
+        addError(errLoc(node.LineNum) + "molda name '" + node.Name + "' conflicts with an existing function");
+
+    RecordInfo info;
+    std::unordered_set<std::string> seenFields;
+    for (auto& field : node.Fields) {
+        if (!field) continue;
+
+        if (!checkDeclaredNameValid(field->Name, "field", field->LineNum))
+            continue;
+
+        if (!seenFields.insert(field->Name).second) {
+            addError(errLoc(field->LineNum) + "duplicate field '" + field->Name
+                     + "' in molda '" + node.Name + "'");
+            continue;
+        }
+
+        validateTypeKnown(field->Type, field->LineNum, "field '" + field->Name + "'");
+        info.fieldIndex[field->Name] = info.fields.size();
+        info.fields.push_back(field.get());
+    }
+
+    RecordTable[node.Name] = std::move(info);
+}
+
+bool SemanticAnalyzer::validateTypeKnown(const Type& type,
+                                         int lineNum,
+                                         const std::string& context) {
+    if (!type.valid()) return false;
+    if (type.isArray())
+        return validateTypeKnown(type.elementType(), lineNum, context);
+    if (!type.isNamed()) return true;
+    if (RecordTable.count(type.name())) return true;
+
+    addError(errLoc(lineNum) + "unknown type '" + type.str() + "' in " + context);
+    return false;
 }
 
 void SemanticAnalyzer::Check(BlockSttmt* program) {
     if (!program) return;
+
+    for (auto& s : program->SttmtList) {
+        if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
+            registerRecord(*rec);
+    }
 
     // First pass: register all top-level function signatures so forward calls
     // and mutual recursion are resolved before any body is visited.
@@ -143,6 +198,9 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must have a positive size");
         canDeclare = false;
     }
+
+    if (!validateTypeKnown(node.Type, node.LineNum, kind + " '" + node.Name + "'"))
+        canDeclare = false;
 
     if (node.IsArray && node.Value) {
         auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
@@ -214,7 +272,17 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         node.Value->accept(*this);
         if (node.Value->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
+        if (!node.IsArray && node.Value->ResolvedType.valid()
+                && node.Value->ResolvedType != node.Type
+                && !isWideningCoercion(node.Value->ResolvedType, node.Type))
+            addError(errLoc(node.LineNum) + "cannot assign value of type '"
+                     + node.Value->ResolvedType.str() + "' to variable '" + node.Name
+                     + "' of type '" + node.Type.str() + "'");
     }
+}
+
+void SemanticAnalyzer::visit(MoldaDeclSttmt& node) {
+    (void)node;
 }
 
 void SemanticAnalyzer::visit(BlockSttmt& node) {
@@ -492,7 +560,29 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
 
 void SemanticAnalyzer::visit(MemberAccessExpr& node) {
     if (node.Base) node.Base->accept(*this);
-    addError(errLoc(node.LineNum) + "member access is not supported yet");
+    const Type baseType = node.Base ? node.Base->ResolvedType : Type::Invalid();
+    if (!baseType.valid()) return;
+
+    if (!baseType.isNamed()) {
+        addError(errLoc(node.LineNum) + "member access requires a molda value");
+        return;
+    }
+
+    auto recordIt = RecordTable.find(baseType.name());
+    if (recordIt == RecordTable.end()) {
+        addError(errLoc(node.LineNum) + "unknown molda type '" + baseType.str() + "'");
+        return;
+    }
+
+    const auto& fields = recordIt->second;
+    auto fieldIt = fields.fieldIndex.find(node.Member);
+    if (fieldIt == fields.fieldIndex.end()) {
+        addError(errLoc(node.LineNum) + "molda '" + baseType.str()
+                 + "' has no field '" + node.Member + "'");
+        return;
+    }
+
+    node.ResolvedType = fields.fields[fieldIt->second]->Type;
 }
 
 void SemanticAnalyzer::visit(QualifiedAccessExpr& node) {
@@ -509,6 +599,51 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
 void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
     if (node.Fill) node.Fill->accept(*this);
     node.ResolvedType = Type::ArrayRepeat();
+}
+
+void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
+    auto recordIt = RecordTable.find(node.TypeName);
+    if (recordIt == RecordTable.end()) {
+        addError(errLoc(node.LineNum) + "unknown molda type '" + node.TypeName + "'");
+        return;
+    }
+
+    const RecordInfo& info = recordIt->second;
+    std::unordered_set<std::string> seen;
+    std::vector<bool> initialized(info.fields.size(), false);
+
+    for (auto& field : node.Fields) {
+        if (!seen.insert(field.Name).second) {
+            addError(errLoc(node.LineNum) + "duplicate field '" + field.Name
+                     + "' in '" + node.TypeName + "' literal");
+            continue;
+        }
+
+        auto indexIt = info.fieldIndex.find(field.Name);
+        if (indexIt == info.fieldIndex.end()) {
+            addError(errLoc(node.LineNum) + "molda '" + node.TypeName
+                     + "' has no field '" + field.Name + "'");
+            if (field.Value) field.Value->accept(*this);
+            continue;
+        }
+
+        if (field.Value) field.Value->accept(*this);
+        const Type& got = field.Value ? field.Value->ResolvedType : Type::Invalid();
+        const Type& want = info.fields[indexIt->second]->Type;
+        if (got.valid() && got != want && !isWideningCoercion(got, want))
+            addError(errLoc(node.LineNum) + "field '" + field.Name + "' of '"
+                     + node.TypeName + "': expected '" + want.str()
+                     + "', got '" + got.str() + "'");
+        initialized[indexIt->second] = true;
+    }
+
+    for (std::size_t i = 0; i < info.fields.size(); ++i) {
+        if (!initialized[i])
+            addError(errLoc(node.LineNum) + "missing field '" + info.fields[i]->Name
+                     + "' in '" + node.TypeName + "' literal");
+    }
+
+    node.ResolvedType = Type::Named(node.TypeName);
 }
 
 void SemanticAnalyzer::visit(AssignExpr& node) {
@@ -608,9 +743,16 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
 
 void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
     if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg && !handleArrayIdentArg(*arg))
+        for (auto& arg : node.Args->Args) {
+            if (arg && !handleArrayIdentArg(*arg)) {
                 arg->accept(*this);
+                const Type& t = arg->ResolvedType;
+                const bool printable = t == Type::Integer() || t == Type::Number()
+                    || t == Type::Bool() || t == Type::Text() || t.isArray();
+                if (t.valid() && !printable)
+                    addError(errLoc(node.LineNum) + "cannot print value of type '" + t.str() + "'");
+            }
+        }
     node.ResolvedType = Type::Void();
 }
 

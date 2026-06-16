@@ -441,8 +441,32 @@ llvm::Type* CodeGenVisitor::mapType(const Type& t) {
     if (t == Type::Bool())    return llvm::Type::getInt1Ty(Context);
     if (t == Type::Text())    return llvm::PointerType::getUnqual(Context);
     if (t == Type::Void())    return llvm::Type::getVoidTy(Context);
+    if (t.isNamed())          return getOrCreateRecordType(t.name());
 
     return llvm::PointerType::getUnqual(Context);
+}
+
+llvm::StructType* CodeGenVisitor::getOrCreateRecordType(const std::string& name) {
+    auto it = Records.find(name);
+    if (it == Records.end())
+        throw std::runtime_error("unknown molda type '" + name + "'");
+
+    RecordInfo& info = it->second;
+    if (info.llvmType && !info.llvmType->isOpaque())
+        return info.llvmType;
+
+    if (!info.llvmType)
+        info.llvmType = llvm::StructType::create(Context, "molda." + name);
+
+    std::vector<llvm::Type*> fieldTypes;
+    fieldTypes.reserve(info.fields.size());
+    for (auto* field : info.fields)
+        fieldTypes.push_back(mapType(field->Type));
+
+    if (info.llvmType->isOpaque())
+        info.llvmType->setBody(fieldTypes, false);
+
+    return info.llvmType;
 }
 
 llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
@@ -662,6 +686,11 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
+void CodeGenVisitor::visit(MoldaDeclSttmt& node) {
+    // Molda declarations are registered during the program-root prepass.
+    // They define record types but do not emit runtime instructions.
+}
+
 llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckBounds() {
     if (auto* fn = Mod->getFunction("__kriol_check_bounds")) return fn;
     auto* voidTy = llvm::Type::getVoidTy(Context);
@@ -710,7 +739,50 @@ void CodeGenVisitor::visit(ArrayAccessExpr& node) {
 }
 
 void CodeGenVisitor::visit(MemberAccessExpr& node) {
-    LastValue = nullptr;
+    if (!node.Base || !node.Base->ResolvedType.isNamed()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto recordIt = Records.find(node.Base->ResolvedType.name());
+    if (recordIt == Records.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto fieldIt = recordIt->second.fieldIndex.find(node.Member);
+    if (fieldIt == recordIt->second.fieldIndex.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    std::size_t fieldIndex = fieldIt->second;
+    llvm::StructType* structTy = getOrCreateRecordType(node.Base->ResolvedType.name());
+
+    if (auto* ident = unwrapIdentExpr(node.Base.get())) {
+        llvm::Value* storage = nullptr;
+        if (auto* alloca = lookupVar(ident->Name)) storage = alloca;
+        else if (auto* gv = lookupGlobal(ident->Name)) storage = gv;
+        if (!storage) { LastValue = nullptr; return; }
+
+        llvm::Value* fieldPtr = Builder->CreateStructGEP(
+            structTy,
+            storage,
+            static_cast<unsigned>(fieldIndex),
+            ident->Name + "." + node.Member + ".ptr"
+        );
+        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(fieldIndex));
+        LastValue = Builder->CreateLoad(fieldTy, fieldPtr, ident->Name + "." + node.Member);
+        return;
+    }
+
+    node.Base->accept(*this);
+    if (!LastValue) return;
+    LastValue = Builder->CreateExtractValue(
+        LastValue,
+        {static_cast<unsigned>(fieldIndex)},
+        "field." + node.Member
+    );
 }
 
 void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
@@ -726,6 +798,63 @@ void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
 void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
     // Repeat expresssions are consumed in VarDeclSttmt initializers.
     LastValue = nullptr;
+}
+
+void CodeGenVisitor::visit(RecordLiteralExpr& node) {
+    auto recordIt = Records.find(node.TypeName);
+    if (recordIt == Records.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::StructType* structTy = getOrCreateRecordType(node.TypeName);
+    llvm::Value* record = llvm::UndefValue::get(structTy);
+    std::vector<bool> initialized(recordIt->second.fields.size(), false);
+
+    for (auto& field : node.Fields) {
+        auto fieldIt = recordIt->second.fieldIndex.find(field.Name);
+        if (fieldIt == recordIt->second.fieldIndex.end()) continue;
+
+        std::size_t index = fieldIt->second;
+        if (field.Value) field.Value->accept(*this);
+        llvm::Value* value = LastValue;
+        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(index));
+        if (!value) value = llvm::Constant::getNullValue(fieldTy);
+        if (value->getType() != fieldTy) value = coerce(value, fieldTy);
+        record = Builder->CreateInsertValue(
+            record,
+            value,
+            {static_cast<unsigned>(index)},
+            "record.field"
+        );
+        initialized[index] = true;
+    }
+
+    for (std::size_t i = 0; i < initialized.size(); ++i) {
+        if (initialized[i]) continue;
+        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(i));
+        record = Builder->CreateInsertValue(
+            record,
+            llvm::Constant::getNullValue(fieldTy),
+            {static_cast<unsigned>(i)},
+            "record.field.default"
+        );
+    }
+
+    LastValue = record;
+}
+
+void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
+    if (Records.count(node.Name)) return;
+
+    RecordInfo info;
+    info.llvmType = llvm::StructType::create(Context, "molda." + node.Name);
+    for (auto& field : node.Fields) {
+        if (!field) continue;
+        info.fieldIndex[field->Name] = info.fields.size();
+        info.fields.push_back(field.get());
+    }
+    Records[node.Name] = std::move(info);
 }
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
@@ -754,6 +883,10 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
     // so that forward calls and mutual recursion resolve in codegen.
     if (!CurrentFunction) {
         for (auto& s : node.SttmtList)
+            if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
+                registerRecord(*rec);
+
+        for (auto& s : node.SttmtList)
             if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
                 forwardDeclareFunc(*fn);
 
@@ -767,6 +900,7 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
     pushScope();
     for (auto& s : node.SttmtList) {
         if (!s) continue;
+        if (!CurrentFunction && dynamic_cast<MoldaDeclSttmt*>(s.get())) continue;
         if (!CurrentFunction && dynamic_cast<VarDeclSttmt*>(s.get())) continue;
         s->accept(*this);
     }

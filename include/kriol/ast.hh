@@ -15,6 +15,7 @@ namespace ast {
     // Forward declarations for Visitor
     class Expr;
     class VarDeclSttmt;
+    class MoldaDeclSttmt;
     class BlockSttmt;
     class FuncArgs;
     class FuncDeclSttmt;
@@ -38,6 +39,7 @@ namespace ast {
     class QualifiedAccessExpr;
     class ArrayLiteralExpr;
     class ArrayRepeatExpr;
+    class RecordLiteralExpr;
     class FStringExpr;
     class UnaryExpr;
     class SaiSttmt;
@@ -47,6 +49,7 @@ namespace ast {
     public:
         virtual ~Visitor() = default;
         virtual void visit(VarDeclSttmt& node) = 0;
+        virtual void visit(MoldaDeclSttmt& node) = 0;
         virtual void visit(BlockSttmt& node) = 0;
         virtual void visit(FuncArgs& node) = 0;
         virtual void visit(FuncDeclSttmt& node) = 0;
@@ -70,6 +73,7 @@ namespace ast {
         virtual void visit(QualifiedAccessExpr& node) = 0;
         virtual void visit(ArrayLiteralExpr& node) = 0;
         virtual void visit(ArrayRepeatExpr& node) = 0;
+        virtual void visit(RecordLiteralExpr& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
         virtual void visit(UnaryExpr& node) = 0;
         virtual void visit(SaiSttmt& node) = 0;
@@ -102,6 +106,18 @@ namespace ast {
             : Type(std::move(Type)), Name(std::move(Name)), Value(std::move(Value)) {}
         void accept(Visitor& v) override { v.visit(*this); }
         void SetType(kriol::Type type) { Type = std::move(type); }
+    };
+
+    class MoldaDeclSttmt : public Sttmt {
+    public:
+        std::string Name;
+        std::vector<std::unique_ptr<VarDeclSttmt>> Fields;
+
+        explicit MoldaDeclSttmt(std::string name) : Name(std::move(name)) {}
+        void AddField(std::unique_ptr<VarDeclSttmt> field) {
+            Fields.push_back(std::move(field));
+        }
+        void accept(Visitor& v) override { v.visit(*this); }
     };
 
     class BlockSttmt : public Sttmt {
@@ -294,6 +310,26 @@ namespace ast {
 
         ArrayRepeatExpr(std::unique_ptr<Expr> fill, std::size_t count)
             : Fill(std::move(fill)), Count(count) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class RecordLiteralExpr : public Expr {
+    public:
+        struct FieldInit {
+            std::string Name;
+            std::unique_ptr<Expr> Value;
+        };
+
+        std::string TypeName;
+        std::vector<FieldInit> Fields;
+
+        explicit RecordLiteralExpr(std::string typeName)
+            : TypeName(std::move(typeName)) {}
+
+        void AddField(std::string name, std::unique_ptr<Expr> value) {
+            Fields.push_back({std::move(name), std::move(value)});
+        }
+
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
