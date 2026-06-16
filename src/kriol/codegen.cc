@@ -686,7 +686,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
-void CodeGenVisitor::visit(MoldaDeclSttmt& node) {
+void CodeGenVisitor::visit(MoldaDeclSttmt&) {
     // Molda declarations are registered during the program-root prepass.
     // They define record types but do not emit runtime instructions.
 }
@@ -1552,7 +1552,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     LastValue = nullptr;
 }
 
-void CodeGenVisitor::visit(ImportSttmt& node) {
+void CodeGenVisitor::visit(ImportSttmt&) {
     // TODO: Implement module imports
 }
 

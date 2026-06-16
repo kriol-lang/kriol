@@ -1,0 +1,23 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn get_pessoa(textu nomi, nter idadi) Pessoa {
+    divolvi Pessoa:: {
+        nomi: nomi,
+        idadi: idadi
+    };
+}
+
+fn incrementa_idadi(Pessoa pessoa) {
+    pessoa.idadi += 1;
+}
+
+fn inisiu() {
+    Pessoa pessoa = get_pessoa('John', 54);
+    mostran(f"{pessoa.nomi} ten {pessoa.idadi} anos!");
+    incrementa_idadi(pessoa);
+    mostran(f"{pessoa.nomi} ten {pessoa.idadi} anos!");
+    //mostran("nome de tipo invalido");
+}

@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <unordered_set>
 #include <algorithm>
+#include <cctype>
 
 using namespace kriol::ast;
 
@@ -15,6 +16,10 @@ namespace {
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::firstArrayDim;
 using kriol::typeutils::isArrayType;
+
+static bool startsWithUppercaseAscii(const std::string& name) {
+    return !name.empty() && std::isupper(static_cast<unsigned char>(name[0]));
+}
 
 }
 
@@ -97,6 +102,12 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
 void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node) {
     if (!checkDeclaredNameValid(node.Name, "molda", node.LineNum)) return;
 
+    if (!startsWithUppercaseAscii(node.Name)) {
+        addError(errLoc(node.LineNum) + "molda type name '" + node.Name
+                 + "' must start with an uppercase letter");
+        return;
+    }
+
     if (RecordTable.count(node.Name)) {
         addError(errLoc(node.LineNum) + "duplicate molda declaration '" + node.Name + "'");
         return;
@@ -104,6 +115,9 @@ void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node) {
 
     if (FunctionTable.count(node.Name))
         addError(errLoc(node.LineNum) + "molda name '" + node.Name + "' conflicts with an existing function");
+
+    if (node.Fields.empty())
+        addError(errLoc(node.LineNum) + "molda '" + node.Name + "' must declare at least one field");
 
     RecordInfo info;
     std::unordered_set<std::string> seenFields;
@@ -281,8 +295,9 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     }
 }
 
-void SemanticAnalyzer::visit(MoldaDeclSttmt& node) {
-    (void)node;
+void SemanticAnalyzer::visit(MoldaDeclSttmt&) {
+    // Molda declarations are registered before the semantic statement walk.
+    // They define types but do not introduce runtime values.
 }
 
 void SemanticAnalyzer::visit(BlockSttmt& node) {

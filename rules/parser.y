@@ -208,6 +208,8 @@ function_declaration : FN declarator LPAR parameter_optional_list RPAR type_spec
 
 molda_declaration : MOLDA TYPE_IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
                   | MOLDA TYPE_IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
+                  | MOLDA IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
+                  | MOLDA IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
                   ;
 
 molda_field_declarations : molda_field_declaration { auto n = new ast::MoldaDeclSttmt(""); n->AddField(std::unique_ptr<ast::VarDeclSttmt>($1)); $$ = n; }
