@@ -124,6 +124,7 @@ namespace sema {
 
         void registerRecord(ast::MoldaDeclSttmt& node);
         bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
+        Type resolveAssignableType(ast::Expr* expr, int lineNum);
 
 
         // Checks if a name is reserved and cannot be declared (used for variables, parameters, functions).

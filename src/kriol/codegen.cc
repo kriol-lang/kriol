@@ -713,29 +713,67 @@ llvm::Value* CodeGenVisitor::createArrayElementPtr(llvm::Value* storage,
     return Builder->CreateGEP(arrayTy, storage, {zero, index}, "array.elem.ptr");
 }
 
+CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
+    if (!expr) return {};
+
+    if (auto* par = dynamic_cast<ParExpr*>(expr))
+        return resolveLValue(par->Content.get());
+
+    if (auto* ident = dynamic_cast<IdentExpr*>(expr)) {
+        if (auto* alloca = lookupVar(ident->Name))
+            return {alloca, alloca->getAllocatedType()};
+        if (auto* gv = lookupGlobal(ident->Name))
+            return {gv, gv->getValueType()};
+        return {};
+    }
+
+    if (auto* arr = dynamic_cast<ArrayAccessExpr*>(expr)) {
+        LValue base = resolveLValue(arr->Base.get());
+        if (!base.Ptr || !base.Type || !base.Type->isArrayTy()) return {};
+
+        if (arr->Index) arr->Index->accept(*this);
+        if (!LastValue) return {};
+
+        auto* i64Ty = llvm::Type::getInt64Ty(Context);
+        llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+
+        auto* sizeConst = llvm::ConstantInt::get(i64Ty, base.Type->getArrayNumElements());
+        auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arr->LineNum);
+        Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
+
+        llvm::Value* elemPtr = createArrayElementPtr(base.Ptr, base.Type, idx);
+        return {elemPtr, base.Type->getArrayElementType()};
+    }
+
+    if (auto* member = dynamic_cast<MemberAccessExpr*>(expr)) {
+        if (!member->Base || !member->Base->ResolvedType.isNamed()) return {};
+
+        LValue base = resolveLValue(member->Base.get());
+        if (!base.Ptr || !base.Type) return {};
+
+        auto recordIt = Records.find(member->Base->ResolvedType.name());
+        if (recordIt == Records.end()) return {};
+        auto fieldIt = recordIt->second.fieldIndex.find(member->Member);
+        if (fieldIt == recordIt->second.fieldIndex.end()) return {};
+
+        unsigned fieldIndex = static_cast<unsigned>(fieldIt->second);
+        llvm::StructType* structTy = getOrCreateRecordType(member->Base->ResolvedType.name());
+        llvm::Value* fieldPtr = Builder->CreateStructGEP(
+            structTy,
+            base.Ptr,
+            fieldIndex,
+            "field.ptr"
+        );
+        return {fieldPtr, structTy->getElementType(fieldIndex)};
+    }
+
+    return {};
+}
+
 void CodeGenVisitor::visit(ArrayAccessExpr& node) {
-    auto* ident = unwrapIdentExpr(node.Base.get());
-    if (!ident) { LastValue = nullptr; return; }
-    auto* storage = getArrayStorage(ident->Name);
-    if (!storage) { LastValue = nullptr; return; }
-
-    llvm::Type* storageTy = nullptr;
-    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) storageTy = alloca->getAllocatedType();
-    else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) storageTy = gv->getValueType();
-    if (!storageTy || !storageTy->isArrayTy()) { LastValue = nullptr; return; }
-
-    if (node.Index) node.Index->accept(*this);
-    if (!LastValue) { LastValue = nullptr; return; }
-
-    auto* i64Ty = llvm::Type::getInt64Ty(Context);
-    llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
-
-    auto* sizeConst = llvm::ConstantInt::get(i64Ty, storageTy->getArrayNumElements());
-    auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum);
-    Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
-
-    llvm::Value* elemPtr = createArrayElementPtr(storage, storageTy, idx);
-    LastValue = Builder->CreateLoad(storageTy->getArrayElementType(), elemPtr, ident->Name + "[idx]");
+    LValue elem = resolveLValue(&node);
+    if (!elem.Ptr || !elem.Type) { LastValue = nullptr; return; }
+    LastValue = Builder->CreateLoad(elem.Type, elem.Ptr, "array.elem");
 }
 
 void CodeGenVisitor::visit(MemberAccessExpr& node) {
@@ -757,22 +795,10 @@ void CodeGenVisitor::visit(MemberAccessExpr& node) {
     }
 
     std::size_t fieldIndex = fieldIt->second;
-    llvm::StructType* structTy = getOrCreateRecordType(node.Base->ResolvedType.name());
 
-    if (auto* ident = unwrapIdentExpr(node.Base.get())) {
-        llvm::Value* storage = nullptr;
-        if (auto* alloca = lookupVar(ident->Name)) storage = alloca;
-        else if (auto* gv = lookupGlobal(ident->Name)) storage = gv;
-        if (!storage) { LastValue = nullptr; return; }
-
-        llvm::Value* fieldPtr = Builder->CreateStructGEP(
-            structTy,
-            storage,
-            static_cast<unsigned>(fieldIndex),
-            ident->Name + "." + node.Member + ".ptr"
-        );
-        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(fieldIndex));
-        LastValue = Builder->CreateLoad(fieldTy, fieldPtr, ident->Name + "." + node.Member);
+    LValue field = resolveLValue(&node);
+    if (field.Ptr && field.Type) {
+        LastValue = Builder->CreateLoad(field.Type, field.Ptr, "field." + node.Member);
         return;
     }
 
@@ -1234,57 +1260,23 @@ void CodeGenVisitor::visit(ParExpr& node) {
 void CodeGenVisitor::visit(AssignExpr& node) {
     if (node.Assigned) node.Assigned->accept(*this);
     llvm::Value* val = LastValue;
+    if (!val) { LastValue = nullptr; return; }
 
-    auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get());
-    auto* arrayAccess = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get());
-    if (!val || (!ident && !arrayAccess)) { LastValue = nullptr; return; }
-
-    llvm::Value* destPtr = nullptr;
-    llvm::Type* destTy = nullptr;
-
-    if (ident) {
-        if (auto* alloca = lookupVar(ident->Name)) {
-            destPtr = alloca;
-            destTy = alloca->getAllocatedType();
-        } else if (auto* gv = lookupGlobal(ident->Name)) {
-            destPtr = gv;
-            destTy = gv->getValueType();
-        }
-    } else if (arrayAccess) {
-        auto* baseIdent = unwrapIdentExpr(arrayAccess->Base.get());
-        auto* storage = baseIdent ? getArrayStorage(baseIdent->Name) : nullptr;
-        if (storage) {
-            if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) destTy = alloca->getAllocatedType();
-            else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) destTy = gv->getValueType();
-            if (destTy && destTy->isArrayTy()) {
-                if (arrayAccess->Index) arrayAccess->Index->accept(*this);
-                if (!LastValue) { LastValue = nullptr; return; }
-
-                auto* i64Ty = llvm::Type::getInt64Ty(Context);
-                llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
-                auto* sizeConst = llvm::ConstantInt::get(i64Ty, destTy->getArrayNumElements());
-                auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arrayAccess->LineNum);
-                Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
-                destPtr = createArrayElementPtr(storage, destTy, idx);
-                destTy = destTy->getArrayElementType();
-            }
-        }
-    }
-
-    if (!destPtr || !destTy) { LastValue = nullptr; return; }
+    LValue dest = resolveLValue(node.Assignee.get());
+    if (!dest.Ptr || !dest.Type) { LastValue = nullptr; return; }
 
     if (node.AssignOp != "=") {
-        llvm::Value* cur = Builder->CreateLoad(destTy, destPtr);
-        llvm::Value* rhs = coerce(val, destTy);
-        bool isFloat = destTy->isDoubleTy();
+        llvm::Value* cur = Builder->CreateLoad(dest.Type, dest.Ptr);
+        llvm::Value* rhs = coerce(val, dest.Type);
+        bool isFloat = dest.Type->isDoubleTy();
         if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
         else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
         else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
         else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
     } else {
-        val = coerce(val, destTy);
+        val = coerce(val, dest.Type);
     }
-    Builder->CreateStore(val, destPtr);
+    Builder->CreateStore(val, dest.Ptr);
     LastValue = val;
     return;
 }

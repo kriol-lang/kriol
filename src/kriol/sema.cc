@@ -661,46 +661,83 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
     node.ResolvedType = Type::Named(node.TypeName);
 }
 
-void SemanticAnalyzer::visit(AssignExpr& node) {
-    Type assigneeType;
-    bool canMarkInitialized = true;
+Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
+    if (!expr) return Type::Invalid();
 
-    if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
+    if (auto* ident = dynamic_cast<IdentExpr*>(expr)) {
         auto t = lookupVar(ident->Name);
         if (!t) {
-            addError(errLoc(node.LineNum) + "undefined variable name '" + ident->Name + "'");
-            canMarkInitialized = false;
-        } else {
-            assigneeType = *t;
-            if (isArrayType(assigneeType)) {
-                addError(errLoc(node.LineNum) + "cannot assign directly to array variable '" + ident->Name + "'; assign to an index");
-                canMarkInitialized = false;
-            }
+            addError(errLoc(lineNum) + "undefined variable name '" + ident->Name + "'");
+            return Type::Invalid();
         }
-    } else if (auto* arr = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
+        ident->ResolvedType = *t;
+        expr->ResolvedType = *t;
+        return *t;
+    }
+
+    if (auto* arr = dynamic_cast<ArrayAccessExpr*>(expr)) {
+        Type baseType = resolveAssignableType(arr->Base.get(), lineNum);
+
         if (arr->Index) {
             arr->Index->accept(*this);
-            if (arr->Index->ResolvedType != Type::Integer()) {
-                addError(errLoc(node.LineNum) + "array index must be an integer");
-                canMarkInitialized = false;
-            }
+            if (arr->Index->ResolvedType.valid() && arr->Index->ResolvedType != Type::Integer())
+                addError(errLoc(lineNum) + "array index must be an integer");
         }
 
-        auto* baseIdent = unwrapIdentExpr(arr->Base.get());
-        auto t = baseIdent ? lookupVar(baseIdent->Name) : std::optional<Type>{};
-        if (!t) {
-            addError(errLoc(node.LineNum) + "array assignment target must be a variable");
-            canMarkInitialized = false;
-        } else if (!isArrayType(*t)) {
-            addError(errLoc(node.LineNum) + "indexed assignment target is not an array");
-            canMarkInitialized = false;
-        } else {
-            assigneeType = arrayElementType(*t);
+        if (!isArrayType(baseType)) {
+            addError(errLoc(lineNum) + "indexed assignment target is not an array");
+            return Type::Invalid();
         }
-    } else if (node.Assignee) {
-        node.Assignee->accept(*this);
-        addError(errLoc(node.LineNum) + "invalid assignment target");
+
+        arr->ResolvedType = arrayElementType(baseType);
+        return arr->ResolvedType;
+    }
+
+    if (auto* member = dynamic_cast<MemberAccessExpr*>(expr)) {
+        Type baseType = resolveAssignableType(member->Base.get(), lineNum);
+        if (!baseType.valid()) return Type::Invalid();
+
+        if (!baseType.isNamed()) {
+            addError(errLoc(lineNum) + "member assignment target requires a molda value");
+            return Type::Invalid();
+        }
+
+        auto recordIt = RecordTable.find(baseType.name());
+        if (recordIt == RecordTable.end()) {
+            addError(errLoc(lineNum) + "unknown molda type '" + baseType.str() + "'");
+            return Type::Invalid();
+        }
+
+        auto fieldIt = recordIt->second.fieldIndex.find(member->Member);
+        if (fieldIt == recordIt->second.fieldIndex.end()) {
+            addError(errLoc(lineNum) + "molda '" + baseType.str()
+                     + "' has no field '" + member->Member + "'");
+            return Type::Invalid();
+        }
+
+        member->ResolvedType = recordIt->second.fields[fieldIt->second]->Type;
+        return member->ResolvedType;
+    }
+
+    expr->accept(*this);
+    addError(errLoc(lineNum) + "invalid assignment target");
+    return Type::Invalid();
+}
+
+void SemanticAnalyzer::visit(AssignExpr& node) {
+    Type assigneeType = resolveAssignableType(node.Assignee.get(), node.LineNum);
+    bool canMarkInitialized = true;
+
+    if (!assigneeType.valid()) {
         canMarkInitialized = false;
+    } else if (isArrayType(assigneeType) && !dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
+        if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
+            addError(errLoc(node.LineNum) + "cannot assign directly to array variable '"
+                     + ident->Name + "'; assign to an index");
+        } else {
+            addError(errLoc(node.LineNum) + "cannot assign directly to array value; assign to an index");
+        }
+            canMarkInitialized = false;
     }
 
     if (node.Assigned) {

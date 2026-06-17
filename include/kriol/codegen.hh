@@ -58,6 +58,11 @@ namespace ast {
 
         std::unordered_map<std::string, RecordInfo> Records;
 
+        struct LValue {
+            llvm::Value* Ptr = nullptr;
+            llvm::Type* Type = nullptr;
+        };
+
         // Non-constant global initializers deferred until inisiu's preamble
         struct DeferredGlobalInit {
             llvm::GlobalVariable*  Var;
@@ -77,6 +82,7 @@ namespace ast {
         llvm::Value*         createArrayElementPtr(llvm::Value* storage,
                                llvm::Type* arrayTy,
                                llvm::Value* index);
+        LValue               resolveLValue(ast::Expr* expr);
         llvm::Function*      getOrDeclareKriolCheckBounds();
 
         void pushScope() { Scopes.push_back({}); }
