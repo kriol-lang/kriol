@@ -908,7 +908,7 @@ void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
 }
 
 void SemanticAnalyzer::visit(ImportSttmt& node) {
-    throw std::runtime_error("'inpristan' (import) statements are not supported yet");
+    addError(errLoc(node.LineNum) + "'inpristan' (import) statements are not supported yet");
 }
 
 void SemanticAnalyzer::visit(FStringExpr& node) {

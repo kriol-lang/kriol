@@ -258,7 +258,7 @@ statement : expression_statement { $$ = $1; }
           | error SEMIC { $$ = nullptr; }
           ;
 
-import_statement : IMPRISTAN single_import { $$ = new ast::ImportSttmt(*$2); delete $2; }
+import_statement : IMPRISTAN single_import { auto n = new ast::ImportSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
                  ;
 
 single_import : STR_LIT { $$ = $1; }

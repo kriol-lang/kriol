@@ -9,10 +9,13 @@
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <cstdio>
 #include <sstream>
 #include <stdexcept>
+#include <cerrno>
+#include <cstring>
 
 #include <llvm/Support/ManagedStatic.h>
 
@@ -60,42 +63,53 @@ void cli::PrintErr(const std::string& file, int line, const std::string& msg, in
 
 void cli::Compiler::DefineArgs()
 {
-    Parser->add_description("Compile Kriol source code from a file or inline text.");
-    Parser->add_epilog("Provide either a source file or --text, but not both.");
+    Parser->add_description(
+        "Compile one Kriol source file or inline source text."
+    );
+    Parser->add_epilog(
+        "Inputs:\n"
+        "  Provide exactly one of [file] or --text SOURCE.\n\n"
+        "Outputs:\n"
+        "  Native builds write ./a.out by default.\n"
+        "  wasm32-wasi builds write ./a.wasm by default.\n"
+        "  --emit-ir prints LLVM IR to stdout unless -o is provided.\n\n"
+        "Examples:\n"
+        "  kriol hello.kriol\n"
+        "  kriol hello.kriol -o hello\n"
+        "  kriol hello.kriol --target wasm32-wasi -o hello.wasm\n"
+        "  kriol --text 'fn inisiu() { mostran(\"Oi\"); }' --emit-ir"
+    );
     Parser->set_usage_max_line_width(100);
 
-    Parser->add_group("Input");
     Parser->add_argument("file")
-        .help("Kriol source file to compile.")
+        .help("Source file to compile (.kriol or .kr unless --ignore-extension is set).")
         .metavar("[file]")
         .nargs(ap::nargs_pattern::optional);
 
     Parser->add_argument("--text")
-        .help("Compile the provided Kriol source text instead of reading a file.")
+        .help("Compile inline source text instead of reading a file.")
         .metavar("SOURCE")
         .nargs(1);
 
-    Parser->add_group("Output");
     Parser->add_argument("-o", "--output")
-        .help("Write the generated output to this file.")
+        .help("Output path for the executable, wasm module, or emitted IR.")
         .metavar("FILE")
         .nargs(1);
 
     Parser->add_argument("--emit-ir")
-        .help("Emit LLVM IR text to stdout (or -o file) instead of compiling.")
+        .help("Emit LLVM IR instead of producing native/wasm output.")
         .default_value(false)
         .implicit_value(true);
 
-    Parser->add_group("Compilation");
     Parser->add_argument("--target")
-        .help("Select native or wasm32-wasi output.")
+        .help("Compilation target.")
         .metavar("TARGET")
         .default_value(std::string("native"))
         .nargs(1)
         .choices("native", "wasm32-wasi");
 
     Parser->add_argument("--ignore-extension")
-        .help("Allow a source file without a ." +
+        .help("Accept file inputs without a ." +
               std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
               std::string(KR_ALTERNATIVE_FILE_EXTENSION) + " extension.")
         .default_value(false)
@@ -158,14 +172,13 @@ ast::BlockSttmt* cli::KriolLangParserWrapper::ParseCode(
 
 void cli::Compiler::SaveCodeToFile(const std::string& code, const std::string& filename)
 {
-    FILE* file = fopen(filename.c_str(), "w");
+    std::ofstream file(filename, std::ios::binary);
+    if (!file)
+        cli::PrintErr("Couldn't create file '" + filename + "': " + std::strerror(errno), 1);
 
-    if (file == NULL)
-        cli::PrintErr("Couldn't create file '" + filename + "'!", 1);
-
-    fputs(code.c_str(), file);
-
-    fclose(file);
+    file.write(code.data(), static_cast<std::streamsize>(code.size()));
+    if (!file)
+        cli::PrintErr("Couldn't write file '" + filename + "'.", 1);
 }
 
 void cli::KriolLangParserWrapper::ParseFile(
@@ -178,11 +191,16 @@ void cli::KriolLangParserWrapper::ParseFile(
         cli::PrintErr("File '" + filename + "' was not found!", 1);
     }
 
+    if (!fs::is_regular_file(filename))
+    {
+        cli::PrintErr("Input '" + filename + "' is not a regular file.", 1);
+    }
+
     FILE *file = fopen(filename.c_str(), "r");
 
     if (file == NULL)
     {
-        cli::PrintErr("Couldn't open the file '" + filename + "'!", 1);
+        cli::PrintErr("Couldn't open the file '" + filename + "': " + std::strerror(errno), 1);
     }
 
     yyin = file;
