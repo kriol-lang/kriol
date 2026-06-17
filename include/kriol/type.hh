@@ -70,6 +70,9 @@ public:
     bool isReference() const { return Kind == TypeKind::Reference; }
     bool isVoid() const { return Kind == TypeKind::Void; }
     bool isNumeric() const { return Kind == TypeKind::Integer || Kind == TypeKind::Number; }
+    bool isNamed() const { return Kind == TypeKind::Named; }
+
+    const std::string& name() const { return Name; }
 
     const Type& elementType() const {
         static const Type invalid;

@@ -1,0 +1,11 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn inisiu() {
+    Pessoa pessoa = Pessoa::{nomi: "jose", idadi: 60};
+    pessoa.idadi = 61;
+    pessoa.idadi += 1;
+    mostran(pessoa.idadi);
+}

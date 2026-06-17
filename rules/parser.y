@@ -25,37 +25,40 @@
     kriol::ast::Sttmt* sttmt;
     kriol::ast::BlockSttmt* block;
     kriol::ast::VarDeclSttmt* vardecl;
+    kriol::ast::MoldaDeclSttmt* molda;
     kriol::ast::FuncArgs* params;
     kriol::ast::FuncCallArgs* args;
 }
 
 %destructor { delete $$; } <string> <integer> <floatingpoint>
-%destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <params> <args>
+%destructor { delete $$; } <expr> <sttmt> <block> <vardecl> <molda> <params> <args>
 
-%token<string> IDENT "valid identifier" STR_LIT "string literal" FSTR_TEXT "f-string text"
+%token<string> IDENT "valid identifier" TYPE_IDENT "type identifier" STR_LIT "string literal" FSTR_TEXT "f-string text"
 %token<token> MOSTRA "mostra" MOSTRAN "mostran"
 %token<integer> INT_LIT "integer literal"
 %token<floatingpoint> FLOAT_LIT "floating-point literal "
 %token<string> BOOL_LIT "boolean literal"
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
 %token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/="
-%token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," SEMIC ";" LBRAC "[" RBRAC "]"
+%token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
 %token<token>  DIVOLVI "divolvi" PA "pa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
-%token<token> FN "fn" NOT "!" SAI "sai" KONFIRMA "konfirma" DIPOZ "dipoz"
+%token<token> FN "fn" MOLDA "molda" NOT "!" SAI "sai" KONFIRMA "konfirma" DIPOZ "dipoz"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
 %type<expr> expression assignment_expression primary_expression postfix_expression primary_atom unary_expression initializer
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
             mostra_func_call fstring fstring_parts array_initializer array_initializer_elements value_expression
+            typed_array_initializer record_literal record_field_initializers
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
-             function_declaration declaration statement import_statement
+             function_declaration declaration molda_declaration statement import_statement
 %type<block> compound_statement statements else_then
 %type<string> declarator identifier type_specifier assignment_operator single_import
-%type<vardecl> parameter_declaration array_declarator
+%type<vardecl> parameter_declaration array_declarator molda_field_declaration
+%type<molda> molda_field_declarations
 %type<params> parameter_list parameter_optional_list
 %type<args> argument_list
 
@@ -79,6 +82,7 @@ type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_BOOL { $$ = $1; }
                | TYPE_NTER { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
+               | TYPE_IDENT { $$ = $1; }
                ;
 
 constant : INT_LIT   { auto lit = new ast::LiteralExpr(Type::Integer(), *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
@@ -180,6 +184,8 @@ postfix_expression : primary_atom { $$ = $1; }
                    ;
 
 primary_atom : mostra_func_call { $$ = $1; }
+             | record_literal { $$ = $1; }
+             | typed_array_initializer { $$ = $1; }
              | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
              | constant { $$ = $1; }
              | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
@@ -200,6 +206,20 @@ assignment_operator : ASSIGN { $$ = new std::string("="); }
 function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = yylineno; $$ = n; delete $6; delete $2; }
                      | FN declarator LPAR parameter_optional_list RPAR compound_statement { auto n = new ast::FuncDeclSttmt(Type::Void(), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = yylineno; $$ = n; delete $2; }
                      ;
+
+molda_declaration : MOLDA TYPE_IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
+                  | MOLDA TYPE_IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
+                  | MOLDA IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
+                  | MOLDA IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
+                  ;
+
+molda_field_declarations : molda_field_declaration { auto n = new ast::MoldaDeclSttmt(""); n->AddField(std::unique_ptr<ast::VarDeclSttmt>($1)); $$ = n; }
+                         | molda_field_declarations molda_field_declaration { $1->AddField(std::unique_ptr<ast::VarDeclSttmt>($2)); $$ = $1; }
+                         ;
+
+molda_field_declaration : type_specifier declarator SEMIC { $$ = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, nullptr); $$->LineNum = yylineno; delete $1; delete $2; }
+                        | type_specifier array_declarator SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->LineNum = yylineno; $$ = $2; delete $1; }
+                        ;
 
 parameter_optional_list : parameter_list { $$ = $1; }
                         | %empty { $$ = new ast::FuncArgs(); }
@@ -232,12 +252,13 @@ statement : expression_statement { $$ = $1; }
           | iteration_statement { $$ = $1; }
           | jump_statement { $$ = $1; }
           | function_declaration { $$ = $1; }
+          | molda_declaration { $$ = $1; }
           | declaration { $$ = $1; }
           | import_statement { $$ = $1; }
           | error SEMIC { $$ = nullptr; }
           ;
 
-import_statement : IMPRISTAN single_import { $$ = new ast::ImportSttmt(*$2); delete $2; }
+import_statement : IMPRISTAN single_import { auto n = new ast::ImportSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
                  ;
 
 single_import : STR_LIT { $$ = $1; }
@@ -272,6 +293,17 @@ jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum =
                | KONFIRMA LPAR expression RPAR SEMIC { auto n = new ast::KonfirmaSttmt(std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
                | KONFIRMA LPAR RPAR SEMIC { auto n = new ast::KonfirmaSttmt(nullptr); n->LineNum = yylineno; $$ = n; }
                ;
+
+record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY { auto* n = static_cast<ast::RecordLiteralExpr*>($4); n->TypeName = *$1; n->LineNum = yylineno; $$ = n; delete $1; }
+               | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+               ;
+
+typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = yylineno; $$ = lit; delete $2; }
+                        ;
+
+record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
+                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = $1; delete $3; }
+                          ;
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {

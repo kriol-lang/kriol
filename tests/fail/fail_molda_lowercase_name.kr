@@ -1,0 +1,7 @@
+molda pessoa {
+    textu nomi;
+}
+
+fn inisiu() {
+    mostran("nome de tipo invalido");
+}

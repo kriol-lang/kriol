@@ -441,8 +441,32 @@ llvm::Type* CodeGenVisitor::mapType(const Type& t) {
     if (t == Type::Bool())    return llvm::Type::getInt1Ty(Context);
     if (t == Type::Text())    return llvm::PointerType::getUnqual(Context);
     if (t == Type::Void())    return llvm::Type::getVoidTy(Context);
+    if (t.isNamed())          return getOrCreateRecordType(t.name());
 
     return llvm::PointerType::getUnqual(Context);
+}
+
+llvm::StructType* CodeGenVisitor::getOrCreateRecordType(const std::string& name) {
+    auto it = Records.find(name);
+    if (it == Records.end())
+        throw std::runtime_error("unknown molda type '" + name + "'");
+
+    RecordInfo& info = it->second;
+    if (info.llvmType && !info.llvmType->isOpaque())
+        return info.llvmType;
+
+    if (!info.llvmType)
+        info.llvmType = llvm::StructType::create(Context, "molda." + name);
+
+    std::vector<llvm::Type*> fieldTypes;
+    fieldTypes.reserve(info.fields.size());
+    for (auto* field : info.fields)
+        fieldTypes.push_back(mapType(field->Type));
+
+    if (info.llvmType->isOpaque())
+        info.llvmType->setBody(fieldTypes, false);
+
+    return info.llvmType;
 }
 
 llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
@@ -662,6 +686,11 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
+void CodeGenVisitor::visit(MoldaDeclSttmt&) {
+    // Molda declarations are registered during the program-root prepass.
+    // They define record types but do not emit runtime instructions.
+}
+
 llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckBounds() {
     if (auto* fn = Mod->getFunction("__kriol_check_bounds")) return fn;
     auto* voidTy = llvm::Type::getVoidTy(Context);
@@ -684,33 +713,102 @@ llvm::Value* CodeGenVisitor::createArrayElementPtr(llvm::Value* storage,
     return Builder->CreateGEP(arrayTy, storage, {zero, index}, "array.elem.ptr");
 }
 
+CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
+    if (!expr) return {};
+
+    if (auto* par = dynamic_cast<ParExpr*>(expr))
+        return resolveLValue(par->Content.get());
+
+    if (auto* ident = dynamic_cast<IdentExpr*>(expr)) {
+        if (auto* alloca = lookupVar(ident->Name))
+            return {alloca, alloca->getAllocatedType()};
+        if (auto* gv = lookupGlobal(ident->Name))
+            return {gv, gv->getValueType()};
+        return {};
+    }
+
+    if (auto* arr = dynamic_cast<ArrayAccessExpr*>(expr)) {
+        LValue base = resolveLValue(arr->Base.get());
+        if (!base.Ptr || !base.Type || !base.Type->isArrayTy()) return {};
+
+        if (arr->Index) arr->Index->accept(*this);
+        if (!LastValue) return {};
+
+        auto* i64Ty = llvm::Type::getInt64Ty(Context);
+        llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+
+        auto* sizeConst = llvm::ConstantInt::get(i64Ty, base.Type->getArrayNumElements());
+        auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arr->LineNum);
+        Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
+
+        llvm::Value* elemPtr = createArrayElementPtr(base.Ptr, base.Type, idx);
+        return {elemPtr, base.Type->getArrayElementType()};
+    }
+
+    if (auto* member = dynamic_cast<MemberAccessExpr*>(expr)) {
+        if (!member->Base || !member->Base->ResolvedType.isNamed()) return {};
+
+        LValue base = resolveLValue(member->Base.get());
+        if (!base.Ptr || !base.Type) return {};
+
+        auto recordIt = Records.find(member->Base->ResolvedType.name());
+        if (recordIt == Records.end()) return {};
+        auto fieldIt = recordIt->second.fieldIndex.find(member->Member);
+        if (fieldIt == recordIt->second.fieldIndex.end()) return {};
+
+        unsigned fieldIndex = static_cast<unsigned>(fieldIt->second);
+        llvm::StructType* structTy = getOrCreateRecordType(member->Base->ResolvedType.name());
+        llvm::Value* fieldPtr = Builder->CreateStructGEP(
+            structTy,
+            base.Ptr,
+            fieldIndex,
+            "field.ptr"
+        );
+        return {fieldPtr, structTy->getElementType(fieldIndex)};
+    }
+
+    return {};
+}
+
 void CodeGenVisitor::visit(ArrayAccessExpr& node) {
-    auto* ident = unwrapIdentExpr(node.Base.get());
-    if (!ident) { LastValue = nullptr; return; }
-    auto* storage = getArrayStorage(ident->Name);
-    if (!storage) { LastValue = nullptr; return; }
-
-    llvm::Type* storageTy = nullptr;
-    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) storageTy = alloca->getAllocatedType();
-    else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) storageTy = gv->getValueType();
-    if (!storageTy || !storageTy->isArrayTy()) { LastValue = nullptr; return; }
-
-    if (node.Index) node.Index->accept(*this);
-    if (!LastValue) { LastValue = nullptr; return; }
-
-    auto* i64Ty = llvm::Type::getInt64Ty(Context);
-    llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
-
-    auto* sizeConst = llvm::ConstantInt::get(i64Ty, storageTy->getArrayNumElements());
-    auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum);
-    Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
-
-    llvm::Value* elemPtr = createArrayElementPtr(storage, storageTy, idx);
-    LastValue = Builder->CreateLoad(storageTy->getArrayElementType(), elemPtr, ident->Name + "[idx]");
+    LValue elem = resolveLValue(&node);
+    if (!elem.Ptr || !elem.Type) { LastValue = nullptr; return; }
+    LastValue = Builder->CreateLoad(elem.Type, elem.Ptr, "array.elem");
 }
 
 void CodeGenVisitor::visit(MemberAccessExpr& node) {
-    LastValue = nullptr;
+    if (!node.Base || !node.Base->ResolvedType.isNamed()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto recordIt = Records.find(node.Base->ResolvedType.name());
+    if (recordIt == Records.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto fieldIt = recordIt->second.fieldIndex.find(node.Member);
+    if (fieldIt == recordIt->second.fieldIndex.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    std::size_t fieldIndex = fieldIt->second;
+
+    LValue field = resolveLValue(&node);
+    if (field.Ptr && field.Type) {
+        LastValue = Builder->CreateLoad(field.Type, field.Ptr, "field." + node.Member);
+        return;
+    }
+
+    node.Base->accept(*this);
+    if (!LastValue) return;
+    LastValue = Builder->CreateExtractValue(
+        LastValue,
+        {static_cast<unsigned>(fieldIndex)},
+        "field." + node.Member
+    );
 }
 
 void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
@@ -718,14 +816,120 @@ void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
 }
 
 void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
-    // Array literals are consumed in VarDeclSttmt initializers; they do not
-    // directly lower to a first-class runtime value in this M4 slice.
-    LastValue = nullptr;
+    if (!node.ResolvedType.isArray()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto* arrayTy = llvm::dyn_cast<llvm::ArrayType>(mapType(node.ResolvedType));
+    if (!arrayTy) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::Value* array = llvm::UndefValue::get(arrayTy);
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    for (std::size_t i = 0; i < node.Elements.size(); ++i) {
+        node.Elements[i]->accept(*this);
+        llvm::Value* elem = LastValue;
+        if (!elem) elem = llvm::Constant::getNullValue(elemTy);
+        if (elem->getType() != elemTy) elem = coerce(elem, elemTy);
+        array = Builder->CreateInsertValue(
+            array,
+            elem,
+            {static_cast<unsigned>(i)},
+            "array.literal.elem"
+        );
+    }
+
+    LastValue = array;
 }
 
 void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
-    // Repeat expresssions are consumed in VarDeclSttmt initializers.
-    LastValue = nullptr;
+    if (!node.ResolvedType.isArray()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto* arrayTy = llvm::dyn_cast<llvm::ArrayType>(mapType(node.ResolvedType));
+    if (!arrayTy) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    if (node.Fill) node.Fill->accept(*this);
+    llvm::Value* fill = LastValue ? LastValue : llvm::Constant::getNullValue(elemTy);
+    if (fill->getType() != elemTy) fill = coerce(fill, elemTy);
+
+    llvm::Value* array = llvm::UndefValue::get(arrayTy);
+    for (uint64_t i = 0; i < arrayTy->getNumElements(); ++i) {
+        array = Builder->CreateInsertValue(
+            array,
+            fill,
+            {static_cast<unsigned>(i)},
+            "array.repeat.elem"
+        );
+    }
+
+    LastValue = array;
+}
+
+void CodeGenVisitor::visit(RecordLiteralExpr& node) {
+    auto recordIt = Records.find(node.TypeName);
+    if (recordIt == Records.end()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::StructType* structTy = getOrCreateRecordType(node.TypeName);
+    llvm::Value* record = llvm::UndefValue::get(structTy);
+    std::vector<bool> initialized(recordIt->second.fields.size(), false);
+
+    for (auto& field : node.Fields) {
+        auto fieldIt = recordIt->second.fieldIndex.find(field.Name);
+        if (fieldIt == recordIt->second.fieldIndex.end()) continue;
+
+        std::size_t index = fieldIt->second;
+        if (field.Value) field.Value->accept(*this);
+        llvm::Value* value = LastValue;
+        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(index));
+        if (!value) value = llvm::Constant::getNullValue(fieldTy);
+        if (value->getType() != fieldTy) value = coerce(value, fieldTy);
+        record = Builder->CreateInsertValue(
+            record,
+            value,
+            {static_cast<unsigned>(index)},
+            "record.field"
+        );
+        initialized[index] = true;
+    }
+
+    for (std::size_t i = 0; i < initialized.size(); ++i) {
+        if (initialized[i]) continue;
+        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(i));
+        record = Builder->CreateInsertValue(
+            record,
+            llvm::Constant::getNullValue(fieldTy),
+            {static_cast<unsigned>(i)},
+            "record.field.default"
+        );
+    }
+
+    LastValue = record;
+}
+
+void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
+    if (Records.count(node.Name)) return;
+
+    RecordInfo info;
+    info.llvmType = llvm::StructType::create(Context, "molda." + node.Name);
+    for (auto& field : node.Fields) {
+        if (!field) continue;
+        info.fieldIndex[field->Name] = info.fields.size();
+        info.fields.push_back(field.get());
+    }
+    Records[node.Name] = std::move(info);
 }
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
@@ -754,6 +958,10 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
     // so that forward calls and mutual recursion resolve in codegen.
     if (!CurrentFunction) {
         for (auto& s : node.SttmtList)
+            if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
+                registerRecord(*rec);
+
+        for (auto& s : node.SttmtList)
             if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
                 forwardDeclareFunc(*fn);
 
@@ -767,6 +975,7 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
     pushScope();
     for (auto& s : node.SttmtList) {
         if (!s) continue;
+        if (!CurrentFunction && dynamic_cast<MoldaDeclSttmt*>(s.get())) continue;
         if (!CurrentFunction && dynamic_cast<VarDeclSttmt*>(s.get())) continue;
         s->accept(*this);
     }
@@ -1100,57 +1309,23 @@ void CodeGenVisitor::visit(ParExpr& node) {
 void CodeGenVisitor::visit(AssignExpr& node) {
     if (node.Assigned) node.Assigned->accept(*this);
     llvm::Value* val = LastValue;
+    if (!val) { LastValue = nullptr; return; }
 
-    auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get());
-    auto* arrayAccess = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get());
-    if (!val || (!ident && !arrayAccess)) { LastValue = nullptr; return; }
-
-    llvm::Value* destPtr = nullptr;
-    llvm::Type* destTy = nullptr;
-
-    if (ident) {
-        if (auto* alloca = lookupVar(ident->Name)) {
-            destPtr = alloca;
-            destTy = alloca->getAllocatedType();
-        } else if (auto* gv = lookupGlobal(ident->Name)) {
-            destPtr = gv;
-            destTy = gv->getValueType();
-        }
-    } else if (arrayAccess) {
-        auto* baseIdent = unwrapIdentExpr(arrayAccess->Base.get());
-        auto* storage = baseIdent ? getArrayStorage(baseIdent->Name) : nullptr;
-        if (storage) {
-            if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) destTy = alloca->getAllocatedType();
-            else if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) destTy = gv->getValueType();
-            if (destTy && destTy->isArrayTy()) {
-                if (arrayAccess->Index) arrayAccess->Index->accept(*this);
-                if (!LastValue) { LastValue = nullptr; return; }
-
-                auto* i64Ty = llvm::Type::getInt64Ty(Context);
-                llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
-                auto* sizeConst = llvm::ConstantInt::get(i64Ty, destTy->getArrayNumElements());
-                auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arrayAccess->LineNum);
-                Builder->CreateCall(getOrDeclareKriolCheckBounds(), {idx, sizeConst, lineConst});
-                destPtr = createArrayElementPtr(storage, destTy, idx);
-                destTy = destTy->getArrayElementType();
-            }
-        }
-    }
-
-    if (!destPtr || !destTy) { LastValue = nullptr; return; }
+    LValue dest = resolveLValue(node.Assignee.get());
+    if (!dest.Ptr || !dest.Type) { LastValue = nullptr; return; }
 
     if (node.AssignOp != "=") {
-        llvm::Value* cur = Builder->CreateLoad(destTy, destPtr);
-        llvm::Value* rhs = coerce(val, destTy);
-        bool isFloat = destTy->isDoubleTy();
+        llvm::Value* cur = Builder->CreateLoad(dest.Type, dest.Ptr);
+        llvm::Value* rhs = coerce(val, dest.Type);
+        bool isFloat = dest.Type->isDoubleTy();
         if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
         else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
         else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
         else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
     } else {
-        val = coerce(val, destTy);
+        val = coerce(val, dest.Type);
     }
-    Builder->CreateStore(val, destPtr);
+    Builder->CreateStore(val, dest.Ptr);
     LastValue = val;
     return;
 }
@@ -1227,12 +1402,6 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
 }
 
-static llvm::Type* getStorageValueType(llvm::Value* storage) {
-    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) return alloca->getAllocatedType();
-    if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) return gv->getValueType();
-    return nullptr;
-}
-
 void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
                                             llvm::ArrayType* arrayTy,
                                             std::string& outFmt,
@@ -1283,17 +1452,12 @@ void CodeGenVisitor::visit(FStringExpr& node) {
             }
         } else { // Interpolated expression
             if (seg.expr->ResolvedType.isArray()) {
-                auto* ident = unwrapIdentExpr(seg.expr.get());
-                if (!ident)
-                    throw std::runtime_error("array interpolation currently supports array variables only");
+                LValue storage = resolveLValue(seg.expr.get());
+                auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
+                if (!storage.Ptr || !arrayTy)
+                    throw std::runtime_error("cannot interpolate non-addressable array expression");
 
-                llvm::Value* storage = getArrayStorage(ident->Name);
-                llvm::Type* storageTy = getStorageValueType(storage);
-                auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
-                if (!storage || !arrayTy)
-                    throw std::runtime_error("cannot interpolate array variable '" + ident->Name + "'");
-
-                appendArrayFormatParts(storage, arrayTy, fmtStr, callArgs);
+                appendArrayFormatParts(storage.Ptr, arrayTy, fmtStr, callArgs);
                 continue;
             }
 
@@ -1395,17 +1559,12 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         auto& arg = args[i];
 
         if (arg->ResolvedType.isArray()) {
-            auto* ident = unwrapIdentExpr(arg.get());
-            if (!ident)
-                throw std::runtime_error("array printing currently supports array variables only");
+            LValue storage = resolveLValue(arg.get());
+            auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
+            if (!storage.Ptr || !arrayTy)
+                throw std::runtime_error("cannot print non-addressable array expression");
 
-            llvm::Value* storage = getArrayStorage(ident->Name);
-            llvm::Type* storageTy = getStorageValueType(storage);
-            auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
-            if (!storage || !arrayTy)
-                throw std::runtime_error("cannot print array variable '" + ident->Name + "'");
-
-            emitPrintArray(emitPrintArray, storage, arrayTy);
+            emitPrintArray(emitPrintArray, storage.Ptr, arrayTy);
             if (addNlHere) printChar('\n');
             continue;
         }
@@ -1418,7 +1577,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     LastValue = nullptr;
 }
 
-void CodeGenVisitor::visit(ImportSttmt& node) {
+void CodeGenVisitor::visit(ImportSttmt&) {
     // TODO: Implement module imports
 }
 

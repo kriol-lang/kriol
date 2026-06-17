@@ -1,0 +1,28 @@
+molda Enderesu {
+    textu rua;
+    nter numero;
+}
+
+molda Pessoa {
+    textu nomi;
+    Enderesu enderesu;
+    nter[2] flags;
+}
+
+fn inisiu() {
+    Pessoa pessoa = Pessoa:: {
+        nomi: "jose",
+        enderesu: Enderesu::{rua: "antigu", numero: 10},
+        flags: [0, 1]
+    };
+
+    pessoa.enderesu.rua = "novu";
+    pessoa.enderesu.numero += 5;
+
+    konfirma(pessoa.enderesu.numero == 15);
+
+    mostra(pessoa.enderesu.rua);
+    mostra(" ");
+    mostran(pessoa.enderesu.numero);
+    mostran(f"F pessoa: {pessoa.flags}");
+}

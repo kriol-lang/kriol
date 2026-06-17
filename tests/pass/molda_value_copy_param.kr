@@ -1,0 +1,14 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn muda_copia(Pessoa pessoa) {
+    pessoa.idadi = 99;
+}
+
+fn inisiu() {
+    Pessoa pessoa = Pessoa::{nomi: "jose", idadi: 60};
+    muda_copia(pessoa);
+    konfirma(pessoa.idadi == 60);
+}

@@ -1,0 +1,6 @@
+molda Vazio {
+}
+
+fn inisiu() {
+    mostran("nada");
+}

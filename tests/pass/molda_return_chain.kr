@@ -1,0 +1,23 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn novu_pessoa() Pessoa {
+    divolvi Pessoa::{nomi: "jose", idadi: 60};
+}
+
+fn identidade(Pessoa pessoa) Pessoa {
+    divolvi pessoa;
+}
+
+fn proxima_idadi(Pessoa pessoa) nter {
+    divolvi pessoa.idadi + 1;
+}
+
+fn inisiu() {
+    Pessoa pessoa = identidade(novu_pessoa());
+    mostra(pessoa.nomi);
+    mostra(" ");
+    mostran(proxima_idadi(pessoa));
+}

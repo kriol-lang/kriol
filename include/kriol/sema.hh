@@ -24,6 +24,11 @@ namespace sema {
             std::vector<bool> elementInitialized;
         };
 
+        struct RecordInfo {
+            std::vector<ast::VarDeclSttmt*> fields;
+            std::unordered_map<std::string, std::size_t> fieldIndex;
+        };
+
         // Scoped initialization table: each entry is one scope level
         // (name -> initialization state)
         std::vector<std::unordered_map<std::string, VarInitState>> InitScopes;
@@ -36,6 +41,9 @@ namespace sema {
 
         // Known user-defined functions (name -> signature)
         std::unordered_map<std::string, FuncInfo> FunctionTable;
+
+        // Known user-defined record types (name -> fields)
+        std::unordered_map<std::string, RecordInfo> RecordTable;
 
         // Return type of the function currently being analysed ("" at top level)
         Type CurrFuncRetType;
@@ -109,10 +117,19 @@ namespace sema {
         // Returns true if assigning/returning `from` where `to` is expected
         // is a legal implicit widening (nter->num, bool->nter, bool->num).
         static bool isWideningCoercion(const Type& from, const Type& to);
+        static bool isPrintableType(const Type& type, bool allowArray);
 
         // Pre-registers a function's full signature into FunctionTable without
         // visiting the body. Called in the first pass of Check().
         void registerFuncSignature(ast::FuncDeclSttmt& node);
+
+        void registerRecord(ast::MoldaDeclSttmt& node);
+        bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
+        bool validateArrayInitializer(const Type& expectedType,
+                                      ast::Expr* init,
+                                      int lineNum,
+                                      const std::string& context);
+        Type resolveAssignableType(ast::Expr* expr, int lineNum);
 
 
         // Checks if a name is reserved and cannot be declared (used for variables, parameters, functions).
@@ -146,6 +163,7 @@ namespace sema {
 
         // --- visitor overrides ---
         void visit(ast::VarDeclSttmt&      node) override;
+        void visit(ast::MoldaDeclSttmt&    node) override;
         void visit(ast::BlockSttmt&        node) override;
         void visit(ast::FuncArgs&          node) override;
         void visit(ast::FuncDeclSttmt&     node) override;
@@ -165,6 +183,7 @@ namespace sema {
         void visit(ast::QualifiedAccessExpr& node) override;
         void visit(ast::ArrayLiteralExpr&  node) override;
         void visit(ast::ArrayRepeatExpr&   node) override;
+        void visit(ast::RecordLiteralExpr& node) override;
         void visit(ast::AssignExpr&        node) override;
         void visit(ast::ForSttmt&          node) override;
         void visit(ast::MostraFunCallExpr& node) override;

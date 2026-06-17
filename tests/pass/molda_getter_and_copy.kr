@@ -1,0 +1,25 @@
+molda Pessoa {
+    textu nomi;
+    nter idadi;
+}
+
+fn get_pessoa(textu nomi, nter idadi) Pessoa {
+    divolvi Pessoa:: {
+        nomi: nomi,
+        idadi: idadi
+    };
+}
+
+fn incrementa_idadi(Pessoa pessoa) nter {
+    pessoa.idadi += 1;
+    divolvi pessoa.idadi;
+}
+
+fn inisiu() {
+    Pessoa pessoa = get_pessoa('John', 54);
+    mostran(f"{pessoa.nomi} ten {pessoa.idadi} anos!");
+    nter res = incrementa_idadi(pessoa);
+    mostran(f"{pessoa.nomi} ten {pessoa.idadi} anos!");
+    konfirma(res == 55);
+    konfirma(pessoa.idadi == 54);
+}

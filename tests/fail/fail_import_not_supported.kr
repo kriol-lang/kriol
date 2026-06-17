@@ -1,0 +1,5 @@
+inpristan "std";
+
+fn inisiu() {
+    mostran("unused");
+}
