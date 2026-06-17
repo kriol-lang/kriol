@@ -117,6 +117,7 @@ namespace sema {
         // Returns true if assigning/returning `from` where `to` is expected
         // is a legal implicit widening (nter->num, bool->nter, bool->num).
         static bool isWideningCoercion(const Type& from, const Type& to);
+        static bool isPrintableType(const Type& type, bool allowArray);
 
         // Pre-registers a function's full signature into FunctionTable without
         // visiting the body. Called in the first pass of Check().

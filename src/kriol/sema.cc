@@ -79,6 +79,17 @@ bool SemanticAnalyzer::isWideningCoercion(const Type& from, const Type& to) {
     return false;
 }
 
+bool SemanticAnalyzer::isPrintableType(const Type& type, bool allowArray) {
+    if (type == Type::Integer() || type == Type::Number()
+            || type == Type::Bool() || type == Type::Text())
+        return true;
+
+    if (allowArray && type.isArray())
+        return isPrintableType(type.elementType(), true);
+
+    return false;
+}
+
 void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
     if (!checkDeclaredNameValid(node.Name, "function", node.LineNum)) return;
 
@@ -744,6 +755,22 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
         node.Assigned->accept(*this);
         node.ResolvedType = node.Assigned->ResolvedType;
 
+        if (node.AssignOp != "=" && assigneeType.valid()) {
+            if (!assigneeType.isNumeric()) {
+                addError(errLoc(node.LineNum) + "compound assignment operator '"
+                         + node.AssignOp + "' requires a numeric target, got '"
+                         + assigneeType.str() + "'");
+                canMarkInitialized = false;
+            }
+
+            if (node.Assigned->ResolvedType.valid() && !node.Assigned->ResolvedType.isNumeric()) {
+                addError(errLoc(node.LineNum) + "compound assignment operator '"
+                         + node.AssignOp + "' requires a numeric value, got '"
+                         + node.Assigned->ResolvedType.str() + "'");
+                canMarkInitialized = false;
+            }
+        }
+
         if (assigneeType.valid() && node.Assigned->ResolvedType.valid()
                 && assigneeType != node.Assigned->ResolvedType
                 && !isWideningCoercion(node.Assigned->ResolvedType, assigneeType)) {
@@ -796,14 +823,12 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
 void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
     if (node.Args)
         for (auto& arg : node.Args->Args) {
-            if (arg && !handleArrayIdentArg(*arg)) {
+            if (!arg) continue;
+            if (!handleArrayIdentArg(*arg))
                 arg->accept(*this);
-                const Type& t = arg->ResolvedType;
-                const bool printable = t == Type::Integer() || t == Type::Number()
-                    || t == Type::Bool() || t == Type::Text() || t.isArray();
-                if (t.valid() && !printable)
-                    addError(errLoc(node.LineNum) + "cannot print value of type '" + t.str() + "'");
-            }
+            const Type& t = arg->ResolvedType;
+            if (t.valid() && !isPrintableType(t, true))
+                addError(errLoc(node.LineNum) + "cannot print value of type '" + t.str() + "'");
         }
     node.ResolvedType = Type::Void();
 }
@@ -815,12 +840,14 @@ void SemanticAnalyzer::visit(ImportSttmt& node) {
 void SemanticAnalyzer::visit(FStringExpr& node) {
     for (auto& seg : node.Parts) {
         if (!seg.expr) continue;
-        if (!handleArrayIdentArg(*seg.expr)) {
+        if (handleArrayIdentArg(*seg.expr)) {
+            const Type& t = seg.expr->ResolvedType;
+            if (t.valid() && !isPrintableType(t, true))
+                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
+        } else {
             seg.expr->accept(*this);
             const Type& t = seg.expr->ResolvedType;
-            const bool printable = t == Type::Integer() || t == Type::Number()
-                || t == Type::Bool() || t == Type::Text();
-            if (t.valid() && !printable)
+            if (t.valid() && !isPrintableType(t, false))
                 addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
         }
     }
