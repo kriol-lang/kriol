@@ -26,6 +26,7 @@ LLD_HAS_DRIVER(wasm)
 #include <cstdlib>
 #include <cstdio>
 #include <initializer_list>
+#include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
 #include "../../include/kriol/type_utils.hh"
@@ -81,16 +82,18 @@ static std::string processEscapes(const std::string& raw) {
 
 // Returns the printf format specifier for a Kriol type.
 static const char* fmtSpec(const kriol::Type& kriolType) {
-    if (kriolType == kriol::Type::Integer()) return "%lld";
-    if (kriolType == kriol::Type::Number())  return "%g";
+    if (kriolType.isUnsignedInteger()) return "%llu";
+    if (kriolType.isInteger()) return "%lld";
+    if (kriolType.isFloat())  return "%g";
     return "%s"; // textu / fallback
 }
 
 // Reverse-map an LLVM type to the corresponding Kriol type string.
 static kriol::Type llvmTypeToKriol(llvm::Type* ty) {
-    if (ty->isDoubleTy())    return kriol::Type::Number();
-    if (ty->isIntegerTy(64)) return kriol::Type::Integer();
     if (ty->isIntegerTy(1))  return kriol::Type::Bool();
+    if (ty->isIntegerTy())   return kriol::Type::SignedInteger(ty->getIntegerBitWidth());
+    if (ty->isFloatTy())     return kriol::Type::Float(32);
+    if (ty->isDoubleTy())    return kriol::Type::Float(64);
     return kriol::Type::Text(); // pointer / fallback
 }
 
@@ -421,6 +424,24 @@ static void linkNativeExecutable(const std::string& objPath,
     runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
 
+static kriol::Type promotedNumericType(const kriol::Type& lhs, const kriol::Type& rhs) {
+    if (!lhs.valid()) return rhs;
+    if (!rhs.valid()) return lhs;
+    if (lhs.isFloat() || rhs.isFloat()) {
+        unsigned bits = std::max(lhs.isFloat() ? lhs.bitWidth() : 0,
+                                 rhs.isFloat() ? rhs.bitWidth() : 0);
+        return kriol::Type::Float(bits == 32 ? 32 : 64);
+    }
+    if (lhs.isInteger() && rhs.isInteger()) {
+        unsigned bits = std::max(lhs.bitWidth(), rhs.bitWidth());
+        bool isSigned = lhs.isSigned() || rhs.isSigned();
+        if (lhs.isSigned() != rhs.isSigned())
+            bits = std::max(bits, std::min(64u, bits * 2));
+        return isSigned ? kriol::Type::SignedInteger(bits) : kriol::Type::UnsignedInteger(bits);
+    }
+    return lhs.valid() ? lhs : rhs;
+}
+
 }
 
 using namespace kriol::ast;
@@ -436,8 +457,11 @@ llvm::Type* CodeGenVisitor::mapType(const Type& t) {
     if (t.isArray())
         return llvm::ArrayType::get(mapType(t.elementType()), t.arraySize());
 
-    if (t == Type::Number())  return llvm::Type::getDoubleTy(Context);
-    if (t == Type::Integer()) return llvm::Type::getInt64Ty(Context);
+    if (t.isFloat()) {
+        if (t.bitWidth() == 32) return llvm::Type::getFloatTy(Context);
+        return llvm::Type::getDoubleTy(Context);
+    }
+    if (t.isInteger()) return llvm::IntegerType::get(Context, t.bitWidth());
     if (t == Type::Bool())    return llvm::Type::getInt1Ty(Context);
     if (t == Type::Text())    return llvm::PointerType::getUnqual(Context);
     if (t == Type::Void())    return llvm::Type::getVoidTy(Context);
@@ -524,13 +548,52 @@ llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
     throw std::runtime_error("Unsupported implicit type conversion");
 }
 
+llvm::Value* CodeGenVisitor::coerceToType(llvm::Value* v,
+                                          const Type& sourceType,
+                                          const Type& targetType) {
+    llvm::Type* targetTy = mapType(targetType);
+    llvm::Type* sourceTy = v->getType();
+    if (sourceTy == targetTy) return v;
+
+    if (sourceType == Type::Bool() && targetType.isInteger())
+        return Builder->CreateZExtOrTrunc(v, targetTy, "conv");
+    if (sourceType == Type::Bool() && targetType.isFloat())
+        return Builder->CreateUIToFP(v, targetTy, "conv");
+
+    if (sourceType.isInteger() && targetType.isInteger()) {
+        if (sourceType.isSigned())
+            return Builder->CreateSExtOrTrunc(v, targetTy, "conv");
+        return Builder->CreateZExtOrTrunc(v, targetTy, "conv");
+    }
+
+    if (sourceType.isInteger() && targetType.isFloat()) {
+        if (sourceType.isSigned())
+            return Builder->CreateSIToFP(v, targetTy, "conv");
+        return Builder->CreateUIToFP(v, targetTy, "conv");
+    }
+
+    if (sourceType.isFloat() && targetType.isFloat()) {
+        if (sourceType.bitWidth() < targetType.bitWidth())
+            return Builder->CreateFPExt(v, targetTy, "conv");
+        return Builder->CreateFPTrunc(v, targetTy, "conv");
+    }
+
+    if (sourceType.isFloat() && targetType.isInteger()) {
+        if (targetType.isSigned())
+            return Builder->CreateFPToSI(v, targetTy, "conv");
+        return Builder->CreateFPToUI(v, targetTy, "conv");
+    }
+
+    return coerce(v, targetTy);
+}
+
 llvm::Value* CodeGenVisitor::toBool(llvm::Value* v) {
     if (v->getType()->isPointerTy())
         throw std::runtime_error("Cannot use non truthy value as a condition");
     if (v->getType()->isIntegerTy(1)) return v;
-    if (v->getType()->isDoubleTy())
+    if (v->getType()->isFloatingPointTy())
         return Builder->CreateFCmpONE(
-            v, llvm::ConstantFP::get(Context, llvm::APFloat(0.0)), "booltmp");
+            v, llvm::ConstantFP::get(v->getType(), 0.0), "booltmp");
     return Builder->CreateICmpNE(
         v, llvm::ConstantInt::get(v->getType(), 0), "booltmp");
 }
@@ -637,7 +700,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
 
         // Defer any initializer expression; emitted as stores at the top of inisiu
         if (node.Value)
-            DeferredGlobalInits.push_back({gv, node.Value.get()});
+            DeferredGlobalInits.push_back({gv, node.Value.get(), node.Type});
 
         LastValue = nullptr;
         return;
@@ -658,15 +721,18 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
                     initLit->Elements[i]->accept(*this);
                     if (!LastValue) continue;
                     llvm::Value* value = LastValue;
-                    if (value->getType() != elemTy) value = coerce(value, elemTy);
+                    Type elemKriolTy = node.Type.elementType();
+                    if (value->getType() != elemTy)
+                        value = coerceToType(value, initLit->Elements[i]->ResolvedType, elemKriolTy);
                     auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
                     llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
                     Builder->CreateStore(value, elemPtr);
                 }
             } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
                 initRep->Fill->accept(*this);
-                llvm::Value* fillVal = LastValue ? coerce(LastValue, elemTy)
-                                                 : llvm::Constant::getNullValue(elemTy);
+                llvm::Value* fillVal = LastValue
+                    ? coerceToType(LastValue, initRep->Fill->ResolvedType, node.Type.elementType())
+                    : llvm::Constant::getNullValue(elemTy);
                 for (size_t i = 0; i < initRep->Count; ++i) {
                     auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
                     llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
@@ -679,7 +745,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     } else if (node.Value) {
         node.Value->accept(*this);
         if (LastValue) {
-            LastValue = coerce(LastValue, ty);
+            LastValue = coerceToType(LastValue, node.Value->ResolvedType, node.Type);
             Builder->CreateStore(LastValue, alloca);
         }
     }
@@ -833,7 +899,9 @@ void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
         node.Elements[i]->accept(*this);
         llvm::Value* elem = LastValue;
         if (!elem) elem = llvm::Constant::getNullValue(elemTy);
-        if (elem->getType() != elemTy) elem = coerce(elem, elemTy);
+        Type elemKriolTy = node.ResolvedType.elementType();
+        if (elem->getType() != elemTy)
+            elem = coerceToType(elem, node.Elements[i]->ResolvedType, elemKriolTy);
         array = Builder->CreateInsertValue(
             array,
             elem,
@@ -860,7 +928,8 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
     llvm::Type* elemTy = arrayTy->getArrayElementType();
     if (node.Fill) node.Fill->accept(*this);
     llvm::Value* fill = LastValue ? LastValue : llvm::Constant::getNullValue(elemTy);
-    if (fill->getType() != elemTy) fill = coerce(fill, elemTy);
+    if (fill->getType() != elemTy)
+        fill = coerceToType(fill, node.Fill->ResolvedType, node.ResolvedType.elementType());
 
     llvm::Value* array = llvm::UndefValue::get(arrayTy);
     for (uint64_t i = 0; i < arrayTy->getNumElements(); ++i) {
@@ -895,7 +964,8 @@ void CodeGenVisitor::visit(RecordLiteralExpr& node) {
         llvm::Value* value = LastValue;
         llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(index));
         if (!value) value = llvm::Constant::getNullValue(fieldTy);
-        if (value->getType() != fieldTy) value = coerce(value, fieldTy);
+        if (value->getType() != fieldTy)
+            value = coerceToType(value, field.Value->ResolvedType, recordIt->second.fields[index]->Type);
         record = Builder->CreateInsertValue(
             record,
             value,
@@ -935,6 +1005,14 @@ void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = isMain ? "main" : node.Name;
+
+    FuncSig sig;
+    sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
+    if (node.Args) {
+        for (auto& arg : node.Args->Args)
+            sig.paramTypes.push_back(arg->Type);
+    }
+    FunctionSigs[name] = std::move(sig);
 
     // already declared
     if (Mod->getFunction(name)) return;
@@ -1026,6 +1104,14 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = isMain ? "main" : node.Name;
 
+    FuncSig sig;
+    sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
+    if (node.Args) {
+        for (auto& arg : node.Args->Args)
+            sig.paramTypes.push_back(arg->Type);
+    }
+    FunctionSigs[name] = sig;
+
     std::vector<llvm::Type*> paramTypes;
     if (node.Args) {
         for (auto& arg : node.Args->Args)
@@ -1053,6 +1139,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     auto* entry = llvm::BasicBlock::Create(Context, "entry", fn);
     Builder->SetInsertPoint(entry);
     CurrentFunction = fn;
+    CurrentReturnType = sig.retType;
 
     pushScope();
     size_t nodeArgCount = (node.Args ? node.Args->Args.size() : 0);
@@ -1077,7 +1164,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         for (auto& di : DeferredGlobalInits) {
             di.InitExpr->accept(*this);
             if (LastValue) {
-                LastValue = coerce(LastValue, di.Var->getValueType());
+                LastValue = coerceToType(LastValue, di.InitExpr->ResolvedType, di.TargetType);
                 Builder->CreateStore(LastValue, di.Var);
             }
         }
@@ -1121,6 +1208,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     }
 
     CurrentFunction = nullptr;
+    CurrentReturnType = Type::Invalid();
 }
 
 void CodeGenVisitor::visit(IfSttmt& node) {
@@ -1192,7 +1280,7 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
         // Coerce to the function's declared return type (e.g. nter -> num widening)
         llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
         if (LastValue && LastValue->getType() != retTy)
-            LastValue = coerce(LastValue, retTy);
+            LastValue = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
         Builder->CreateRet(LastValue);
     } else {
         Builder->CreateRetVoid();
@@ -1209,6 +1297,7 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     if (!callee) { LastValue = nullptr; return; }
     auto* fn = Mod->getFunction(callee->Name);
     if (!fn) { LastValue = nullptr; return; }
+    auto sigIt = FunctionSigs.find(callee->Name);
 
     std::vector<llvm::Value*> callArgs;
     if (node.Args) {
@@ -1219,8 +1308,12 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
                 if (i < fn->arg_size()) {
                     // Coerce argument to the declared parameter type when they differ
                     llvm::Type* paramTy = (fn->arg_begin() + i)->getType();
-                    if (LastValue->getType() != paramTy)
-                        LastValue = coerce(LastValue, paramTy);
+                    if (LastValue->getType() != paramTy) {
+                        if (sigIt != FunctionSigs.end() && i < sigIt->second.paramTypes.size())
+                            LastValue = coerceToType(LastValue, arg->ResolvedType, sigIt->second.paramTypes[i]);
+                        else
+                            LastValue = coerce(LastValue, paramTy);
+                    }
                 }
                 callArgs.push_back(LastValue);
                 ++i;
@@ -1238,26 +1331,30 @@ void CodeGenVisitor::visit(BinExpr& node) {
     llvm::Value* rhs = LastValue;
     if (!lhs || !rhs) { LastValue = nullptr; return; }
 
-    // Promote both sides to a common type: if either is double, use double;
-    // otherwise keep integer arithmetic.
-    auto* doubleTy = llvm::Type::getDoubleTy(Context);
-    bool isFloat = lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy();
-    if (isFloat) { lhs = coerce(lhs, doubleTy); rhs = coerce(rhs, doubleTy); }
-
     const auto& op = node.Op;
+    if (op == "&&") { LastValue = Builder->CreateAnd(toBool(lhs), toBool(rhs)); return; }
+    if (op == "||") { LastValue = Builder->CreateOr(toBool(lhs), toBool(rhs)); return; }
+
+    Type operandType = promotedNumericType(node.LHS->ResolvedType, node.RHS->ResolvedType);
+    llvm::Type* operandLlvmTy = mapType(operandType);
+    bool isFloat = operandType.isFloat();
+    bool isUnsigned = operandType.isUnsignedInteger();
+    if (lhs->getType() != operandLlvmTy)
+        lhs = coerceToType(lhs, node.LHS->ResolvedType, operandType);
+    if (rhs->getType() != operandLlvmTy)
+        rhs = coerceToType(rhs, node.RHS->ResolvedType, operandType);
+
     if      (op == "+")  LastValue = isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
     else if (op == "-")  LastValue = isFloat ? Builder->CreateFSub(lhs, rhs) : Builder->CreateSub(lhs, rhs);
     else if (op == "*")  LastValue = isFloat ? Builder->CreateFMul(lhs, rhs) : Builder->CreateMul(lhs, rhs);
-    else if (op == "/")  LastValue = isFloat ? Builder->CreateFDiv(lhs, rhs) : Builder->CreateSDiv(lhs, rhs);
-    else if (op == "%")  LastValue = isFloat ? Builder->CreateFRem(lhs, rhs) : Builder->CreateSRem(lhs, rhs);
-    else if (op == "<")  LastValue = isFloat ? Builder->CreateFCmpOLT(lhs, rhs) : Builder->CreateICmpSLT(lhs, rhs);
-    else if (op == ">")  LastValue = isFloat ? Builder->CreateFCmpOGT(lhs, rhs) : Builder->CreateICmpSGT(lhs, rhs);
-    else if (op == "<=") LastValue = isFloat ? Builder->CreateFCmpOLE(lhs, rhs) : Builder->CreateICmpSLE(lhs, rhs);
-    else if (op == ">=") LastValue = isFloat ? Builder->CreateFCmpOGE(lhs, rhs) : Builder->CreateICmpSGE(lhs, rhs);
+    else if (op == "/")  LastValue = isFloat ? Builder->CreateFDiv(lhs, rhs) : (isUnsigned ? Builder->CreateUDiv(lhs, rhs) : Builder->CreateSDiv(lhs, rhs));
+    else if (op == "%")  LastValue = isFloat ? Builder->CreateFRem(lhs, rhs) : (isUnsigned ? Builder->CreateURem(lhs, rhs) : Builder->CreateSRem(lhs, rhs));
+    else if (op == "<")  LastValue = isFloat ? Builder->CreateFCmpOLT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULT(lhs, rhs) : Builder->CreateICmpSLT(lhs, rhs));
+    else if (op == ">")  LastValue = isFloat ? Builder->CreateFCmpOGT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpUGT(lhs, rhs) : Builder->CreateICmpSGT(lhs, rhs));
+    else if (op == "<=") LastValue = isFloat ? Builder->CreateFCmpOLE(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULE(lhs, rhs) : Builder->CreateICmpSLE(lhs, rhs));
+    else if (op == ">=") LastValue = isFloat ? Builder->CreateFCmpOGE(lhs, rhs) : (isUnsigned ? Builder->CreateICmpUGE(lhs, rhs) : Builder->CreateICmpSGE(lhs, rhs));
     else if (op == "==") LastValue = isFloat ? Builder->CreateFCmpOEQ(lhs, rhs) : Builder->CreateICmpEQ(lhs, rhs);
     else if (op == "!=") LastValue = isFloat ? Builder->CreateFCmpONE(lhs, rhs) : Builder->CreateICmpNE(lhs, rhs);
-    else if (op == "&&") LastValue = Builder->CreateAnd(toBool(lhs), toBool(rhs));
-    else if (op == "||") LastValue = Builder->CreateOr(toBool(lhs), toBool(rhs));
     else LastValue = nullptr;
 }
 
@@ -1265,11 +1362,13 @@ void CodeGenVisitor::visit(LiteralExpr& node) {
     const auto& t = node.Type;
     const auto& v = node.Value;
 
-    if (t == Type::Number()) {
-        LastValue = llvm::ConstantFP::get(Context, llvm::APFloat(std::stod(v)));
-    } else if (t == Type::Integer()) {
-        LastValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context),
-                                           std::stoll(v), /*isSigned=*/true);
+    if (t.isFloat()) {
+        if (t.bitWidth() == 32)
+            LastValue = llvm::ConstantFP::get(llvm::Type::getFloatTy(Context), std::stod(v));
+        else
+            LastValue = llvm::ConstantFP::get(Context, llvm::APFloat(std::stod(v)));
+    } else if (t.isInteger()) {
+        LastValue = llvm::ConstantInt::get(mapType(t), std::stoll(v), t.isSigned());
     } else if (t == Type::Bool()) {
         LastValue = llvm::ConstantInt::get(llvm::Type::getInt1Ty(Context),
                                            std::stoi(v) != 0);
@@ -1316,14 +1415,16 @@ void CodeGenVisitor::visit(AssignExpr& node) {
 
     if (node.AssignOp != "=") {
         llvm::Value* cur = Builder->CreateLoad(dest.Type, dest.Ptr);
-        llvm::Value* rhs = coerce(val, dest.Type);
-        bool isFloat = dest.Type->isDoubleTy();
+        Type targetType = node.Assignee->ResolvedType;
+        llvm::Value* rhs = coerceToType(val, node.Assigned->ResolvedType, targetType);
+        bool isFloat = targetType.isFloat();
+        bool isUnsigned = targetType.isUnsignedInteger();
         if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
         else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
         else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
-        else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs);
+        else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : (isUnsigned ? Builder->CreateUDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs));
     } else {
-        val = coerce(val, dest.Type);
+        val = coerceToType(val, node.Assigned->ResolvedType, node.Assignee->ResolvedType);
     }
     Builder->CreateStore(val, dest.Ptr);
     LastValue = val;
@@ -1404,6 +1505,7 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
 
 void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
                                             llvm::ArrayType* arrayTy,
+                                            const Type& arrayKriolType,
                                             std::string& outFmt,
                                             std::vector<llvm::Value*>& outArgs) {
     outFmt += "[";
@@ -1415,15 +1517,15 @@ void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
 
         auto* idx      = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
         llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+        Type elemKriolType = arrayKriolType.elementType();
 
         if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
-            appendArrayFormatParts(elemPtr, nestedArrayTy, outFmt, outArgs);
+            appendArrayFormatParts(elemPtr, nestedArrayTy, elemKriolType, outFmt, outArgs);
             continue;
         }
 
         llvm::Value* elem      = Builder->CreateLoad(elemTy, elemPtr, "fstr_array_elem");
-        Type elemType = llvmTypeToKriol(elemTy);
-        if (elemType == Type::Bool()) {
+        if (elemKriolType == Type::Bool()) {
             auto* i32Ty = llvm::Type::getInt32Ty(Context);
             llvm::Value* ext = elem->getType()->isIntegerTy(1)
                 ? Builder->CreateZExt(elem, i32Ty)
@@ -1431,7 +1533,11 @@ void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
             elem = Builder->CreateCall(getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
             outFmt += "%s";
         } else {
-            outFmt += fmtSpec(elemType);
+            outFmt += fmtSpec(elemKriolType);
+            if (elemKriolType.isInteger())
+                elem = coerceToType(elem, elemKriolType, elemKriolType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64));
+            else if (elemKriolType.isFloat() && elemKriolType.bitWidth() < 64)
+                elem = coerceToType(elem, elemKriolType, Type::Float(64));
         }
         outArgs.push_back(elem);
     }
@@ -1457,7 +1563,7 @@ void CodeGenVisitor::visit(FStringExpr& node) {
                 if (!storage.Ptr || !arrayTy)
                     throw std::runtime_error("cannot interpolate non-addressable array expression");
 
-                appendArrayFormatParts(storage.Ptr, arrayTy, fmtStr, callArgs);
+                appendArrayFormatParts(storage.Ptr, arrayTy, seg.expr->ResolvedType, fmtStr, callArgs);
                 continue;
             }
 
@@ -1477,6 +1583,10 @@ void CodeGenVisitor::visit(FStringExpr& node) {
                 fmtStr += "%s";
             } else {
                 fmtStr += fmtSpec(kriolType);
+                if (kriolType.isInteger())
+                    val = coerceToType(val, kriolType, kriolType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64));
+                else if (kriolType.isFloat() && kriolType.bitWidth() < 64)
+                    val = coerceToType(val, kriolType, Type::Float(64));
             }
             callArgs.push_back(val);
         }
@@ -1496,11 +1606,12 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
     auto* putcharFn = getOrDeclarePutchar(*Mod, Context);
 
     auto emitPrintValue = [&](llvm::Value* val, const Type& resolvedType, bool newline) {
-        if (resolvedType == Type::Integer()) {
-            if (val->getType() != i64Ty) val = coerce(val, i64Ty);
-            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "nter", i64Ty, newline), {val});
-        } else if (resolvedType == Type::Number()) {
-            if (val->getType() != doubleTy) val = coerce(val, doubleTy);
+        if (resolvedType.isInteger()) {
+            Type printType = resolvedType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64);
+            if (val->getType() != i64Ty) val = coerceToType(val, resolvedType, printType);
+            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, resolvedType.isSigned() ? "nter" : "unter", i64Ty, newline), {val});
+        } else if (resolvedType.isFloat()) {
+            if (val->getType() != doubleTy) val = coerceToType(val, resolvedType, Type::Float(64));
             Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "num", doubleTy, newline), {val});
         } else if (resolvedType == Type::Bool()) {
             llvm::Value* ext = val->getType()->isIntegerTy(1)
@@ -1517,7 +1628,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         Builder->CreateCall(putcharFn, {llvm::ConstantInt::get(i32Ty, c)});
     };
 
-    auto emitPrintArray = [&](auto&& self, llvm::Value* storage, llvm::ArrayType* arrayTy) -> void {
+    auto emitPrintArray = [&](auto&& self, llvm::Value* storage, llvm::ArrayType* arrayTy, const Type& arrayKriolType) -> void {
         printChar('[');
         llvm::Type* elemTy = arrayTy->getArrayElementType();
         uint64_t elemCount = arrayTy->getNumElements();
@@ -1530,14 +1641,15 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
 
             auto* idx = llvm::ConstantInt::get(i64Ty, i);
             llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
+            Type elemKriolType = arrayKriolType.elementType();
 
             if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
-                self(self, elemPtr, nestedArrayTy);
+                self(self, elemPtr, nestedArrayTy, elemKriolType);
                 continue;
             }
 
             llvm::Value* elem = Builder->CreateLoad(elemTy, elemPtr, "array.elem");
-            emitPrintValue(elem, llvmTypeToKriol(elemTy), /*newline=*/false);
+            emitPrintValue(elem, elemKriolType, /*newline=*/false);
         }
 
         printChar(']');
@@ -1564,7 +1676,7 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
             if (!storage.Ptr || !arrayTy)
                 throw std::runtime_error("cannot print non-addressable array expression");
 
-            emitPrintArray(emitPrintArray, storage.Ptr, arrayTy);
+            emitPrintArray(emitPrintArray, storage.Ptr, arrayTy, arg->ResolvedType);
             if (addNlHere) printChar('\n');
             continue;
         }
@@ -1591,7 +1703,7 @@ void CodeGenVisitor::visit(UnaryExpr& node) {
     if (node.Op == "!") {
         LastValue = Builder->CreateNot(toBool(v), "nottmp");
     } else { // "-"
-        if (v->getType()->isDoubleTy())
+        if (v->getType()->isFloatingPointTy())
             LastValue = Builder->CreateFNeg(v, "negtmp");
         else
             LastValue = Builder->CreateNeg(v, "negtmp");
@@ -1624,7 +1736,7 @@ void CodeGenVisitor::visit(SaiSttmt& node) {
     llvm::Value* code = llvm::ConstantInt::get(i32Ty, 0);
     if (node.Code) {
         node.Code->accept(*this);
-        if (LastValue) code = coerce(LastValue, i32Ty);
+        if (LastValue) code = coerceToType(LastValue, node.Code->ResolvedType, Type::SignedInteger(32));
     }
     Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
     Builder->CreateUnreachable();

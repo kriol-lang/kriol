@@ -53,6 +53,18 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "nter"          SAVE_TOKEN;   return TYPE_NTER;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
+"i8"            SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"i16"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"i32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"i64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"u8"            SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"u16"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"u32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"u64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"f32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"f64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"isize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
+"usize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
 "nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
 "sai"           return TOKENIZE(SAI);

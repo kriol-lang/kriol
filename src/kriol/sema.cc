@@ -21,6 +21,24 @@ static bool startsWithUppercaseAscii(const std::string& name) {
     return !name.empty() && std::isupper(static_cast<unsigned char>(name[0]));
 }
 
+static Type promotedNumericType(const Type& lhs, const Type& rhs) {
+    if (!lhs.valid()) return rhs;
+    if (!rhs.valid()) return lhs;
+    if (lhs.isFloat() || rhs.isFloat()) {
+        unsigned bits = std::max(lhs.isFloat() ? lhs.bitWidth() : 0,
+                                 rhs.isFloat() ? rhs.bitWidth() : 0);
+        return Type::Float(bits == 32 ? 32 : 64);
+    }
+    if (lhs.isInteger() && rhs.isInteger()) {
+        unsigned bits = std::max(lhs.bitWidth(), rhs.bitWidth());
+        bool isSigned = lhs.isSigned() || rhs.isSigned();
+        if (lhs.isSigned() != rhs.isSigned())
+            bits = std::max(bits, std::min(64u, bits * 2));
+        return isSigned ? Type::SignedInteger(bits) : Type::UnsignedInteger(bits);
+    }
+    return lhs.valid() ? lhs : rhs;
+}
+
 }
 
 bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
@@ -53,7 +71,9 @@ static const std::unordered_set<std::string> reservedKeywords = {
     "para", "kontinua", "dipoz",
 
     // Type names and literals.
-    "num", "nter", "bool", "textu", "sin", "nau"
+    "num", "nter", "bool", "textu", "sin", "nau",
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64",
+    "f32", "f64", "isize", "usize"
 };
 
 bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
@@ -73,15 +93,60 @@ bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
 
 bool SemanticAnalyzer::isWideningCoercion(const Type& from, const Type& to) {
     if (from == to) return true;
-    if (from == Type::Integer() && to == Type::Number()) return true;
-    if (from == Type::Bool() && to == Type::Integer()) return true;
-    if (from == Type::Bool() && to == Type::Number()) return true;
+    if (from == Type::Bool() && (to.isInteger() || to.isFloat())) return true;
+    if (from.isInteger() && to.isInteger()) {
+        if (from.isSigned() == to.isSigned())
+            return from.bitWidth() <= to.bitWidth();
+        if (!from.isSigned() && to.isSigned())
+            return from.bitWidth() < to.bitWidth();
+        return false;
+    }
+    if (from.isFloat() && to.isFloat())
+        return from.bitWidth() <= to.bitWidth();
+    if (from.isInteger() && to.isFloat())
+        return true;
     return false;
 }
 
+bool SemanticAnalyzer::integerLiteralFits(const ast::Expr* expr, const Type& to) {
+    if (!to.isInteger()) return false;
+
+    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
+    if (!lit || !lit->Type.isInteger()) return false;
+
+    long long value = 0;
+    try {
+        value = std::stoll(lit->Value);
+    } catch (...) {
+        return false;
+    }
+
+    const unsigned bits = to.bitWidth();
+    if (bits == 0 || bits > 64) return false;
+
+    if (to.isSigned()) {
+        if (bits == 64) return true;
+        const long long min = -(1LL << (bits - 1));
+        const long long max = (1LL << (bits - 1)) - 1;
+        return value >= min && value <= max;
+    }
+
+    if (value < 0) return false;
+    if (bits == 64) return true;
+    const unsigned long long max = (1ULL << bits) - 1;
+    return static_cast<unsigned long long>(value) <= max;
+}
+
+bool SemanticAnalyzer::canCoerceExprTo(const ast::Expr* expr, const Type& to) {
+    if (!expr) return false;
+    const Type& from = expr->ResolvedType;
+    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
+    if (lit && from.isFloat() && to.isFloat()) return true;
+    return from == to || isWideningCoercion(from, to) || integerLiteralFits(expr, to);
+}
+
 bool SemanticAnalyzer::isPrintableType(const Type& type, bool allowArray) {
-    if (type == Type::Integer() || type == Type::Number()
-            || type == Type::Bool() || type == Type::Text())
+    if (type.isInteger() || type.isFloat() || type == Type::Bool() || type == Type::Text())
         return true;
 
     if (allowArray && type.isArray())
@@ -191,7 +256,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
         }
 
         const Type fillType = initRep->Fill ? initRep->Fill->ResolvedType : Type::Invalid();
-        if (fillType.valid() && fillType != elemType && !isWideningCoercion(fillType, elemType)) {
+        if (fillType.valid() && !canCoerceExprTo(initRep->Fill.get(), elemType)) {
             addError(errLoc(lineNum) + context + " repeat initializer fill type '"
                      + fillType.str() + "' does not match array element type '"
                      + elemType.str() + "'");
@@ -223,7 +288,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
     bool ok = true;
     for (std::size_t i = 0; i < initLit->Elements.size(); ++i) {
         const auto& gotType = initLit->Elements[i]->ResolvedType;
-        if (gotType.valid() && gotType != elemType && !isWideningCoercion(gotType, elemType)) {
+        if (gotType.valid() && !canCoerceExprTo(initLit->Elements[i].get(), elemType)) {
             addError(errLoc(lineNum) + context + " initializer element "
                      + std::to_string(i + 1) + ": expected '" + elemType.str()
                      + "', got '" + gotType.str() + "'");
@@ -345,8 +410,7 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         if (node.Value->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
         if (!node.IsArray && node.Value->ResolvedType.valid()
-                && node.Value->ResolvedType != node.Type
-                && !isWideningCoercion(node.Value->ResolvedType, node.Type))
+                && !canCoerceExprTo(node.Value.get(), node.Type))
             addError(errLoc(node.LineNum) + "cannot assign value of type '"
                      + node.Value->ResolvedType.str() + "' to variable '" + node.Name
                      + "' of type '" + node.Type.str() + "'");
@@ -448,8 +512,7 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
         const Type& got = node.ReturnValue->ResolvedType;
         if (got.valid() && CurrFuncRetType.valid()
                 && !CurrFuncRetType.isVoid()
-                && got != CurrFuncRetType
-                && !isWideningCoercion(got, CurrFuncRetType))
+                && !canCoerceExprTo(node.ReturnValue.get(), CurrFuncRetType))
             addError(loc + "returning '" + got.str() + "' from function '" + CurrFuncName
                      + "' declared as '" + CurrFuncRetType.str() + "'");
     }
@@ -494,8 +557,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
         for (size_t i = 0; i < node.Args->Args.size(); ++i) {
             const Type& argType   = node.Args->Args[i]->ResolvedType;
             const Type& paramType = info.paramTypes[i];
-            if (argType.valid() && argType != paramType
-                    && !isWideningCoercion(argType, paramType))
+            if (argType.valid() && !canCoerceExprTo(node.Args->Args[i].get(), paramType))
                 addError(loc + "argument " + std::to_string(i + 1) + " of '" + callee->Name
                          + "': expected '" + paramType.str() + "', got '" + argType.str() + "'");
         }
@@ -521,13 +583,7 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     if (boolOps.count(node.Op)) {
         node.ResolvedType = Type::Bool();
     } else {
-        // Arithmetic: promote nter+num -> num, otherwise keep operand type
-        if (lt == Type::Number() || rt == Type::Number())
-            node.ResolvedType = Type::Number();
-        else if (lt.valid())
-            node.ResolvedType = lt;
-        else
-            node.ResolvedType = rt;
+        node.ResolvedType = promotedNumericType(lt, rt);
     }
 }
 
@@ -572,7 +628,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     if (node.Index) {
         node.Index->accept(*this);
         const Type& indexType = node.Index->ResolvedType;
-        if (indexType.valid() && indexType != Type::Integer())
+        if (indexType.valid() && !indexType.isInteger())
             addError(errLoc(node.LineNum) + "array index must be an integer");
     }
 
@@ -609,7 +665,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     if (init->fullyInitialized) return;
 
     auto* lit = dynamic_cast<LiteralExpr*>(node.Index.get());
-    if (!lit || lit->Type != Type::Integer()) {
+    if (!lit || !lit->Type.isInteger()) {
         addError(errLoc(node.LineNum) + "array '" + baseIdent->Name + "' may contain uninitialized elements");
         return;
     }
@@ -675,8 +731,7 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
     validateTypeKnown(node.ExplicitElementType, node.LineNum, "array literal element type");
     for (std::size_t i = 0; i < node.Elements.size(); ++i) {
         const Type& got = node.Elements[i]->ResolvedType;
-        if (got.valid() && got != node.ExplicitElementType
-                && !isWideningCoercion(got, node.ExplicitElementType)) {
+        if (got.valid() && !canCoerceExprTo(node.Elements[i].get(), node.ExplicitElementType)) {
             addError(errLoc(node.LineNum) + "array literal element "
                      + std::to_string(i + 1) + ": expected '"
                      + node.ExplicitElementType.str() + "', got '"
@@ -730,7 +785,7 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
         }
 
         const Type& got = field.Value ? field.Value->ResolvedType : Type::Invalid();
-        if (got.valid() && got != want && !isWideningCoercion(got, want))
+        if (got.valid() && !canCoerceExprTo(field.Value.get(), want))
             addError(errLoc(node.LineNum) + "field '" + field.Name + "' of '"
                      + node.TypeName + "': expected '" + want.str()
                      + "', got '" + got.str() + "'");
@@ -765,7 +820,7 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
 
         if (arr->Index) {
             arr->Index->accept(*this);
-            if (arr->Index->ResolvedType.valid() && arr->Index->ResolvedType != Type::Integer())
+            if (arr->Index->ResolvedType.valid() && !arr->Index->ResolvedType.isInteger())
                 addError(errLoc(lineNum) + "array index must be an integer");
         }
 
@@ -846,8 +901,7 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
         }
 
         if (assigneeType.valid() && node.Assigned->ResolvedType.valid()
-                && assigneeType != node.Assigned->ResolvedType
-                && !isWideningCoercion(node.Assigned->ResolvedType, assigneeType)) {
+                && !canCoerceExprTo(node.Assigned.get(), assigneeType)) {
             addError(errLoc(node.LineNum) + "cannot assign value of type '" + node.Assigned->ResolvedType.str()
                      + "' to target of type '" + assigneeType.str() + "'");
             canMarkInitialized = false;
@@ -864,7 +918,7 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
         auto* init = baseIdent ? lookupInitStateMutable(baseIdent->Name) : nullptr;
         if (init && init->isArray && !init->fullyInitialized) {
             auto* lit = dynamic_cast<LiteralExpr*>(arr->Index.get());
-            if (lit && lit->Type == Type::Integer()) {
+            if (lit && lit->Type.isInteger()) {
                 try {
                     long long idx = std::stoll(lit->Value);
                     if (idx >= 0 && static_cast<std::size_t>(idx) < init->elementInitialized.size()) {
@@ -940,7 +994,7 @@ void SemanticAnalyzer::visit(SaiSttmt& node) {
     if (node.Code) {
         node.Code->accept(*this);
         const Type& t = node.Code->ResolvedType;
-        if (t != Type::Integer()) {
+        if (!t.isInteger()) {
             std::string err = "sai() expects an integer exit code";
             if (t.valid()) err += ", got value of type '" + t.str() + "'";
             addError(errLoc(node.LineNum) + err);
@@ -952,7 +1006,7 @@ void SemanticAnalyzer::visit(KonfirmaSttmt& node) {
     if (node.Cond) {
         node.Cond->accept(*this);
         const Type& t = node.Cond->ResolvedType;
-        if (t != Type::Bool() && t != Type::Integer() && t != Type::Number()) {
+        if (t != Type::Bool() && !t.isInteger() && !t.isFloat()) {
             std::string err = "konfirma() expects a boolean condition";
             if (t.valid()) err += ", got value of type '" + t.str() + "'";
             addError(errLoc(node.LineNum) + err);

@@ -1,0 +1,38 @@
+// Fixed-width primitive ABI types.
+
+molda Bytes {
+    u8 first;
+    i16 delta;
+    f32 ratio;
+}
+
+fn add_u16(u16 a, u16 b) u16 {
+    divolvi a + b;
+}
+
+fn widen_i32(i16 x) i32 {
+    divolvi x;
+}
+
+fn inisiu() {
+    u8 byte = 255;
+    i16 small = -120;
+    i32 wide = widen_i32(small);
+    u16 sum = add_u16(10, 20);
+    f32 ratio = 1.5;
+    f64 total = ratio + 2.5;
+    usize count = 3;
+    u8[3] bytes = [1, 2, 3];
+    Bytes rec = Bytes::{first: byte, delta: small, ratio: ratio};
+
+    konfirma(byte == 255);
+    konfirma(wide == -120);
+    konfirma(sum == 30);
+    konfirma(total > 3.9);
+    konfirma(count == 3);
+    konfirma(bytes[2] == 3);
+    konfirma(rec.first == 255);
+
+    mostran(byte);
+    mostran(f"sum={sum} bytes={bytes}");
+}

@@ -55,6 +55,10 @@ void __kriol_print_nter(int64_t v) {
     printf("%lld", (long long)v);
 }
 
+void __kriol_print_unter(uint64_t v) {
+    printf("%llu", (unsigned long long)v);
+}
+
 void __kriol_print_num(double v) {
     printf("%g", v);
 }
@@ -73,6 +77,11 @@ void __kriol_print_textu(const char* s) {
 
 void __kriol_println_nter(int64_t v) {
     __kriol_print_nter(v);
+    putchar('\n');
+}
+
+void __kriol_println_unter(uint64_t v) {
+    __kriol_print_unter(v);
     putchar('\n');
 }
 

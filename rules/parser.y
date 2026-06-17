@@ -41,7 +41,7 @@
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
 %token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
-%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU
+%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
@@ -82,6 +82,7 @@ type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_BOOL { $$ = $1; }
                | TYPE_NTER { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
+               | TYPE_PRIMITIVE { $$ = $1; }
                | TYPE_IDENT { $$ = $1; }
                ;
 

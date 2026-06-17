@@ -39,6 +39,7 @@ namespace ast {
 
         // Currently-emitting function
         llvm::Function* CurrentFunction = nullptr;
+        Type CurrentReturnType;
 
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
@@ -49,6 +50,13 @@ namespace ast {
 
         // Module-scope globals: variable name -> GlobalVariable*
         std::unordered_map<std::string, llvm::GlobalVariable*> GlobalVars;
+
+        struct FuncSig {
+            Type retType;
+            std::vector<Type> paramTypes;
+        };
+
+        std::unordered_map<std::string, FuncSig> FunctionSigs;
 
         struct RecordInfo {
             std::vector<ast::VarDeclSttmt*> fields;
@@ -68,6 +76,7 @@ namespace ast {
             llvm::GlobalVariable*  Var;
             // non-owning; AST outlives codegen
             kriol::ast::Expr*      InitExpr;
+            Type                   TargetType;
         };
         std::vector<DeferredGlobalInit> DeferredGlobalInits;
 
@@ -103,6 +112,9 @@ namespace ast {
         // bool->num (UIToFP), num->nter (FPToSI). Identity is a no-op.
         // Throws for unsupported or pointer conversions.
         llvm::Value* coerce(llvm::Value* v, llvm::Type* targetTy);
+        llvm::Value* coerceToType(llvm::Value* v,
+                                  const Type& sourceType,
+                                  const Type& targetType);
 
         // Coerce value to i1 for use as a branch condition
         llvm::Value* toBool(llvm::Value* v);
@@ -111,6 +123,7 @@ namespace ast {
         // to outFmt and outArgs, for use with __kriol_format.
         void appendArrayFormatParts(llvm::Value* storage,
                                     llvm::ArrayType* arrayTy,
+                                    const Type& arrayKriolType,
                                     std::string& outFmt,
                                     std::vector<llvm::Value*>& outArgs);
 
