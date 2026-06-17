@@ -1,0 +1,11 @@
+molda Pessoa {
+    textu nomi;
+    nter[2] flags;
+}
+
+fn inisiu() {
+    Pessoa pessoa = Pessoa::{nomi: "jose", flags: [0, 1]};
+    mostran(f"flags: {pessoa.flags}");
+    konfirma(pessoa.flags[0] == 0);
+    konfirma(pessoa.flags[1] == 1);
+}

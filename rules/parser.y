@@ -52,7 +52,7 @@
             constant_expression constant logical_or_expressions logical_and_expressions
             equality_expression relational_expression additive_expression multiplicative_expression
             mostra_func_call fstring fstring_parts array_initializer array_initializer_elements value_expression
-            record_literal record_field_initializers
+            typed_array_initializer record_literal record_field_initializers
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
              function_declaration declaration molda_declaration statement import_statement
 %type<block> compound_statement statements else_then
@@ -185,6 +185,7 @@ postfix_expression : primary_atom { $$ = $1; }
 
 primary_atom : mostra_func_call { $$ = $1; }
              | record_literal { $$ = $1; }
+             | typed_array_initializer { $$ = $1; }
              | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
              | constant { $$ = $1; }
              | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
@@ -297,8 +298,11 @@ record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY {
                | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
                ;
 
-record_field_initializers : IDENT COLON expression { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
-                          | record_field_initializers COMMA IDENT COLON expression { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = $1; delete $3; }
+typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = yylineno; $$ = lit; delete $2; }
+                        ;
+
+record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
+                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = $1; delete $3; }
                           ;
 %%
 

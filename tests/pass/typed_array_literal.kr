@@ -1,0 +1,6 @@
+fn inisiu() {
+    nter[3] valores = <nter>[1, 2, 3];
+    mostran(f"valores: {valores}");
+    konfirma(valores[0] == 1);
+    konfirma(valores[2] == 3);
+}

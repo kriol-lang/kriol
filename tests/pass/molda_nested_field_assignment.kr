@@ -6,12 +6,14 @@ molda Enderesu {
 molda Pessoa {
     textu nomi;
     Enderesu enderesu;
+    nter[2] flags;
 }
 
 fn inisiu() {
     Pessoa pessoa = Pessoa:: {
         nomi: "jose",
-        enderesu: Enderesu::{rua: "antigu", numero: 10}
+        enderesu: Enderesu::{rua: "antigu", numero: 10},
+        flags: [0, 1]
     };
 
     pessoa.enderesu.rua = "novu";
@@ -22,4 +24,5 @@ fn inisiu() {
     mostra(pessoa.enderesu.rua);
     mostra(" ");
     mostran(pessoa.enderesu.numero);
+    mostran(f"F pessoa: {pessoa.flags}");
 }

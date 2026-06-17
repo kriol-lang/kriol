@@ -293,9 +293,14 @@ namespace ast {
     class ArrayLiteralExpr : public Expr {
     public:
         std::vector<std::unique_ptr<Expr>> Elements;
+        kriol::Type ExplicitElementType;
 
         void addElement(std::unique_ptr<Expr> element) {
             Elements.push_back(std::move(element));
+        }
+
+        void SetExplicitElementType(kriol::Type type) {
+            ExplicitElementType = std::move(type);
         }
 
         void accept(Visitor& v) override { v.visit(*this); }

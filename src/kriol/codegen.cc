@@ -816,14 +816,63 @@ void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
 }
 
 void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
-    // Array literals are consumed in VarDeclSttmt initializers; they do not
-    // directly lower to a first-class runtime value in this M4 slice.
-    LastValue = nullptr;
+    if (!node.ResolvedType.isArray()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto* arrayTy = llvm::dyn_cast<llvm::ArrayType>(mapType(node.ResolvedType));
+    if (!arrayTy) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::Value* array = llvm::UndefValue::get(arrayTy);
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    for (std::size_t i = 0; i < node.Elements.size(); ++i) {
+        node.Elements[i]->accept(*this);
+        llvm::Value* elem = LastValue;
+        if (!elem) elem = llvm::Constant::getNullValue(elemTy);
+        if (elem->getType() != elemTy) elem = coerce(elem, elemTy);
+        array = Builder->CreateInsertValue(
+            array,
+            elem,
+            {static_cast<unsigned>(i)},
+            "array.literal.elem"
+        );
+    }
+
+    LastValue = array;
 }
 
 void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
-    // Repeat expresssions are consumed in VarDeclSttmt initializers.
-    LastValue = nullptr;
+    if (!node.ResolvedType.isArray()) {
+        LastValue = nullptr;
+        return;
+    }
+
+    auto* arrayTy = llvm::dyn_cast<llvm::ArrayType>(mapType(node.ResolvedType));
+    if (!arrayTy) {
+        LastValue = nullptr;
+        return;
+    }
+
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    if (node.Fill) node.Fill->accept(*this);
+    llvm::Value* fill = LastValue ? LastValue : llvm::Constant::getNullValue(elemTy);
+    if (fill->getType() != elemTy) fill = coerce(fill, elemTy);
+
+    llvm::Value* array = llvm::UndefValue::get(arrayTy);
+    for (uint64_t i = 0; i < arrayTy->getNumElements(); ++i) {
+        array = Builder->CreateInsertValue(
+            array,
+            fill,
+            {static_cast<unsigned>(i)},
+            "array.repeat.elem"
+        );
+    }
+
+    LastValue = array;
 }
 
 void CodeGenVisitor::visit(RecordLiteralExpr& node) {
@@ -1353,12 +1402,6 @@ static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMCont
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
 }
 
-static llvm::Type* getStorageValueType(llvm::Value* storage) {
-    if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(storage)) return alloca->getAllocatedType();
-    if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(storage)) return gv->getValueType();
-    return nullptr;
-}
-
 void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
                                             llvm::ArrayType* arrayTy,
                                             std::string& outFmt,
@@ -1409,17 +1452,12 @@ void CodeGenVisitor::visit(FStringExpr& node) {
             }
         } else { // Interpolated expression
             if (seg.expr->ResolvedType.isArray()) {
-                auto* ident = unwrapIdentExpr(seg.expr.get());
-                if (!ident)
-                    throw std::runtime_error("array interpolation currently supports array variables only");
+                LValue storage = resolveLValue(seg.expr.get());
+                auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
+                if (!storage.Ptr || !arrayTy)
+                    throw std::runtime_error("cannot interpolate non-addressable array expression");
 
-                llvm::Value* storage = getArrayStorage(ident->Name);
-                llvm::Type* storageTy = getStorageValueType(storage);
-                auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
-                if (!storage || !arrayTy)
-                    throw std::runtime_error("cannot interpolate array variable '" + ident->Name + "'");
-
-                appendArrayFormatParts(storage, arrayTy, fmtStr, callArgs);
+                appendArrayFormatParts(storage.Ptr, arrayTy, fmtStr, callArgs);
                 continue;
             }
 
@@ -1521,17 +1559,12 @@ void CodeGenVisitor::visit(MostraFunCallExpr& node) {
         auto& arg = args[i];
 
         if (arg->ResolvedType.isArray()) {
-            auto* ident = unwrapIdentExpr(arg.get());
-            if (!ident)
-                throw std::runtime_error("array printing currently supports array variables only");
+            LValue storage = resolveLValue(arg.get());
+            auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
+            if (!storage.Ptr || !arrayTy)
+                throw std::runtime_error("cannot print non-addressable array expression");
 
-            llvm::Value* storage = getArrayStorage(ident->Name);
-            llvm::Type* storageTy = getStorageValueType(storage);
-            auto* arrayTy = storageTy ? llvm::dyn_cast<llvm::ArrayType>(storageTy) : nullptr;
-            if (!storage || !arrayTy)
-                throw std::runtime_error("cannot print array variable '" + ident->Name + "'");
-
-            emitPrintArray(emitPrintArray, storage, arrayTy);
+            emitPrintArray(emitPrintArray, storage.Ptr, arrayTy);
             if (addNlHere) printChar('\n');
             continue;
         }

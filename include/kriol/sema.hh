@@ -125,6 +125,10 @@ namespace sema {
 
         void registerRecord(ast::MoldaDeclSttmt& node);
         bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
+        bool validateArrayInitializer(const Type& expectedType,
+                                      ast::Expr* init,
+                                      int lineNum,
+                                      const std::string& context);
         Type resolveAssignableType(ast::Expr* expr, int lineNum);
 
 

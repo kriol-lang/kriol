@@ -165,6 +165,76 @@ bool SemanticAnalyzer::validateTypeKnown(const Type& type,
     return false;
 }
 
+bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
+                                                ast::Expr* init,
+                                                int lineNum,
+                                                const std::string& context) {
+    if (!isArrayType(expectedType)) {
+        addError(errLoc(lineNum) + context + " requires a non-array value; use an explicit '<T>[...]' array literal only for array targets");
+        return false;
+    }
+
+    auto* initLit = dynamic_cast<ArrayLiteralExpr*>(init);
+    auto* initRep = dynamic_cast<ArrayRepeatExpr*>(init);
+    if (!initLit && !initRep) return false;
+
+    const std::size_t expectedSize = expectedType.arraySize();
+    const Type elemType = arrayElementType(expectedType);
+
+    if (initRep) {
+        initRep->accept(*this);
+        if (initRep->Count != expectedSize) {
+            addError(errLoc(lineNum) + context + " has size "
+                     + std::to_string(expectedSize) + " but repeat initializer [value] * "
+                     + std::to_string(initRep->Count) + " has a different count");
+            return false;
+        }
+
+        const Type fillType = initRep->Fill ? initRep->Fill->ResolvedType : Type::Invalid();
+        if (fillType.valid() && fillType != elemType && !isWideningCoercion(fillType, elemType)) {
+            addError(errLoc(lineNum) + context + " repeat initializer fill type '"
+                     + fillType.str() + "' does not match array element type '"
+                     + elemType.str() + "'");
+            return false;
+        }
+
+        initRep->ResolvedType = expectedType;
+        return true;
+    }
+
+    initLit->accept(*this);
+    if (initLit->ExplicitElementType.valid()
+            && initLit->ExplicitElementType != elemType
+            && !isWideningCoercion(initLit->ExplicitElementType, elemType)) {
+        addError(errLoc(lineNum) + context + " expects array element type '"
+                 + elemType.str() + "', got explicit array literal element type '"
+                 + initLit->ExplicitElementType.str() + "'");
+        return false;
+    }
+
+    const std::size_t got = initLit->Elements.size();
+    if (got != expectedSize) {
+        addError(errLoc(lineNum) + context + " expects "
+                 + std::to_string(expectedSize) + " initializer element(s), got "
+                 + std::to_string(got));
+        return false;
+    }
+
+    bool ok = true;
+    for (std::size_t i = 0; i < initLit->Elements.size(); ++i) {
+        const auto& gotType = initLit->Elements[i]->ResolvedType;
+        if (gotType.valid() && gotType != elemType && !isWideningCoercion(gotType, elemType)) {
+            addError(errLoc(lineNum) + context + " initializer element "
+                     + std::to_string(i + 1) + ": expected '" + elemType.str()
+                     + "', got '" + gotType.str() + "'");
+            ok = false;
+        }
+    }
+
+    initLit->ResolvedType = expectedType;
+    return ok;
+}
+
 void SemanticAnalyzer::Check(BlockSttmt* program) {
     if (!program) return;
 
@@ -233,43 +303,14 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         if (!initLit && !initRep) {
             addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value] * N");
             canDeclare = false;
-        } else if (initRep) {
-            initRep->accept(*this);
-            const std::size_t expected = node.ArraySize;
-            if (initRep->Count != expected) {
-                addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' has size "
-                         + std::to_string(expected) + " but repeat initializer [value] * "
-                         + std::to_string(initRep->Count) + " has a different count");
-                canDeclare = false;
-            }
-            const Type elemType = arrayElementType(node.Type);
-            const Type fillType = initRep->Fill ? initRep->Fill->ResolvedType : Type::Invalid();
-            if (fillType.valid() && fillType != elemType && !isWideningCoercion(fillType, elemType))
-                addError(errLoc(node.LineNum) + "repeat initializer fill type '" + fillType.str()
-                         + "' does not match array element type '" + elemType.str() + "'");
-            initState.elementInitialized.assign(expected, true);
-            initState.fullyInitialized = true;
         } else {
-            initLit->accept(*this);
-            const std::size_t expected = node.ArraySize;
-            const std::size_t got = initLit->Elements.size();
-            initState.elementInitialized.assign(expected, false);
-            if (got != expected) {
-                addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' expects "
-                         + std::to_string(expected) + " initializer element(s), got " + std::to_string(got));
+            initState.elementInitialized.assign(node.ArraySize, false);
+            if (!validateArrayInitializer(node.Type, node.Value.get(), node.LineNum,
+                                          "array variable '" + node.Name + "'")) {
                 canDeclare = false;
             }
-
-            const Type elemType = arrayElementType(node.Type);
-            for (size_t i = 0; i < initLit->Elements.size(); ++i) {
-                const auto& t = initLit->Elements[i]->ResolvedType;
-                if (t.valid() && t != elemType && !isWideningCoercion(t, elemType)) {
-                    addError(errLoc(node.LineNum) + "array initializer element " + std::to_string(i + 1)
-                             + ": expected '" + elemType.str() + "', got '" + t.str() + "'");
-                }
-                if (i < initState.elementInitialized.size()) initState.elementInitialized[i] = true;
-            }
-            initState.fullyInitialized = (got == expected);
+            std::fill(initState.elementInitialized.begin(), initState.elementInitialized.end(), true);
+            initState.fullyInitialized = canDeclare;
         }
     } else if (node.IsArray) {
         initState.elementInitialized.assign(node.ArraySize, false);
@@ -293,7 +334,13 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (canDeclare)
         declareInitState(node.Name, initState);
 
-    if (node.Value) {
+    if (node.Value && !node.IsArray) {
+        if (dynamic_cast<ArrayLiteralExpr*>(node.Value.get()) || dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
+            addError(errLoc(node.LineNum) + kind + " '" + node.Name
+                     + "' uses an array initializer without an array target; declare an array type or use an explicit '<T>[...]' array literal where an array value is expected");
+            return;
+        }
+
         node.Value->accept(*this);
         if (node.Value->ResolvedType.isVoid())
             addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
@@ -619,7 +666,24 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
     for (auto& element : node.Elements) {
         if (element) element->accept(*this);
     }
-    node.ResolvedType = Type::ArrayLiteral();
+
+    if (!node.ExplicitElementType.valid()) {
+        node.ResolvedType = Type::ArrayLiteral();
+        return;
+    }
+
+    validateTypeKnown(node.ExplicitElementType, node.LineNum, "array literal element type");
+    for (std::size_t i = 0; i < node.Elements.size(); ++i) {
+        const Type& got = node.Elements[i]->ResolvedType;
+        if (got.valid() && got != node.ExplicitElementType
+                && !isWideningCoercion(got, node.ExplicitElementType)) {
+            addError(errLoc(node.LineNum) + "array literal element "
+                     + std::to_string(i + 1) + ": expected '"
+                     + node.ExplicitElementType.str() + "', got '"
+                     + got.str() + "'");
+        }
+    }
+    node.ResolvedType = Type::FixedArray(node.ExplicitElementType, node.Elements.size());
 }
 
 void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
@@ -653,9 +717,19 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
             continue;
         }
 
-        if (field.Value) field.Value->accept(*this);
-        const Type& got = field.Value ? field.Value->ResolvedType : Type::Invalid();
         const Type& want = info.fields[indexIt->second]->Type;
+        if (field.Value) {
+            const bool isArrayInit = dynamic_cast<ArrayLiteralExpr*>(field.Value.get())
+                || dynamic_cast<ArrayRepeatExpr*>(field.Value.get());
+            if (isArrayInit) {
+                validateArrayInitializer(want, field.Value.get(), node.LineNum,
+                                         "field '" + field.Name + "' of '" + node.TypeName + "'");
+            } else {
+                field.Value->accept(*this);
+            }
+        }
+
+        const Type& got = field.Value ? field.Value->ResolvedType : Type::Invalid();
         if (got.valid() && got != want && !isWideningCoercion(got, want))
             addError(errLoc(node.LineNum) + "field '" + field.Name + "' of '"
                      + node.TypeName + "': expected '" + want.str()
@@ -847,7 +921,7 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
         } else {
             seg.expr->accept(*this);
             const Type& t = seg.expr->ResolvedType;
-            if (t.valid() && !isPrintableType(t, false))
+            if (t.valid() && !isPrintableType(t, true))
                 addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
         }
     }
