@@ -31,6 +31,7 @@ option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
 option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
 option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
+option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -240,6 +241,33 @@ add_executable(
     runtime/kriol_runtime.c
 )
 
+add_executable(
+    kriol_compile_fuzz_smoke
+    tests/fuzz/compile_fuzz_smoke.cc
+    ${KRIOL_CORE_SOURCES}
+    ${KRIOL_LLVM_SOURCES}
+)
+
+add_executable(
+    kriol_compile_random_fuzz
+    tests/fuzz/compile_random_fuzz.cc
+    ${KRIOL_CORE_SOURCES}
+    ${KRIOL_LLVM_SOURCES}
+)
+
+if(KRIOL_ENABLE_FUZZING)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "KRIOL_ENABLE_FUZZING requires Clang with libFuzzer support")
+    endif()
+
+    add_executable(
+        kriol_compile_fuzzer
+        tests/fuzz/compile_fuzzer.cc
+        ${KRIOL_CORE_SOURCES}
+        ${KRIOL_LLVM_SOURCES}
+    )
+endif()
+
 set_source_files_properties(
     ${KRIOL_LLVM_SOURCES}
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
@@ -247,6 +275,12 @@ set_source_files_properties(
 
 add_dependencies(kriol kriol_embedded_resources)
 add_dependencies(kriol_api_compile_memory_test kriol_embedded_resources)
+add_dependencies(kriol_compile_fuzz_smoke kriol_embedded_resources)
+add_dependencies(kriol_compile_random_fuzz kriol_embedded_resources)
+
+if(KRIOL_ENABLE_FUZZING)
+    add_dependencies(kriol_compile_fuzzer kriol_embedded_resources)
+endif()
 
 function(kriol_configure_target TARGET_NAME)
     target_include_directories(
@@ -286,6 +320,23 @@ kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_type_model_test)
 kriol_configure_target(kriol_gc_runtime_test)
+kriol_configure_target(kriol_compile_fuzz_smoke)
+kriol_configure_target(kriol_compile_random_fuzz)
+
+if(KRIOL_ENABLE_FUZZING)
+    kriol_configure_target(kriol_compile_fuzzer)
+    target_compile_options(
+        kriol_compile_fuzzer
+        PRIVATE
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+    )
+    target_link_options(
+        kriol_compile_fuzzer
+        PRIVATE
+        -fsanitize=fuzzer,address,undefined
+    )
+endif()
 
 # -----------------------------------------------------------------------------
 # Linking
@@ -321,6 +372,40 @@ target_link_libraries(
     kriol_gc_runtime_test
     PRIVATE
     gc
+)
+
+target_link_libraries(
+    kriol_compile_fuzz_smoke
+    PRIVATE
+    ${KRIOL_LLD_LIBS}
+    ${LLVM_LIBS}
+    m
+)
+
+target_link_libraries(
+    kriol_compile_random_fuzz
+    PRIVATE
+    ${KRIOL_LLD_LIBS}
+    ${LLVM_LIBS}
+    m
+)
+
+if(KRIOL_ENABLE_FUZZING)
+    target_link_libraries(
+        kriol_compile_fuzzer
+        PRIVATE
+        ${KRIOL_LLD_LIBS}
+        ${LLVM_LIBS}
+        m
+    )
+endif()
+
+add_custom_target(
+    random-fuzz
+    COMMAND
+        $<TARGET_FILE:kriol_compile_random_fuzz>
+    DEPENDS kriol_compile_random_fuzz
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 # -----------------------------------------------------------------------------
@@ -363,9 +448,11 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:kriol_gc_runtime_test>
     COMMAND
+        $<TARGET_FILE:kriol_compile_fuzz_smoke>
+    COMMAND
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}
-    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_gc_runtime_test
+    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_gc_runtime_test kriol_compile_fuzz_smoke
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
