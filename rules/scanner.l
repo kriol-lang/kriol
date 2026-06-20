@@ -132,3 +132,9 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 }
 
 %%
+
+void kriol_scanner_reset_state(void)
+{
+    g_fstr_depth = 0;
+    BEGIN(INITIAL);
+}

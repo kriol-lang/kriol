@@ -29,6 +29,7 @@ extern FILE *yyin;
 extern int yyparse(kriol::ast::BlockSttmt** Program);
 extern int yylex_destroy(void);
 extern int yylineno;
+extern void kriol_scanner_reset_state(void);
 struct yy_buffer_state;
 typedef yy_buffer_state *YY_BUFFER_STATE;
 extern YY_BUFFER_STATE yy_scan_string(const char *yy_str);
@@ -220,6 +221,7 @@ void cli::KriolLangParserWrapper::ParseText(
     ast::BlockSttmt** program
 )
 {
+    kriol_scanner_reset_state();
     YY_BUFFER_STATE buffer = yy_scan_string(text.c_str());
     if (!buffer)
         cli::PrintErr("Couldn't create scanner buffer for source text!", 1);
@@ -229,9 +231,11 @@ void cli::KriolLangParserWrapper::ParseText(
         yyparse(program);
     } catch (...) {
         yy_delete_buffer(buffer);
+        kriol_scanner_reset_state();
         throw;
     }
     yy_delete_buffer(buffer);
+    kriol_scanner_reset_state();
 }
 
 cli::CompileResult cli::Compile(const cli::CompileOptions& options)

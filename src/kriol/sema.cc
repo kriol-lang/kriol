@@ -576,15 +576,44 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     if (rt.isVoid())
         addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
 
-    static const std::unordered_set<std::string> boolOps = {
-        "==", "!=", "<", "<=", ">", ">=", "&&", "||"
+    static const std::unordered_set<std::string> equalityOps = {
+        "==", "!="
+    };
+    static const std::unordered_set<std::string> relationalOps = {
+        "<", "<=", ">", ">="
     };
 
-    if (boolOps.count(node.Op)) {
+    if (node.Op == "&&" || node.Op == "||") {
+        if (lt.valid() && lt != Type::Bool())
+            addError(errLoc(node.LineNum) + "logical operator '" + node.Op
+                     + "' requires boolean operands, got '" + lt.str() + "'");
+        if (rt.valid() && rt != Type::Bool())
+            addError(errLoc(node.LineNum) + "logical operator '" + node.Op
+                     + "' requires boolean operands, got '" + rt.str() + "'");
         node.ResolvedType = Type::Bool();
-    } else {
-        node.ResolvedType = promotedNumericType(lt, rt);
+        return;
     }
+
+    if (equalityOps.count(node.Op) && lt == Type::Bool() && rt == Type::Bool()) {
+        node.ResolvedType = Type::Bool();
+        return;
+    }
+
+    if (!lt.isNumeric() || !rt.isNumeric()) {
+        if (lt.valid() && rt.valid())
+            addError(errLoc(node.LineNum) + "binary operator '" + node.Op
+                     + "' requires numeric operands, got '" + lt.str()
+                     + "' and '" + rt.str() + "'");
+        node.ResolvedType = (equalityOps.count(node.Op) || relationalOps.count(node.Op))
+            ? Type::Bool()
+            : Type::Invalid();
+        return;
+    }
+
+    if (equalityOps.count(node.Op) || relationalOps.count(node.Op))
+        node.ResolvedType = Type::Bool();
+    else
+        node.ResolvedType = promotedNumericType(lt, rt);
 }
 
 void SemanticAnalyzer::visit(LiteralExpr& node) {
