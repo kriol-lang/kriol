@@ -32,7 +32,6 @@ namespace ast {
     class ParExpr;
     class AssignExpr;
     class ForSttmt;
-    class MostraFunCallExpr;
     class ImportSttmt;
     class ArrayAccessExpr;
     class MemberAccessExpr;
@@ -42,8 +41,6 @@ namespace ast {
     class RecordLiteralExpr;
     class FStringExpr;
     class UnaryExpr;
-    class SaiSttmt;
-    class KonfirmaSttmt;
 
     class Visitor {
     public:
@@ -66,7 +63,6 @@ namespace ast {
         virtual void visit(ParExpr& node) = 0;
         virtual void visit(AssignExpr& node) = 0;
         virtual void visit(ForSttmt& node) = 0;
-        virtual void visit(MostraFunCallExpr& node) = 0;
         virtual void visit(ImportSttmt& node) = 0;
         virtual void visit(ArrayAccessExpr& node) = 0;
         virtual void visit(MemberAccessExpr& node) = 0;
@@ -76,8 +72,6 @@ namespace ast {
         virtual void visit(RecordLiteralExpr& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
         virtual void visit(UnaryExpr& node) = 0;
-        virtual void visit(SaiSttmt& node) = 0;
-        virtual void visit(KonfirmaSttmt& node) = 0;
     };
 
     class Sttmt {
@@ -205,15 +199,6 @@ namespace ast {
 
         FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
             : Callee(std::move(Callee)), Args(std::move(Args)) {}
-        void accept(Visitor& v) override { v.visit(*this); }
-    };
-
-    class MostraFunCallExpr : public FunCallExpr {
-    public:
-        bool AddNewline = false;
-
-        MostraFunCallExpr(std::unique_ptr<FuncCallArgs> Args, bool addNewline = false)
-            : FunCallExpr(nullptr, std::move(Args)), AddNewline(addNewline) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -392,22 +377,6 @@ namespace ast {
 
         UnaryExpr(std::string op, std::unique_ptr<Expr> operand)
             : Op(std::move(op)), Operand(std::move(operand)) {}
-        void accept(Visitor& v) override { v.visit(*this); }
-    };
-
-    class SaiSttmt : public Sttmt {
-    public:
-        std::unique_ptr<Expr> Code;
-
-        SaiSttmt(std::unique_ptr<Expr> code) : Code(std::move(code)) {}
-        void accept(Visitor& v) override { v.visit(*this); }
-    };
-
-    class KonfirmaSttmt : public Sttmt {
-    public:
-        std::unique_ptr<Expr> Cond;
-
-        KonfirmaSttmt(std::unique_ptr<Expr> cond) : Cond(std::move(cond)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

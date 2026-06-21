@@ -322,36 +322,5 @@ void CodeGenVisitor::visit(FStringExpr& node) {
     LastValue = Builder->CreateCall(formatFn, callArgs, "fstr");
 }
 
-void CodeGenVisitor::visit(MostraFunCallExpr& node) {
-    emitPrintBuiltin(node.Args.get(), node.AddNewline);
-}
-
-void CodeGenVisitor::visit(SaiSttmt& node) {
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    llvm::Value* code = llvm::ConstantInt::get(i32Ty, 0);
-    if (node.Code) {
-        node.Code->accept(*this);
-        if (LastValue) code = coerceToType(LastValue, node.Code->ResolvedType, Type::SignedInteger(32));
-    }
-    Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
-    Builder->CreateUnreachable();
-    LastValue = nullptr;
-}
-
-void CodeGenVisitor::visit(KonfirmaSttmt& node) {
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    llvm::Value* cond = llvm::ConstantInt::get(i32Ty, 1);
-    if (node.Cond) {
-        node.Cond->accept(*this);
-        if (LastValue) {
-            llvm::Value* b = toBool(LastValue);
-            cond = Builder->CreateZExt(b, i32Ty, "konfirma_cond");
-        }
-    }
-    llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
-    Builder->CreateCall(getOrDeclareRuntimeAssert(*Mod, Context), {cond, line});
-    LastValue = nullptr;
-}
-
 } // namespace ast
 } // namespace kriol

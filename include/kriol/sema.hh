@@ -188,12 +188,9 @@ namespace sema {
         void visit(ast::RecordLiteralExpr& node) override;
         void visit(ast::AssignExpr&        node) override;
         void visit(ast::ForSttmt&          node) override;
-        void visit(ast::MostraFunCallExpr& node) override;
         void visit(ast::ImportSttmt&       node) override;
         void visit(ast::FStringExpr&       node) override;
         void visit(ast::UnaryExpr&         node) override;
-        void visit(ast::SaiSttmt&          node) override;
-        void visit(ast::KonfirmaSttmt&     node) override;
     };
 
 } // namespace sema

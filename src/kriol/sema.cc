@@ -1058,19 +1058,6 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
     popScope();
 }
 
-void SemanticAnalyzer::visit(MostraFunCallExpr& node) {
-    if (node.Args)
-        for (auto& arg : node.Args->Args) {
-            if (!arg) continue;
-            if (!handleArrayIdentArg(*arg))
-                arg->accept(*this);
-            const Type& t = arg->ResolvedType;
-            if (t.valid() && !isPrintableType(t, true))
-                addError(errLoc(node.LineNum) + "cannot print value of type '" + t.str() + "'");
-        }
-    node.ResolvedType = Type::Void();
-}
-
 void SemanticAnalyzer::visit(ImportSttmt& node) {
     addError(errLoc(node.LineNum) + "'inpristan' (import) statements are not supported yet");
 }
@@ -1098,30 +1085,6 @@ void SemanticAnalyzer::visit(UnaryExpr& node) {
         node.ResolvedType = Type::Bool();
     else // "-" (numeric negation) keeps operand type, default to num if unknown
         node.ResolvedType = node.Operand ? node.Operand->ResolvedType : Type::Number();
-}
-
-void SemanticAnalyzer::visit(SaiSttmt& node) {
-    if (node.Code) {
-        node.Code->accept(*this);
-        const Type& t = node.Code->ResolvedType;
-        if (!t.isInteger()) {
-            std::string err = "sai() expects an integer exit code";
-            if (t.valid()) err += ", got value of type '" + t.str() + "'";
-            addError(errLoc(node.LineNum) + err);
-        }
-    }
-}
-
-void SemanticAnalyzer::visit(KonfirmaSttmt& node) {
-    if (node.Cond) {
-        node.Cond->accept(*this);
-        const Type& t = node.Cond->ResolvedType;
-        if (t != Type::Bool() && !t.isInteger() && !t.isFloat()) {
-            std::string err = "konfirma() expects a boolean condition";
-            if (t.valid()) err += ", got value of type '" + t.str() + "'";
-            addError(errLoc(node.LineNum) + err);
-        }
-    };
 }
 
 } // namespace sema

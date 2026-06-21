@@ -174,12 +174,9 @@ namespace ast {
         void visit(RecordLiteralExpr& node) override;
         void visit(AssignExpr&        node) override;
         void visit(ForSttmt&          node) override;
-        void visit(MostraFunCallExpr& node) override;
         void visit(ImportSttmt&       node) override;
         void visit(FStringExpr&       node) override;
         void visit(UnaryExpr&         node) override;
-        void visit(SaiSttmt&          node) override;
-        void visit(KonfirmaSttmt&     node) override;
     };
 
 } // namespace ast
