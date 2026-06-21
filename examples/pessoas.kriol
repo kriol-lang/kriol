@@ -1,21 +1,22 @@
 molda Pessoa {
   textu nomi;
+  textu apelidu;
   textu idadi;
 }
 
-fn novu_pessoa(textu nomi, textu idadi) Pessoa {
-  divolvi Pessoa::{nomi: nomi, idadi: idadi};
+fn novu_pessoa(textu nomi, textu apelidu, textu idadi) Pessoa {
+  divolvi Pessoa::{nomi: nomi, apelidu: apelidu, idadi: idadi};
 }
 
 fn mostra_pessoa(Pessoa p) {
-  mostran(f"{p.nomi} tem {p.idadi} anos de idade.");
+  mostran(f"{p.nomi} {p.apelidu} tem {p.idadi} anos de idade.");
 }
 
 fn inisiu() {
   Pessoa[3] pessoas = [
-    novu_pessoa('José', '60'),
-    novu_pessoa('Yara', '44'),
-    novu_pessoa('Clara', '71')
+    novu_pessoa('José', 'Tavares', '60'),
+    novu_pessoa('Yara', 'Coelho', '44'),
+    novu_pessoa('Clara', 'Sanchez', '71')
   ];
 
   pa nter i = 0 ; i < 3 ; i += 1 {
@@ -24,17 +25,14 @@ fn inisiu() {
 
   mostran("-----------------");
   mostran("[[ y abo go? ]]");
-  //mostran("-----------------");
 
   textu nomi = toma("-> nomi: ");
+  textu apelidu = toma("-> apelidu: ");
   textu idadi = toma("-> idadi: ");
 
   mostran("-----------------");
 
-  Pessoa abo = Pessoa::{
-    nomi: nomi,
-    idadi: idadi
-  };
+  Pessoa abo = novu_pessoa(nomi, apelidu, idadi);
 
   mostra_pessoa(abo);
 }
