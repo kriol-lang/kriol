@@ -20,12 +20,24 @@ record_failure() {
     failed_tests="${failed_tests}\n  - $1"
 }
 
+stdin_for() {
+    local source="$1"
+    local fixture="${source}.stdin"
+
+    if [ -f "$fixture" ]; then
+        printf '%s' "$fixture"
+    else
+        printf '%s' /dev/null
+    fi
+}
+
 # ---- examples/*.kr --------------------------------------------------------
 for f in "$ROOT"/examples/*.kriol; do
     printf "  %-44s" "$f"
     tmpbin=$(mktemp /tmp/kriol_XXXX)
+    stdin_file=$(stdin_for "$f")
     if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \
-       timeout 5 "$tmpbin" > /dev/null 2>&1; then
+       timeout 5 "$tmpbin" < "$stdin_file" > /dev/null 2>&1; then
         echo " PASS"; pass=$((pass+1))
     else
         echo " FAIL"; record_failure "$f"
@@ -39,8 +51,9 @@ if [ -d "$ROOT/tests/pass" ]; then
         [ -f "$f" ] || continue
         printf "  %-44s" "$f"
         tmpbin=$(mktemp /tmp/kriol_XXXX)
+        stdin_file=$(stdin_for "$f")
         if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \
-           timeout 5 "$tmpbin" > /dev/null 2>&1; then
+           timeout 5 "$tmpbin" < "$stdin_file" > /dev/null 2>&1; then
             echo " PASS"; pass=$((pass+1))
         else
             echo " FAIL"; record_failure "$f"
