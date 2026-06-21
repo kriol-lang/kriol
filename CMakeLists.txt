@@ -204,6 +204,7 @@ set(KRIOL_CORE_SOURCES
 set(KRIOL_LLVM_SOURCES
     src/kriol/cli.cc
     src/kriol/codegen.cc
+    src/kriol/codegen_prelude.cc
 )
 
 # -----------------------------------------------------------------------------

@@ -119,6 +119,10 @@ namespace ast {
         // Coerce value to i1 for use as a branch condition
         llvm::Value* toBool(llvm::Value* v);
 
+        static std::string processEscapes(const std::string& raw);
+        static const char* formatSpec(const Type& kriolType);
+        static Type        llvmTypeToKriol(llvm::Type* ty);
+
         // Recursively appends format specifiers and argument values for an array
         // to outFmt and outArgs, for use with __kriol_format.
         void appendArrayFormatParts(llvm::Value* storage,
@@ -126,6 +130,8 @@ namespace ast {
                                     const Type& arrayKriolType,
                                     std::string& outFmt,
                                     std::vector<llvm::Value*>& outArgs);
+        bool emitPreludeCall(ast::FunCallExpr& node, const std::string& name);
+        void emitPrintBuiltin(ast::FuncCallArgs* args, bool addNewline);
 
     public:
         CodegenTarget CurrentTarget = CodegenTarget::Native;

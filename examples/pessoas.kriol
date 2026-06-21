@@ -1,0 +1,24 @@
+molda Pessoa {
+    textu nomi;
+    u8 idadi;
+}
+
+fn novu_pessoa(textu nomi, u8 idadi) Pessoa {
+  divolvi Pessoa::{nomi: nomi, idadi: idadi};
+}
+
+fn mostra_pessoa(Pessoa p) {
+  mostran(f"{p.nomi} tem {p.idadi} anos de idade.");
+}
+
+fn inisiu() {
+  Pessoa[3] pessoas = [
+    novu_pessoa('José', 60),
+    novu_pessoa('Maria', 44),
+    novu_pessoa('Clara', 71)
+  ];
+
+  pa nter i = 0 ; i < 3 ; i += 1 {
+    mostra_pessoa(pessoas[i]);
+  }
+}

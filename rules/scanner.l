@@ -40,8 +40,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 
 "fn"            return TOKENIZE(FN);
 "molda"         return TOKENIZE(MOLDA);
-"mostran"       return TOKENIZE(MOSTRAN);
-"mostra"        return TOKENIZE(MOSTRA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
 "dipoz"         return TOKENIZE(DIPOZ);
 "si"            return TOKENIZE(SI);
@@ -67,8 +65,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "usize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
 "nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
-"sai"           return TOKENIZE(SAI);
-"konfirma"      return TOKENIZE(KONFIRMA);
 "para"          return TOKENIZE(PARA);
 "kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);

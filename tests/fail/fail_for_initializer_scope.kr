@@ -1,0 +1,8 @@
+// ERROR: for-loop initializer variable must not escape the loop.
+fn inisiu() {
+  pa nter i = 0; i < 3; i += 1 {
+    mostra(i);
+  }
+
+  mostra(i);
+}

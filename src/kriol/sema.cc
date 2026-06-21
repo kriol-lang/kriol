@@ -1,5 +1,6 @@
 #include "../../include/kriol/sema.hh"
 #include "../../include/kriol/type_utils.hh"
+#include "../../include/kriol/prelude.hh"
 
 #include <stdexcept>
 #include <unordered_set>
@@ -63,9 +64,6 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 }
 
 static const std::unordered_set<std::string> reservedKeywords = {
-    // Built-in/runtime statements and call forms.
-    "mostra", "mostran", "sai", "konfirma",
-
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
     "para", "kontinua", "dipoz",
@@ -77,7 +75,7 @@ static const std::unordered_set<std::string> reservedKeywords = {
 };
 
 bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
-    return reservedKeywords.count(name) != 0;
+    return reservedKeywords.count(name) != 0 || prelude::isPreludeName(name);
 }
 
 bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
@@ -472,6 +470,8 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(IfSttmt& node) {
+    if (node.Init) pushScope();
+    if (node.Init) node.Init->accept(*this);
     if (node.Cond) {
         node.Cond->accept(*this);
         if (node.Cond->ResolvedType.isVoid())
@@ -479,6 +479,7 @@ void SemanticAnalyzer::visit(IfSttmt& node) {
     }
     if (node.Then) node.Then->accept(*this);
     if (node.Else) node.Else->accept(*this);
+    if (node.Init) popScope();
 }
 
 void SemanticAnalyzer::visit(WhileSttmt& node) {
@@ -523,16 +524,96 @@ void SemanticAnalyzer::visit(FuncCallArgs& node) {
 }
 
 void SemanticAnalyzer::visit(FunCallExpr& node) {
-    if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg) arg->accept(*this);
-
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) {
+        if (node.Args)
+            for (auto& arg : node.Args->Args)
+                if (arg) arg->accept(*this);
         if (node.Callee) node.Callee->accept(*this);
         addError(errLoc(node.LineNum) + "expression is not callable");
         return;
     }
+
+    const std::string loc = errLoc(node.LineNum);
+    size_t got = node.Args ? node.Args->Args.size() : 0;
+
+    switch (prelude::lookupBuiltin(callee->Name)) {
+        case prelude::Builtin::Mostra:
+        case prelude::Builtin::Mostran:
+            if (node.Args) {
+                for (auto& arg : node.Args->Args) {
+                    if (!arg) continue;
+                    if (!handleArrayIdentArg(*arg))
+                        arg->accept(*this);
+                    const Type& t = arg->ResolvedType;
+                    if (t.valid() && !isPrintableType(t, true))
+                        addError(loc + "cannot print value of type '" + t.str() + "'");
+                }
+            }
+            node.ResolvedType = Type::Void();
+            return;
+
+        case prelude::Builtin::Toma:
+            if (node.Args)
+                for (auto& arg : node.Args->Args)
+                    if (arg) arg->accept(*this);
+            if (got > 1) {
+                addError(loc + "prelude function 'toma' expects 0 or 1 argument(s), got "
+                         + std::to_string(got));
+                node.ResolvedType = Type::Text();
+                return;
+            }
+            if (got == 1) {
+                const Type& t = node.Args->Args[0]->ResolvedType;
+                if (t.valid() && t != Type::Text())
+                    addError(loc + "argument 1 of 'toma': expected 'textu', got '" + t.str() + "'");
+            }
+            node.ResolvedType = Type::Text();
+            return;
+
+        case prelude::Builtin::Sai:
+            if (node.Args)
+                for (auto& arg : node.Args->Args)
+                    if (arg) arg->accept(*this);
+            if (got > 1) {
+                addError(loc + "prelude function 'sai' expects 0 or 1 argument(s), got "
+                         + std::to_string(got));
+                node.ResolvedType = Type::Void();
+                return;
+            }
+            if (got == 1) {
+                const Type& t = node.Args->Args[0]->ResolvedType;
+                if (t.valid() && !t.isInteger())
+                    addError(loc + "sai() expects an integer exit code, got value of type '" + t.str() + "'");
+            }
+            node.ResolvedType = Type::Void();
+            return;
+
+        case prelude::Builtin::Konfirma:
+            if (node.Args)
+                for (auto& arg : node.Args->Args)
+                    if (arg) arg->accept(*this);
+            if (got > 1) {
+                addError(loc + "prelude function 'konfirma' expects 0 or 1 argument(s), got "
+                         + std::to_string(got));
+                node.ResolvedType = Type::Void();
+                return;
+            }
+            if (got == 1) {
+                const Type& t = node.Args->Args[0]->ResolvedType;
+                if (t.valid() && t != Type::Bool() && !t.isInteger() && !t.isFloat())
+                    addError(loc + "konfirma() expects a boolean condition, got value of type '" + t.str() + "'");
+            }
+            node.ResolvedType = Type::Void();
+            return;
+
+        case prelude::Builtin::None:
+            break;
+    }
+
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            if (arg) arg->accept(*this);
 
     auto it = FunctionTable.find(callee->Name);
     if (it == FunctionTable.end()) {
@@ -543,8 +624,6 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     const FuncInfo& info = it->second;
     node.ResolvedType = info.retType;
 
-    const std::string loc = errLoc(node.LineNum);
-    size_t got  = node.Args ? node.Args->Args.size() : 0;
     size_t want = info.paramTypes.size();
 
     if (got != want) {
@@ -965,6 +1044,7 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
 }
 
 void SemanticAnalyzer::visit(ForSttmt& node) {
+    pushScope();
     if (node.Start) node.Start->accept(*this);
     if (node.Cond) {
         node.Cond->accept(*this);
@@ -975,6 +1055,7 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
     if (node.Then)  node.Then->accept(*this);
     --LoopDepth;
     if (node.After) node.After->accept(*this);
+    popScope();
 }
 
 void SemanticAnalyzer::visit(MostraFunCallExpr& node) {

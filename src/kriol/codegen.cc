@@ -56,7 +56,7 @@ LLD_HAS_DRIVER(wasm)
 
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
-static std::string processEscapes(const std::string& raw) {
+std::string kriol::ast::CodeGenVisitor::processEscapes(const std::string& raw) {
     std::string out;
     out.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); ++i) {
@@ -81,7 +81,7 @@ static std::string processEscapes(const std::string& raw) {
 }
 
 // Returns the printf format specifier for a Kriol type.
-static const char* fmtSpec(const kriol::Type& kriolType) {
+const char* kriol::ast::CodeGenVisitor::formatSpec(const kriol::Type& kriolType) {
     if (kriolType.isUnsignedInteger()) return "%llu";
     if (kriolType.isInteger()) return "%lld";
     if (kriolType.isFloat())  return "%g";
@@ -89,7 +89,7 @@ static const char* fmtSpec(const kriol::Type& kriolType) {
 }
 
 // Reverse-map an LLVM type to the corresponding Kriol type string.
-static kriol::Type llvmTypeToKriol(llvm::Type* ty) {
+kriol::Type kriol::ast::CodeGenVisitor::llvmTypeToKriol(llvm::Type* ty) {
     if (ty->isIntegerTy(1))  return kriol::Type::Bool();
     if (ty->isIntegerTy())   return kriol::Type::SignedInteger(ty->getIntegerBitWidth());
     if (ty->isFloatTy())     return kriol::Type::Float(32);
@@ -1212,6 +1212,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 }
 
 void CodeGenVisitor::visit(IfSttmt& node) {
+    if (node.Init) {
+        pushScope();
+        node.Init->accept(*this);
+    }
+
     node.Cond->accept(*this);
     llvm::Value* cond = toBool(LastValue);
 
@@ -1239,6 +1244,7 @@ void CodeGenVisitor::visit(IfSttmt& node) {
 
     fn->insert(fn->end(), mergeBB);
     Builder->SetInsertPoint(mergeBB);
+    if (node.Init) popScope();
     LastValue = nullptr;
 }
 
@@ -1295,6 +1301,8 @@ void CodeGenVisitor::visit(FuncCallArgs& node) {
 void CodeGenVisitor::visit(FunCallExpr& node) {
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) { LastValue = nullptr; return; }
+    if (emitPreludeCall(node, callee->Name)) return;
+
     auto* fn = Mod->getFunction(callee->Name);
     if (!fn) { LastValue = nullptr; return; }
     auto sigIt = FunctionSigs.find(callee->Name);
@@ -1442,6 +1450,7 @@ void CodeGenVisitor::visit(ForSttmt& node) {
     auto* savedCont = LoopContinue;
     LoopExit = exitBB; LoopContinue = afterBB;
 
+    pushScope();
     if (node.Start) node.Start->accept(*this);
     Builder->CreateBr(condBB);
 
@@ -1463,229 +1472,8 @@ void CodeGenVisitor::visit(ForSttmt& node) {
     Builder->CreateBr(condBB);
 
     Builder->SetInsertPoint(exitBB);
+    popScope();
     LoopExit = savedExit; LoopContinue = savedCont;
-    LastValue = nullptr;
-}
-
-static llvm::Function* getOrDeclareKriolPrint(llvm::Module& Mod, llvm::LLVMContext& Context,
-        const std::string& suffix, llvm::Type* argTy, bool newline)
-{
-    std::string name = newline ? "__kriol_println_" + suffix : "__kriol_print_"  + suffix;
-    if (auto* fn = Mod.getFunction(name)) return fn;
-    auto* voidTy = llvm::Type::getVoidTy(Context);
-    auto* ftype  = llvm::FunctionType::get(voidTy, {argTy}, false);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, Mod);
-}
-
-// Declare putchar if not already present.
-static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("putchar")) return fn;
-    auto* ftype = llvm::FunctionType::get(llvm::Type::getInt32Ty(Context),
-        {llvm::Type::getInt32Ty(Context)}, false);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
-}
-
-static llvm::Function* getOrDeclareKriolBoolToStr(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("__kriol_bool_to_str")) return fn;
-    auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    auto* ftype = llvm::FunctionType::get(ptrTy, {i32Ty}, false);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_bool_to_str", Mod);
-}
-
-static llvm::Function* getOrDeclareKriolFormat(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("__kriol_format")) return fn;
-    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
-    auto* ftype  = llvm::FunctionType::get(ptrTy, {ptrTy}, /*isVarArg=*/true);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_format", Mod);
-}
-
-void CodeGenVisitor::appendArrayFormatParts(llvm::Value* storage,
-                                            llvm::ArrayType* arrayTy,
-                                            const Type& arrayKriolType,
-                                            std::string& outFmt,
-                                            std::vector<llvm::Value*>& outArgs) {
-    outFmt += "[";
-    llvm::Type* elemTy    = arrayTy->getArrayElementType();
-    uint64_t    elemCount = arrayTy->getNumElements();
-
-    for (uint64_t i = 0; i < elemCount; ++i) {
-        if (i > 0) outFmt += ", ";
-
-        auto* idx      = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-        llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
-        Type elemKriolType = arrayKriolType.elementType();
-
-        if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
-            appendArrayFormatParts(elemPtr, nestedArrayTy, elemKriolType, outFmt, outArgs);
-            continue;
-        }
-
-        llvm::Value* elem      = Builder->CreateLoad(elemTy, elemPtr, "fstr_array_elem");
-        if (elemKriolType == Type::Bool()) {
-            auto* i32Ty = llvm::Type::getInt32Ty(Context);
-            llvm::Value* ext = elem->getType()->isIntegerTy(1)
-                ? Builder->CreateZExt(elem, i32Ty)
-                : elem;
-            elem = Builder->CreateCall(getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
-            outFmt += "%s";
-        } else {
-            outFmt += fmtSpec(elemKriolType);
-            if (elemKriolType.isInteger())
-                elem = coerceToType(elem, elemKriolType, elemKriolType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64));
-            else if (elemKriolType.isFloat() && elemKriolType.bitWidth() < 64)
-                elem = coerceToType(elem, elemKriolType, Type::Float(64));
-        }
-        outArgs.push_back(elem);
-    }
-
-    outFmt += "]";
-}
-
-void CodeGenVisitor::visit(FStringExpr& node) {
-    std::string fmtStr;
-    std::vector<llvm::Value*> callArgs;
-
-    for (auto& seg : node.Parts) {
-        if (!seg.expr) { // Literal text
-            std::string text = processEscapes(seg.text);
-            for (char c : text) {
-                if (c == '%') fmtStr += '%';
-                fmtStr += c;
-            }
-        } else { // Interpolated expression
-            if (seg.expr->ResolvedType.isArray()) {
-                LValue storage = resolveLValue(seg.expr.get());
-                auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
-                if (!storage.Ptr || !arrayTy)
-                    throw std::runtime_error("cannot interpolate non-addressable array expression");
-
-                appendArrayFormatParts(storage.Ptr, arrayTy, seg.expr->ResolvedType, fmtStr, callArgs);
-                continue;
-            }
-
-            seg.expr->accept(*this);
-            llvm::Value* val = LastValue;
-            if (!val) continue;
-
-            Type kriolType = seg.expr->ResolvedType;
-            if (!kriolType.valid()) kriolType = llvmTypeToKriol(val->getType());
-
-            if (kriolType == Type::Bool()) {
-                auto* i32Ty = llvm::Type::getInt32Ty(Context);
-                llvm::Value* ext = val->getType()->isIntegerTy(1)
-                    ? Builder->CreateZExt(val, i32Ty) : val;
-                val = Builder->CreateCall(
-                    getOrDeclareKriolBoolToStr(*Mod, Context), {ext}, "bool_str");
-                fmtStr += "%s";
-            } else {
-                fmtStr += fmtSpec(kriolType);
-                if (kriolType.isInteger())
-                    val = coerceToType(val, kriolType, kriolType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64));
-                else if (kriolType.isFloat() && kriolType.bitWidth() < 64)
-                    val = coerceToType(val, kriolType, Type::Float(64));
-            }
-            callArgs.push_back(val);
-        }
-    }
-
-    auto* fmtGstr = Builder->CreateGlobalString(fmtStr, "fstr_fmt");
-    callArgs.insert(callArgs.begin(), fmtGstr);
-    auto* formatFn = getOrDeclareKriolFormat(*Mod, Context);
-    LastValue = Builder->CreateCall(formatFn, callArgs, "fstr");
-}
-
-void CodeGenVisitor::visit(MostraFunCallExpr& node) {
-    auto* ptrTy    = llvm::PointerType::getUnqual(Context);
-    auto* i64Ty    = llvm::Type::getInt64Ty(Context);
-    auto* doubleTy = llvm::Type::getDoubleTy(Context);
-    auto* i32Ty    = llvm::Type::getInt32Ty(Context);
-    auto* putcharFn = getOrDeclarePutchar(*Mod, Context);
-
-    auto emitPrintValue = [&](llvm::Value* val, const Type& resolvedType, bool newline) {
-        if (resolvedType.isInteger()) {
-            Type printType = resolvedType.isSigned() ? Type::SignedInteger(64) : Type::UnsignedInteger(64);
-            if (val->getType() != i64Ty) val = coerceToType(val, resolvedType, printType);
-            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, resolvedType.isSigned() ? "nter" : "unter", i64Ty, newline), {val});
-        } else if (resolvedType.isFloat()) {
-            if (val->getType() != doubleTy) val = coerceToType(val, resolvedType, Type::Float(64));
-            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "num", doubleTy, newline), {val});
-        } else if (resolvedType == Type::Bool()) {
-            llvm::Value* ext = val->getType()->isIntegerTy(1)
-                ? Builder->CreateZExt(val, i32Ty, "bool_ext")
-                : Builder->CreateTrunc(val, i32Ty, "bool_ext");
-            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "bool", i32Ty, newline), {ext});
-        } else {
-            if (!val->getType()->isPointerTy()) val = Builder->CreateIntToPtr(val, ptrTy);
-            Builder->CreateCall(getOrDeclareKriolPrint(*Mod, Context, "textu", ptrTy, newline), {val});
-        }
-    };
-
-    auto printChar = [&](char c) {
-        Builder->CreateCall(putcharFn, {llvm::ConstantInt::get(i32Ty, c)});
-    };
-
-    auto emitPrintArray = [&](auto&& self, llvm::Value* storage, llvm::ArrayType* arrayTy, const Type& arrayKriolType) -> void {
-        printChar('[');
-        llvm::Type* elemTy = arrayTy->getArrayElementType();
-        uint64_t elemCount = arrayTy->getNumElements();
-
-        for (uint64_t i = 0; i < elemCount; ++i) {
-            if (i > 0) {
-                printChar(',');
-                printChar(' ');
-            }
-
-            auto* idx = llvm::ConstantInt::get(i64Ty, i);
-            llvm::Value* elemPtr = createArrayElementPtr(storage, arrayTy, idx);
-            Type elemKriolType = arrayKriolType.elementType();
-
-            if (auto* nestedArrayTy = llvm::dyn_cast<llvm::ArrayType>(elemTy)) {
-                self(self, elemPtr, nestedArrayTy, elemKriolType);
-                continue;
-            }
-
-            llvm::Value* elem = Builder->CreateLoad(elemTy, elemPtr, "array.elem");
-            emitPrintValue(elem, elemKriolType, /*newline=*/false);
-        }
-
-        printChar(']');
-    };
-
-    if (!node.Args || node.Args->Args.empty()) {
-        if (node.AddNewline)
-            Builder->CreateCall(putcharFn,
-                                {llvm::ConstantInt::get(i32Ty, '\n')});
-        LastValue = nullptr;
-        return;
-    }
-
-    auto& args    = node.Args->Args;
-    size_t lastIdx = args.size() - 1;
-
-    for (size_t i = 0; i < args.size(); ++i) {
-        bool addNlHere = (i == lastIdx) && node.AddNewline;
-        auto& arg = args[i];
-
-        if (arg->ResolvedType.isArray()) {
-            LValue storage = resolveLValue(arg.get());
-            auto* arrayTy = storage.Type ? llvm::dyn_cast<llvm::ArrayType>(storage.Type) : nullptr;
-            if (!storage.Ptr || !arrayTy)
-                throw std::runtime_error("cannot print non-addressable array expression");
-
-            emitPrintArray(emitPrintArray, storage.Ptr, arrayTy, arg->ResolvedType);
-            if (addNlHere) printChar('\n');
-            continue;
-        }
-
-        arg->accept(*this);
-        llvm::Value* v = LastValue;
-        if (v) emitPrintValue(v, arg->ResolvedType, addNlHere);
-    }
-
     LastValue = nullptr;
 }
 
@@ -1708,53 +1496,4 @@ void CodeGenVisitor::visit(UnaryExpr& node) {
         else
             LastValue = Builder->CreateNeg(v, "negtmp");
     }
-}
-
-static llvm::Function* getOrDeclareExit(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("exit")) return fn;
-    auto* voidTy = llvm::Type::getVoidTy(Context);
-    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
-    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "exit", Mod);
-    fn->addFnAttr(llvm::Attribute::NoReturn);
-    return fn;
-}
-
-static llvm::Function* getOrDeclareKriolKonfirma(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("__kriol_konfirma")) return fn;
-    auto* voidTy = llvm::Type::getVoidTy(Context);
-    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
-    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty, i32Ty}, false);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_konfirma", Mod);
-}
-
-void CodeGenVisitor::visit(SaiSttmt& node) {
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    // Default to exit code 0 if no expression is provided.
-    llvm::Value* code = llvm::ConstantInt::get(i32Ty, 0);
-    if (node.Code) {
-        node.Code->accept(*this);
-        if (LastValue) code = coerceToType(LastValue, node.Code->ResolvedType, Type::SignedInteger(32));
-    }
-    Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
-    Builder->CreateUnreachable();
-    LastValue = nullptr;
-}
-
-void CodeGenVisitor::visit(KonfirmaSttmt& node) {
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    // Default to true (1) if no condition is provided.
-    llvm::Value* cond = llvm::ConstantInt::get(i32Ty, 1);
-    if (node.Cond) {
-        node.Cond->accept(*this);
-        if (LastValue) {
-            llvm::Value* b = toBool(LastValue);
-            cond = Builder->CreateZExt(b, i32Ty, "konfirma_cond");
-        }
-    }
-    llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
-    Builder->CreateCall(getOrDeclareKriolKonfirma(*Mod, Context), {cond, line});
-    LastValue = nullptr;
 }

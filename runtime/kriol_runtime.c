@@ -14,7 +14,8 @@
 #endif
 
 #if !KRIOL_RUNTIME_NO_GC
-#include <gc.h>
+// NOTE: Injected at linking phase of the kriol compiler.
+#include "gc.h"
 #endif
 
 _Noreturn void __kriol_panic(const char* message) {
@@ -51,42 +52,42 @@ void __kriol_gc_init(void) {
 #endif
 }
 
-void __kriol_print_nter(int64_t v) {
+void __kriol_print_i64(int64_t v) {
     printf("%lld", (long long)v);
 }
 
-void __kriol_print_unter(uint64_t v) {
+void __kriol_print_u64(uint64_t v) {
     printf("%llu", (unsigned long long)v);
 }
 
-void __kriol_print_num(double v) {
+void __kriol_print_f64(double v) {
     printf("%g", v);
 }
 
-const char* __kriol_bool_to_str(int v) {
+const char* __kriol_bool_to_string(int v) {
     return v ? "sin" : "nau";
 }
 
 void __kriol_print_bool(int v) {
-    fputs(__kriol_bool_to_str(v), stdout);
+    fputs(__kriol_bool_to_string(v), stdout);
 }
 
-void __kriol_print_textu(const char* s) {
+void __kriol_print_string(const char* s) {
     if (s) fputs(s, stdout);
 }
 
-void __kriol_println_nter(int64_t v) {
-    __kriol_print_nter(v);
+void __kriol_println_i64(int64_t v) {
+    __kriol_print_i64(v);
     putchar('\n');
 }
 
-void __kriol_println_unter(uint64_t v) {
-    __kriol_print_unter(v);
+void __kriol_println_u64(uint64_t v) {
+    __kriol_print_u64(v);
     putchar('\n');
 }
 
-void __kriol_println_num(double v) {
-    __kriol_print_num(v);
+void __kriol_println_f64(double v) {
+    __kriol_print_f64(v);
     putchar('\n');
 }
 
@@ -95,9 +96,61 @@ void __kriol_println_bool(int v) {
     putchar('\n');
 }
 
-void __kriol_println_textu(const char* s) {
-    __kriol_print_textu(s);
+void __kriol_println_string(const char* s) {
+    __kriol_print_string(s);
     putchar('\n');
+}
+
+static char* __kriol_alloc_text(size_t bytes) {
+#if KRIOL_RUNTIME_NO_GC
+    char* buf = (char*)malloc(bytes);
+#else
+    char* buf = (char*)GC_MALLOC_ATOMIC(bytes);
+#endif
+    if (!buf) __kriol_panic("out of memory while allocating memory for text data");
+    return buf;
+}
+
+static char* __kriol_resize_text(char* old_buf, size_t bytes) {
+#if KRIOL_RUNTIME_NO_GC
+    char* buf = (char*)realloc(old_buf, bytes);
+#else
+    char* buf = (char*)GC_REALLOC(old_buf, bytes);
+#endif
+    if (!buf) __kriol_panic("out of memory while allocating memory for text data");
+    return buf;
+}
+
+char* __kriol_read_line(const char* prompt) {
+    if (prompt && prompt[0] != '\0') {
+        fputs(prompt, stdout);
+        fflush(stdout);
+    }
+
+    size_t cap = 128;
+    size_t len = 0;
+    char* buf = __kriol_alloc_text(cap);
+
+    int ch;
+    while ((ch = fgetc(stdin)) != EOF) {
+        if (ch == '\n') break;
+        if (len + 1 >= cap) {
+            if (cap > ((size_t)-1) / 2)
+                __kriol_panic("input line is too large");
+            cap *= 2;
+            buf = __kriol_resize_text(buf, cap);
+        }
+        buf[len++] = (char)ch;
+    }
+
+    if (ferror(stdin))
+        __kriol_panic("failed to read from stdin");
+
+    if (len > 0 && buf[len - 1] == '\r')
+        --len;
+
+    buf[len] = '\0';
+    return buf;
 }
 
 char* __kriol_format(const char* fmt, ...) {
@@ -111,13 +164,7 @@ char* __kriol_format(const char* fmt, ...) {
     // excluding null terminator. If needed is negative, an encoding error occurred.
     if (needed < 0) return NULL;
 
-#if KRIOL_RUNTIME_NO_GC
-    char* buf = (char*)malloc((size_t)needed + 1);
-#else
-    char* buf = (char*)GC_MALLOC_ATOMIC((size_t)needed + 1);
-#endif
-
-    if (!buf) __kriol_panic("out of memory while formatting text");
+    char* buf = __kriol_alloc_text((size_t)needed + 1);
 
     va_start(args, fmt);
     int written = vsnprintf(buf, (size_t)needed + 1, fmt, args);
@@ -129,13 +176,13 @@ char* __kriol_format(const char* fmt, ...) {
     return buf;
 }
 
-void __kriol_konfirma_message(int cond, int line, const char* message) {
+void __kriol_assert_message(int cond, int line, const char* message) {
     if (!cond)
-        __kriol_panic_at(message && message[0] != '\0' ? message : "konfirma failed", line);
+        __kriol_panic_at(message && message[0] != '\0' ? message : "assertion failed", line);
 }
 
-void __kriol_konfirma(int cond, int line) {
-    __kriol_konfirma_message(cond, line, NULL);
+void __kriol_assert(int cond, int line) {
+    __kriol_assert_message(cond, line, NULL);
 }
 
 void __kriol_check_bounds(int64_t index, int64_t size, int line) {

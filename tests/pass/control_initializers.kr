@@ -1,0 +1,21 @@
+fn get_res() nter {
+  divolvi 2;
+}
+
+fn inisiu() {
+  nter total = 0;
+
+  pa nter i = 0; i < 19; i += 1 {
+    total += i;
+  }
+
+  si nter res = get_res(); res == 1 {
+    total += 100;
+  } sinon si res == 2 {
+    total += 200;
+  } sinon {
+    total += res;
+  }
+
+  mostran(total);
+}

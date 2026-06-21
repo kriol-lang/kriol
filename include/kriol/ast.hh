@@ -152,12 +152,15 @@ namespace ast {
 
     class IfSttmt : public Sttmt {
     public:
+        std::unique_ptr<Sttmt> Init;
         std::unique_ptr<Expr> Cond;
         std::unique_ptr<BlockSttmt> Then;
         std::unique_ptr<BlockSttmt> Else;
 
         IfSttmt(std::unique_ptr<Expr> Cond, std::unique_ptr<BlockSttmt> Then, std::unique_ptr<BlockSttmt> Else)
             : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+        IfSttmt(std::unique_ptr<Sttmt> Init, std::unique_ptr<Expr> Cond, std::unique_ptr<BlockSttmt> Then, std::unique_ptr<BlockSttmt> Else)
+            : Init(std::move(Init)), Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -351,12 +354,12 @@ namespace ast {
 
     class ForSttmt : public Sttmt {
     public:
-        std::unique_ptr<Expr> Start;
+        std::unique_ptr<Sttmt> Start;
         std::unique_ptr<Expr> Cond;
         std::unique_ptr<Expr> After;
         std::unique_ptr<BlockSttmt> Then;
 
-        ForSttmt(std::unique_ptr<Expr> Start, std::unique_ptr<Expr> Cond, std::unique_ptr<Expr> After, std::unique_ptr<BlockSttmt> Then)
+        ForSttmt(std::unique_ptr<Sttmt> Start, std::unique_ptr<Expr> Cond, std::unique_ptr<Expr> After, std::unique_ptr<BlockSttmt> Then)
             : Start(std::move(Start)), Cond(std::move(Cond)), After(std::move(After)), Then(std::move(Then)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
