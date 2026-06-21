@@ -37,12 +37,12 @@ trap cleanup EXIT
 
 echo "==> Copying build artifacts to ${OUT_DIR}"
 "${ENGINE}" cp "${container_id}:/src/kriol/build/resolute/kriol" "${OUT_DIR}/kriol"
-"${ENGINE}" cp "${container_id}:/tmp/kriol-hello.wasm" "${OUT_DIR}/kriol-hello.wasm"
+"${ENGINE}" cp "${container_id}:/tmp/kriol_hello.wasm" "${OUT_DIR}/kriol_hello.wasm"
 "${ENGINE}" cp "${container_id}:/src/kriol/build/resolute/CMakeCache.txt" "${OUT_DIR}/CMakeCache.txt"
 "${ENGINE}" cp "${container_id}:/usr/lib/llvm-${LLVM_VERSION}/include/lld/Common/Driver.h" "${OUT_DIR}/lld-Driver.h"
 
 echo "==> Done"
 echo "    ${OUT_DIR}/kriol"
-echo "    ${OUT_DIR}/kriol-hello.wasm"
+echo "    ${OUT_DIR}/kriol_hello.wasm"
 echo "    ${OUT_DIR}/CMakeCache.txt"
 echo "    ${OUT_DIR}/lld-Driver.h"
