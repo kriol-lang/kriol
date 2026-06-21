@@ -1,6 +1,5 @@
 fn linha(nter tamanhu, bool kebra_linha) {
-    dipoz nter i;
-    pa i = 0 ; i < tamanhu ; i += 1 {
+    pa nter i = 0 ; i < tamanhu ; i += 1 {
         mostra("-");
     }
     si kebra_linha {
