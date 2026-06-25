@@ -2,7 +2,6 @@
 #include "../../include/kriol/type_utils.hh"
 #include "../../include/kriol/prelude.hh"
 
-#include <stdexcept>
 #include <unordered_set>
 #include <algorithm>
 #include <cctype>

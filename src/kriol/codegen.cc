@@ -29,7 +29,6 @@ LLD_HAS_DRIVER(wasm)
 #include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
-#include "../../include/kriol/type_utils.hh"
 
 using namespace kriol::ast;
 
