@@ -1,0 +1,8 @@
+fn dec(u32 n) u32 {
+    divolvi n - 1;
+}
+
+fn inisiu() {
+    u32 x = 4;
+    mostran(dec(x));
+}

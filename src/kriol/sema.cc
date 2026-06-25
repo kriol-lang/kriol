@@ -40,6 +40,69 @@ static Type promotedNumericType(const Type& lhs, const Type& rhs) {
     return lhs.valid() ? lhs : rhs;
 }
 
+static const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
+    if (!expr) return nullptr;
+    if (auto* par = dynamic_cast<const ParExpr*>(expr))
+        return integerLiteralExpr(par->Content.get(), negative);
+    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
+        if (unary->Op != "-") return nullptr;
+        negative = !negative;
+        return integerLiteralExpr(unary->Operand.get(), negative);
+    }
+    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
+    return lit && lit->Type.isInteger() ? lit : nullptr;
+}
+
+static bool integerLiteralFitsType(const Expr* expr, const Type& to) {
+    if (!to.isInteger()) return false;
+
+    bool negative = false;
+    auto* lit = integerLiteralExpr(expr, negative);
+    if (!lit) return false;
+
+    long long value = 0;
+    try {
+        value = std::stoll(lit->Value);
+    } catch (...) {
+        return false;
+    }
+    if (negative) value = -value;
+
+    const unsigned bits = to.bitWidth();
+    if (bits == 0 || bits > 64) return false;
+
+    if (to.isSigned()) {
+        if (bits == 64) return true;
+        const long long min = -(1LL << (bits - 1));
+        const long long max = (1LL << (bits - 1)) - 1;
+        return value >= min && value <= max;
+    }
+
+    if (value < 0) return false;
+    if (bits == 64) return true;
+    const unsigned long long max = (1ULL << bits) - 1;
+    return static_cast<unsigned long long>(value) <= max;
+}
+
+static Type promotedNumericTypeForExpr(const Expr* lhsExpr,
+                                       const Expr* rhsExpr,
+                                       const Type& lhs,
+                                       const Type& rhs) {
+    if (lhs.isInteger() && rhs.isInteger()) {
+        bool ignored = false;
+        const bool lhsLiteral = integerLiteralExpr(lhsExpr, ignored) != nullptr;
+        ignored = false;
+        const bool rhsLiteral = integerLiteralExpr(rhsExpr, ignored) != nullptr;
+
+        if (lhsLiteral && !rhsLiteral && integerLiteralFitsType(lhsExpr, rhs))
+            return rhs;
+        if (rhsLiteral && !lhsLiteral && integerLiteralFitsType(rhsExpr, lhs))
+            return lhs;
+    }
+
+    return promotedNumericType(lhs, rhs);
+}
+
 }
 
 bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
@@ -107,32 +170,7 @@ bool SemanticAnalyzer::isWideningCoercion(const Type& from, const Type& to) {
 }
 
 bool SemanticAnalyzer::integerLiteralFits(const ast::Expr* expr, const Type& to) {
-    if (!to.isInteger()) return false;
-
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    if (!lit || !lit->Type.isInteger()) return false;
-
-    long long value = 0;
-    try {
-        value = std::stoll(lit->Value);
-    } catch (...) {
-        return false;
-    }
-
-    const unsigned bits = to.bitWidth();
-    if (bits == 0 || bits > 64) return false;
-
-    if (to.isSigned()) {
-        if (bits == 64) return true;
-        const long long min = -(1LL << (bits - 1));
-        const long long max = (1LL << (bits - 1)) - 1;
-        return value >= min && value <= max;
-    }
-
-    if (value < 0) return false;
-    if (bits == 64) return true;
-    const unsigned long long max = (1ULL << bits) - 1;
-    return static_cast<unsigned long long>(value) <= max;
+    return integerLiteralFitsType(expr, to);
 }
 
 bool SemanticAnalyzer::canCoerceExprTo(const ast::Expr* expr, const Type& to) {
@@ -692,7 +730,7 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     if (equalityOps.count(node.Op) || relationalOps.count(node.Op))
         node.ResolvedType = Type::Bool();
     else
-        node.ResolvedType = promotedNumericType(lt, rt);
+        node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
 }
 
 void SemanticAnalyzer::visit(LiteralExpr& node) {
