@@ -3,7 +3,7 @@
 
 #define KR_VERSION_MAJOR 1
 #define KR_VERSION_MINOR 9
-#define KR_VERSION_PATCH 1
+#define KR_VERSION_PATCH 2
 
 #define KR_STANDARD_NAME "Kriol"
 #define KR_STANDARD_FILE_EXTENSION "kriol"
@@ -18,5 +18,10 @@
 
 #define KR_DEFAULT_OUT_FILE "a.out"
 #define KR_DEFAULT_WASM_OUT_FILE "a.wasm"
+
+// Maximum number of elements in a fixed-size array declaration.
+// Keeps pathological sizes from exhausting compiler memory or hanging
+// codegen (e.g. repeat initializers are unrolled element by element).
+#define KR_MAX_ARRAY_SIZE (1u << 20)
 
 #endif // _KRIOL_CNST_HEADER

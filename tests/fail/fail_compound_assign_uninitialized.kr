@@ -1,0 +1,5 @@
+fn inisiu() {
+    dipoz nter x;
+    x += 1;
+    mostran(x);
+}

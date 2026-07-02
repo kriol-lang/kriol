@@ -1,0 +1,5 @@
+mostran("no function here");
+
+fn inisiu() {
+    mostran("ola");
+}

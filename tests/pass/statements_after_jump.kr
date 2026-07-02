@@ -1,0 +1,24 @@
+// Statements that follow break/continue/return in the same block are dead
+// code, but must still compile to valid IR.
+fn count() nter {
+    nter total = 0;
+    pa nter i = 0; i < 10; i += 1 {
+        si i == 3 {
+            para;
+            total += 100; // dead
+        }
+        si i == 1 {
+            kontinua;
+            total += 100; // dead
+        }
+        total += 1;
+    }
+    divolvi total;
+    total += 100; // dead
+}
+
+fn inisiu() {
+    konfirma(count() == 2);
+    divolvi;
+    mostran("unreachable"); // dead
+}

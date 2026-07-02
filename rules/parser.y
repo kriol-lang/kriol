@@ -1,6 +1,7 @@
 %{
     #include "include/kriol/ast.hh"
     #include "include/kriol/cli.hh"
+    #include "include/kriol/constants.hh"
 
     #include <cstdio>
     #include <cstdlib>
@@ -10,6 +11,23 @@
     extern int yylex();
     extern int yylineno;
     void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
+
+    // Parses an array size / repeat count literal with proper range
+    // diagnostics instead of letting std::stoul throw out of yyparse.
+    static std::size_t kriol_parse_array_size(const std::string& text) {
+        unsigned long long value = 0;
+        try {
+            value = std::stoull(text);
+        } catch (...) {
+            kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+                "array size literal '" + text + "' is out of range", 1);
+        }
+        if (value > KR_MAX_ARRAY_SIZE)
+            kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+                "array size " + text + " exceeds the maximum supported size of "
+                + std::to_string(KR_MAX_ARRAY_SIZE), 1);
+        return static_cast<std::size_t>(value);
+    }
 
     using namespace kriol;
 %}
@@ -37,8 +55,8 @@
 %token<integer> INT_LIT "integer literal"
 %token<floatingpoint> FLOAT_LIT "floating-point literal "
 %token<string> BOOL_LIT "boolean literal"
-%token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/"
-%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/="
+%token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/" MOD "%"
+%token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/=" MOD_ASSIGN "%="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa"
@@ -122,12 +140,26 @@ control_initializer_statement : expression { auto n = new ast::ExprSttmt(std::un
                               | control_initializer { $$ = $1; }
                               ;
 
-array_declarator : LBRAC INT_LIT RBRAC declarator { $$ = new ast::VarDeclSttmt(Type::Invalid(), *$4, nullptr); $$->IsArray = true; $$->ArraySize = std::stoul(*$2); delete $2; delete $4; }
+array_declarator : LBRAC INT_LIT RBRAC declarator { $$ = new ast::VarDeclSttmt(Type::Invalid(), *$4, nullptr); $$->IsArray = true; $$->ArraySize = kriol_parse_array_size(*$2); delete $2; delete $4; }
                  ;
 
 initializer : expression { $$ = $1; }
             | array_initializer { $$ = $1; }
-            | array_initializer MUL INT_LIT { auto* lit = static_cast<ast::ArrayLiteralExpr*>($1); auto fill = std::move(lit->Elements[0]); delete lit; auto n = new ast::ArrayRepeatExpr(std::move(fill), std::stoul(*$3)); n->LineNum = yylineno; $$ = n; delete $3; }
+            | array_initializer MUL INT_LIT {
+                  auto* lit = static_cast<ast::ArrayLiteralExpr*>($1);
+                  if (lit->Elements.size() != 1) {
+                      delete lit; delete $3;
+                      kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+                          "repeat initializer '[value] * N' requires exactly one fill element", 1);
+                  }
+                  std::size_t count = kriol_parse_array_size(*$3);
+                  auto fill = std::move(lit->Elements[0]);
+                  delete lit;
+                  auto n = new ast::ArrayRepeatExpr(std::move(fill), count);
+                  n->LineNum = yylineno;
+                  $$ = n;
+                  delete $3;
+              }
             ;
 
 value_expression : constant_expression { $$ = $1; }
@@ -174,6 +206,7 @@ additive_expression : multiplicative_expression { $$ = $1; }
 multiplicative_expression : unary_expression { $$ = $1; }
                           | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
                           | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                          | multiplicative_expression MOD unary_expression { auto n = new ast::BinExpr("%", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
                           ;
 
 unary_expression : primary_expression                          { $$ = $1; }
@@ -209,6 +242,7 @@ assignment_operator : ASSIGN { $$ = new std::string("="); }
                     | MINUS_ASSIGN { $$ = new std::string("-="); }
                     | MUL_ASSIGN { $$ = new std::string("*="); }
                     | DIV_ASSIGN { $$ = new std::string("/="); }
+                    | MOD_ASSIGN { $$ = new std::string("%="); }
                     ;
 
 function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = yylineno; $$ = n; delete $6; delete $2; }

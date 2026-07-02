@@ -1,0 +1,30 @@
+nter calls = 0;
+
+fn bump() bool {
+    calls += 1;
+    divolvi sin;
+}
+
+fn inisiu() {
+    // RHS must not run when the LHS already decides the result.
+    si nau && bump() {
+        sai(1);
+    }
+    konfirma(calls == 0);
+
+    si sin || bump() {
+        calls += 10;
+    }
+    konfirma(calls == 10);
+
+    // RHS must run when the LHS does not decide the result.
+    si sin && bump() {
+        calls += 100;
+    }
+    konfirma(calls == 111);
+
+    si nau || bump() {
+        calls += 1000;
+    }
+    konfirma(calls == 1112);
+}

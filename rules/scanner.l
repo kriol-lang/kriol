@@ -20,7 +20,7 @@
     static int g_fstr_depth = 0;
 %}
 
-INT [+|-]?[0-9]+
+INT [0-9]+
 
 FLOAT {INT}\.[0-9]+
 
@@ -71,6 +71,8 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
 "-"             return TOKENIZE(MINUS);
 "*"             return TOKENIZE(MUL);
 "/"             return TOKENIZE(DIV);
+"%"             return TOKENIZE(MOD);
+"%="            return TOKENIZE(MOD_ASSIGN);
 "("             return TOKENIZE(LPAR);
 ")"             return TOKENIZE(RPAR);
 "."             return TOKENIZE(DOT);
@@ -111,7 +113,8 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
     <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
-    .|\n                  { /* skip unrecognised char inside f-string */ }
+    \n                    { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "raw newline inside f-string (missing closing quote?)", 1); }
+    .                     { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unexpected character '" + std::string(yytext) + "' inside f-string", 1); }
 }
 
 <FSTRING_SQ>{
@@ -119,7 +122,8 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
     <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
-    .|\n                  { /* skip unrecognised char inside f-string */ }
+    \n                    { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "raw newline inside f-string (missing closing quote?)", 1); }
+    .                     { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unexpected character '" + std::string(yytext) + "' inside f-string", 1); }
 }
 
 . {

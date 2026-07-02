@@ -1,5 +1,8 @@
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/FileSystem.h>
@@ -425,6 +428,22 @@ static void linkNativeExecutable(const std::string& objPath,
     runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
 
+// Returns true if the block can be reached from its function's entry block.
+static bool isReachableFromEntry(llvm::BasicBlock* target) {
+    llvm::Function* fn = target->getParent();
+    llvm::SmallPtrSet<llvm::BasicBlock*, 32> visited;
+    llvm::SmallVector<llvm::BasicBlock*, 32> worklist;
+    worklist.push_back(&fn->getEntryBlock());
+    while (!worklist.empty()) {
+        llvm::BasicBlock* bb = worklist.pop_back_val();
+        if (!visited.insert(bb).second) continue;
+        if (bb == target) return true;
+        for (llvm::BasicBlock* succ : llvm::successors(bb))
+            worklist.push_back(succ);
+    }
+    return false;
+}
+
 static kriol::Type promotedNumericType(const kriol::Type& lhs, const kriol::Type& rhs) {
     if (!lhs.valid()) return rhs;
     if (!rhs.valid()) return lhs;
@@ -828,6 +847,43 @@ llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckBounds() {
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_check_bounds", *Mod);
 }
 
+llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckDiv() {
+    if (auto* fn = Mod->getFunction("__kriol_check_div")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i64Ty  = llvm::Type::getInt64Ty(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i64Ty, i64Ty, i32Ty, i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_check_div", *Mod);
+}
+
+void CodeGenVisitor::startDeadBlock() {
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* dead = llvm::BasicBlock::Create(Context, "dead", fn);
+    Builder->SetInsertPoint(dead);
+}
+
+void CodeGenVisitor::emitIntDivGuard(llvm::Value* lhs, llvm::Value* rhs,
+                                     const Type& operandType, int lineNum) {
+    auto* i64Ty = llvm::Type::getInt64Ty(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+
+    llvm::Value* lhs64 = operandType.isSigned()
+        ? Builder->CreateSExtOrTrunc(lhs, i64Ty)
+        : Builder->CreateZExtOrTrunc(lhs, i64Ty);
+    llvm::Value* rhs64 = operandType.isSigned()
+        ? Builder->CreateSExtOrTrunc(rhs, i64Ty)
+        : Builder->CreateZExtOrTrunc(rhs, i64Ty);
+
+    // signedBits > 0 additionally enables the MIN / -1 overflow check.
+    int signedBits = operandType.isSigned() ? static_cast<int>(operandType.bitWidth()) : 0;
+    Builder->CreateCall(getOrDeclareKriolCheckDiv(), {
+        lhs64,
+        rhs64,
+        llvm::ConstantInt::get(i32Ty, signedBits),
+        llvm::ConstantInt::get(i32Ty, lineNum)
+    });
+}
+
 llvm::Value* CodeGenVisitor::getArrayStorage(const std::string& name) {
     if (auto* alloca = lookupVar(name)) return alloca;
     if (auto* gv = lookupGlobal(name)) return gv;
@@ -1115,8 +1171,10 @@ void CodeGenVisitor::visit(BlockSttmt& node) {
     pushScope();
     for (auto& s : node.SttmtList) {
         if (!s) continue;
-        if (!CurrentFunction && dynamic_cast<MoldaDeclSttmt*>(s.get())) continue;
-        if (!CurrentFunction && dynamic_cast<VarDeclSttmt*>(s.get())) continue;
+        // At the program root only function bodies are emitted; molda and
+        // variable declarations were handled in the prepass above, and sema
+        // rejects any other top-level statement before codegen runs.
+        if (!CurrentFunction && !dynamic_cast<FuncDeclSttmt*>(s.get())) continue;
         s->accept(*this);
     }
     popScope();
@@ -1238,20 +1296,17 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 
     // Auto-return if the current block has no terminator
     if (!Builder->GetInsertBlock()->getTerminator()) {
-        if (isMain)
+        llvm::BasicBlock* cur = Builder->GetInsertBlock();
+        // If every branch already returned, the final block is dead code
+        // (unreachable from entry) but still needs a valid LLVM terminator.
+        if (!isReachableFromEntry(cur))
+            Builder->CreateUnreachable();
+        else if (isMain)
             Builder->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), 0));
         else if (retTy->isVoidTy())
             Builder->CreateRetVoid();
-        else {
-            // If every branch already returned, the current block is dead code
-            // with no predecessors (but it still needs a valid LLVM terminator).
-            llvm::BasicBlock* cur = Builder->GetInsertBlock();
-            bool isDeadBlock = (cur != &fn->getEntryBlock()) && cur->hasNPredecessors(0);
-            if (isDeadBlock)
-                Builder->CreateUnreachable();
-            else
-                throw std::runtime_error("Non-void function '" + node.Name + "' has no return statement");
-        }
+        else
+            throw std::runtime_error("Non-void function '" + node.Name + "' has no return statement");
     }
 
     auto verificationFailed = llvm::verifyFunction(*fn);
@@ -1336,23 +1391,33 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
 }
 
 void CodeGenVisitor::visit(JumpSttmt& node) {
-    if (node.Name == "break" && LoopExit)
+    if (node.Name == "break" && LoopExit) {
         Builder->CreateBr(LoopExit);
-    else if (node.Name == "continue" && LoopContinue)
+        startDeadBlock();
+    } else if (node.Name == "continue" && LoopContinue) {
         Builder->CreateBr(LoopContinue);
+        startDeadBlock();
+    }
 }
 
 void CodeGenVisitor::visit(ReturnSttmt& node) {
+    llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         // Coerce to the function's declared return type (e.g. nter -> num widening)
-        llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
         if (LastValue && LastValue->getType() != retTy)
             LastValue = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
         Builder->CreateRet(LastValue);
-    } else {
+    } else if (retTy->isVoidTy()) {
         Builder->CreateRetVoid();
+    } else {
+        // A bare 'divolvi;' inside inisiu: main returns i32, so return 0
+        // instead of emitting an invalid 'ret void'.
+        Builder->CreateRet(llvm::Constant::getNullValue(retTy));
     }
+    // Anything else in this source block is unreachable; give it a fresh
+    // block so it still produces structurally valid IR.
+    startDeadBlock();
     LastValue = nullptr;
 }
 
@@ -1374,36 +1439,71 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
         size_t i = 0;
         for (auto& arg : node.Args->Args) {
             arg->accept(*this);
-            if (LastValue) {
-                if (i < fn->arg_size()) {
-                    // Coerce argument to the declared parameter type when they differ
-                    llvm::Type* paramTy = (fn->arg_begin() + i)->getType();
-                    if (LastValue->getType() != paramTy) {
-                        if (sigIt != FunctionSigs.end() && i < sigIt->second.paramTypes.size())
-                            LastValue = coerceToType(LastValue, arg->ResolvedType, sigIt->second.paramTypes[i]);
-                        else
-                            LastValue = coerce(LastValue, paramTy);
-                    }
+            if (!LastValue)
+                throw std::runtime_error("internal error: failed to generate argument "
+                                         + std::to_string(i + 1) + " of call to '" + callee->Name + "'");
+            if (i < fn->arg_size()) {
+                // Coerce argument to the declared parameter type when they differ
+                llvm::Type* paramTy = (fn->arg_begin() + i)->getType();
+                if (LastValue->getType() != paramTy) {
+                    if (sigIt != FunctionSigs.end() && i < sigIt->second.paramTypes.size())
+                        LastValue = coerceToType(LastValue, arg->ResolvedType, sigIt->second.paramTypes[i]);
+                    else
+                        LastValue = coerce(LastValue, paramTy);
                 }
-                callArgs.push_back(LastValue);
-                ++i;
             }
+            callArgs.push_back(LastValue);
+            ++i;
         }
     }
 
     LastValue = Builder->CreateCall(fn, callArgs);
 }
 
+void CodeGenVisitor::emitShortCircuit(BinExpr& node) {
+    const bool isAnd = (node.Op == "&&");
+    auto* i1Ty = llvm::Type::getInt1Ty(Context);
+
+    node.LHS->accept(*this);
+    if (!LastValue) { LastValue = nullptr; return; }
+    llvm::Value* lhs = toBool(LastValue);
+
+    auto* fn      = Builder->GetInsertBlock()->getParent();
+    auto* rhsBB   = llvm::BasicBlock::Create(Context, isAnd ? "and.rhs" : "or.rhs", fn);
+    auto* mergeBB = llvm::BasicBlock::Create(Context, isAnd ? "and.merge" : "or.merge", fn);
+    llvm::BasicBlock* lhsEndBB = Builder->GetInsertBlock();
+
+    // '&&' only evaluates the RHS when the LHS is true;
+    // '||' only evaluates the RHS when the LHS is false.
+    if (isAnd)
+        Builder->CreateCondBr(lhs, rhsBB, mergeBB);
+    else
+        Builder->CreateCondBr(lhs, mergeBB, rhsBB);
+
+    Builder->SetInsertPoint(rhsBB);
+    node.RHS->accept(*this);
+    if (!LastValue)
+        throw std::runtime_error("internal error: failed to generate right operand of '" + node.Op + "'");
+    llvm::Value* rhs = toBool(LastValue);
+    llvm::BasicBlock* rhsEndBB = Builder->GetInsertBlock();
+    Builder->CreateBr(mergeBB);
+
+    Builder->SetInsertPoint(mergeBB);
+    auto* phi = Builder->CreatePHI(i1Ty, 2, isAnd ? "andtmp" : "ortmp");
+    phi->addIncoming(llvm::ConstantInt::get(i1Ty, isAnd ? 0 : 1), lhsEndBB);
+    phi->addIncoming(rhs, rhsEndBB);
+    LastValue = phi;
+}
+
 void CodeGenVisitor::visit(BinExpr& node) {
+    const auto& op = node.Op;
+    if (op == "&&" || op == "||") { emitShortCircuit(node); return; }
+
     node.LHS->accept(*this);
     llvm::Value* lhs = LastValue;
     node.RHS->accept(*this);
     llvm::Value* rhs = LastValue;
     if (!lhs || !rhs) { LastValue = nullptr; return; }
-
-    const auto& op = node.Op;
-    if (op == "&&") { LastValue = Builder->CreateAnd(toBool(lhs), toBool(rhs)); return; }
-    if (op == "||") { LastValue = Builder->CreateOr(toBool(lhs), toBool(rhs)); return; }
 
     Type operandType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(),
                                                   node.LHS->ResolvedType,
@@ -1415,6 +1515,9 @@ void CodeGenVisitor::visit(BinExpr& node) {
         lhs = coerceToType(lhs, node.LHS->ResolvedType, operandType);
     if (rhs->getType() != operandLlvmTy)
         rhs = coerceToType(rhs, node.RHS->ResolvedType, operandType);
+
+    if ((op == "/" || op == "%") && !isFloat)
+        emitIntDivGuard(lhs, rhs, operandType, node.LineNum);
 
     if      (op == "+")  LastValue = isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
     else if (op == "-")  LastValue = isFloat ? Builder->CreateFSub(lhs, rhs) : Builder->CreateSub(lhs, rhs);
@@ -1491,10 +1594,13 @@ void CodeGenVisitor::visit(AssignExpr& node) {
         llvm::Value* rhs = coerceToType(val, node.Assigned->ResolvedType, targetType);
         bool isFloat = targetType.isFloat();
         bool isUnsigned = targetType.isUnsignedInteger();
+        if ((node.AssignOp == "/=" || node.AssignOp == "%=") && !isFloat)
+            emitIntDivGuard(cur, rhs, targetType, node.LineNum);
         if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
         else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
         else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
         else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : (isUnsigned ? Builder->CreateUDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs));
+        else if (node.AssignOp == "%=") val = isFloat ? Builder->CreateFRem(cur, rhs) : (isUnsigned ? Builder->CreateURem(cur, rhs) : Builder->CreateSRem(cur, rhs));
     } else {
         val = coerceToType(val, node.Assigned->ResolvedType, node.Assignee->ResolvedType);
     }

@@ -1,0 +1,5 @@
+fn inisiu() {
+    si "abc" {
+        mostran(1);
+    }
+}

@@ -93,6 +93,20 @@ namespace ast {
                                llvm::Value* index);
         LValue               resolveLValue(ast::Expr* expr);
         llvm::Function*      getOrDeclareKriolCheckBounds();
+        llvm::Function*      getOrDeclareKriolCheckDiv();
+
+        // After emitting a block terminator (break/continue/return/sai) moves
+        // the insert point into a fresh unreachable block so that any further
+        // statements in the source block still produce valid (dead) IR.
+        void startDeadBlock();
+
+        // Emits a runtime divisor check (division by zero / signed overflow)
+        // before an integer division or remainder.
+        void emitIntDivGuard(llvm::Value* lhs, llvm::Value* rhs,
+                             const Type& operandType, int lineNum);
+
+        // Emits short-circuit evaluation for '&&' and '||'.
+        void emitShortCircuit(ast::BinExpr& node);
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }

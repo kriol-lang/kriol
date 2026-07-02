@@ -1,0 +1,9 @@
+// A bare 'divolvi;' inside inisiu must lower to 'ret i32 0' in main.
+fn inisiu() {
+    nter x = 1;
+    si x == 1 {
+        mostran("early exit");
+        divolvi;
+    }
+    mostran("not reached");
+}

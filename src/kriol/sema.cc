@@ -52,6 +52,18 @@ static const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
     return lit && lit->Type.isInteger() ? lit : nullptr;
 }
 
+static const LiteralExpr* underlyingNumericLiteral(const Expr* expr) {
+    if (!expr) return nullptr;
+    if (auto* par = dynamic_cast<const ParExpr*>(expr))
+        return underlyingNumericLiteral(par->Content.get());
+    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
+        if (unary->Op != "-") return nullptr;
+        return underlyingNumericLiteral(unary->Operand.get());
+    }
+    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
+    return lit && lit->Type.isNumeric() ? lit : nullptr;
+}
+
 static bool integerLiteralFitsType(const Expr* expr, const Type& to) {
     if (!to.isInteger()) return false;
 
@@ -175,8 +187,8 @@ bool SemanticAnalyzer::integerLiteralFits(const ast::Expr* expr, const Type& to)
 bool SemanticAnalyzer::canCoerceExprTo(const ast::Expr* expr, const Type& to) {
     if (!expr) return false;
     const Type& from = expr->ResolvedType;
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    if (lit && from.isFloat() && to.isFloat()) return true;
+    auto* lit = underlyingNumericLiteral(expr);
+    if (lit && lit->Type.isFloat() && from.isFloat() && to.isFloat()) return true;
     return from == to || isWideningCoercion(from, to) || integerLiteralFits(expr, to);
 }
 
@@ -196,6 +208,13 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
     if (FunctionTable.count(node.Name)) {
         addError(errLoc(node.LineNum) + "duplicate function declaration '" + node.Name + "'");
         return;
+    }
+
+    if (node.Name == "inisiu") {
+        if (node.Args && !node.Args->Args.empty())
+            addError(errLoc(node.LineNum) + "entry function 'inisiu' must not take parameters");
+        if (!node.Type.isVoid())
+            addError(errLoc(node.LineNum) + "entry function 'inisiu' must not declare a return type");
     }
 
     FuncInfo info;
@@ -338,6 +357,19 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
 void SemanticAnalyzer::Check(BlockSttmt* program) {
     if (!program) return;
 
+    // Only declarations may appear at the program root.
+    for (auto& s : program->SttmtList) {
+        if (!s) continue;
+        if (dynamic_cast<VarDeclSttmt*>(s.get())) continue;
+        if (dynamic_cast<FuncDeclSttmt*>(s.get())) continue;
+        if (dynamic_cast<MoldaDeclSttmt*>(s.get())) continue;
+        if (dynamic_cast<ImportSttmt*>(s.get())) continue;
+        if (auto* exprSttmt = dynamic_cast<ExprSttmt*>(s.get()))
+            if (!exprSttmt->Expression) continue; // bare ';'
+        addError(errLoc(s->LineNum)
+                 + "only declarations (variables, functions, molda, imports) are allowed at the top level");
+    }
+
     for (auto& s : program->SttmtList) {
         if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
             registerRecord(*rec);
@@ -349,6 +381,9 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
         if (auto* fn = dynamic_cast<FuncDeclSttmt*>(s.get()))
             registerFuncSignature(*fn);
     }
+
+    if (!FunctionTable.count("inisiu"))
+        addError(errLoc(0) + "program must define an entry function 'fn inisiu()'");
 
     // Second pass: full semantic walk.
     pushScope();
@@ -471,7 +506,14 @@ void SemanticAnalyzer::visit(FuncArgs& node) {
 }
 
 void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
-    // If the signature wasn't pre-registered (nested function), register it now.
+    // Nested functions are not supported.
+    if (FunctionDepth > 0) {
+        addError(errLoc(node.LineNum) + "nested function declarations are not supported; declare '"
+                 + node.Name + "' at the top level");
+        return;
+    }
+
+    // If the signature wasn't pre-registered (function inside a block), register it now.
     // Top-level functions are already in FunctionTable from the first pass.
     if (!FunctionTable.count(node.Name)) {
         // Top-level functions were handled in the pre-registration pass.
@@ -479,6 +521,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
             registerFuncSignature(node);
     }
 
+    ++FunctionDepth;
     Type savedRetType = CurrFuncRetType;
     std::string savedName    = CurrFuncName;
     CurrFuncRetType = node.Type;
@@ -504,6 +547,20 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     popScope();
     CurrFuncRetType = savedRetType;
     CurrFuncName    = savedName;
+    --FunctionDepth;
+}
+
+void SemanticAnalyzer::checkConditionType(const ast::Expr* cond, int lineNum) {
+    if (!cond) return;
+    const Type& t = cond->ResolvedType;
+    if (!t.valid()) return;
+    if (t.isVoid()) {
+        addError(errLoc(lineNum) + "void expression cannot be used as a condition");
+        return;
+    }
+    if (t != Type::Bool() && !t.isNumeric())
+        addError(errLoc(lineNum) + "condition must be a boolean or numeric value, got '"
+                 + t.str() + "'");
 }
 
 void SemanticAnalyzer::visit(IfSttmt& node) {
@@ -511,8 +568,7 @@ void SemanticAnalyzer::visit(IfSttmt& node) {
     if (node.Init) node.Init->accept(*this);
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType.isVoid())
-            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+        checkConditionType(node.Cond.get(), node.LineNum);
     }
     if (node.Then) node.Then->accept(*this);
     if (node.Else) node.Else->accept(*this);
@@ -522,8 +578,7 @@ void SemanticAnalyzer::visit(IfSttmt& node) {
 void SemanticAnalyzer::visit(WhileSttmt& node) {
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType.isVoid())
-            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+        checkConditionType(node.Cond.get(), node.LineNum);
     }
     ++LoopDepth;
     if (node.Do) node.Do->accept(*this);
@@ -732,8 +787,29 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
 }
 
+void SemanticAnalyzer::validateLiteralRange(ast::LiteralExpr& node) {
+    if (node.Type.isInteger()) {
+        try {
+            (void)std::stoll(node.Value);
+        } catch (...) {
+            addError(errLoc(node.LineNum) + "integer literal '" + node.Value
+                     + "' is out of range");
+            node.ResolvedType = Type::Invalid();
+        }
+    } else if (node.Type.isFloat()) {
+        try {
+            (void)std::stod(node.Value);
+        } catch (...) {
+            addError(errLoc(node.LineNum) + "floating-point literal '" + node.Value
+                     + "' is out of range");
+            node.ResolvedType = Type::Invalid();
+        }
+    }
+}
+
 void SemanticAnalyzer::visit(LiteralExpr& node) {
     node.ResolvedType = node.Type;
+    validateLiteralRange(node);
 }
 
 void SemanticAnalyzer::visit(ExprSttmt& node) {
@@ -744,22 +820,19 @@ void SemanticAnalyzer::visit(ExprSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(IdentExpr& node) {
-    // Only flag as undefined if we are inside a function scope (SymbolScopes
-    // has at least 2 levels: top-level scope + function scope).
-    if (SymbolScopes.size() >= 2) {
-        if (!lookupVar(node.Name))
-            addError(errLoc(node.LineNum) + "undefined variable name '" + node.Name + "'");
-    }
     auto t = lookupVar(node.Name);
-    if (t) {
-        node.ResolvedType = *t;
-        if (isArrayType(*t))
-            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must be indexed");
-
-        auto* init = lookupInitState(node.Name);
-        if (init && !init->isArray && !init->fullyInitialized)
-            addError(errLoc(node.LineNum) + "use of uninitialized variable '" + node.Name + "'");
+    if (!t) {
+        addError(errLoc(node.LineNum) + "undefined variable name '" + node.Name + "'");
+        return;
     }
+
+    node.ResolvedType = *t;
+    if (isArrayType(*t))
+        addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must be indexed");
+
+    auto* init = lookupInitState(node.Name);
+    if (init && !init->isArray && !init->fullyInitialized)
+        addError(errLoc(node.LineNum) + "use of uninitialized variable '" + node.Name + "'");
 }
 
 void SemanticAnalyzer::visit(ParExpr& node) {
@@ -1030,6 +1103,14 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
         node.ResolvedType = node.Assigned->ResolvedType;
 
         if (node.AssignOp != "=" && assigneeType.valid()) {
+            // Compound assignments read the target before writing it.
+            if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
+                auto* init = lookupInitState(ident->Name);
+                if (init && !init->isArray && !init->fullyInitialized)
+                    addError(errLoc(node.LineNum) + "use of uninitialized variable '"
+                             + ident->Name + "' in compound assignment");
+            }
+
             if (!assigneeType.isNumeric()) {
                 addError(errLoc(node.LineNum) + "compound assignment operator '"
                          + node.AssignOp + "' requires a numeric target, got '"
@@ -1085,8 +1166,7 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
     if (node.Start) node.Start->accept(*this);
     if (node.Cond) {
         node.Cond->accept(*this);
-        if (node.Cond->ResolvedType.isVoid())
-            addError(errLoc(node.LineNum) + "void expression cannot be used as a condition");
+        checkConditionType(node.Cond.get(), node.LineNum);
     }
     ++LoopDepth;
     if (node.Then)  node.Then->accept(*this);
@@ -1118,10 +1198,19 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {
     if (node.Operand) node.Operand->accept(*this);
-    if (node.Op == "!")
+    const Type opType = node.Operand ? node.Operand->ResolvedType : Type::Invalid();
+
+    if (node.Op == "!") {
+        if (opType.valid() && opType != Type::Bool())
+            addError(errLoc(node.LineNum) + "logical operator '!' requires a boolean operand, got '"
+                     + opType.str() + "'");
         node.ResolvedType = Type::Bool();
-    else // "-" (numeric negation) keeps operand type, default to num if unknown
-        node.ResolvedType = node.Operand ? node.Operand->ResolvedType : Type::Number();
+    } else { // "-" (numeric negation) keeps operand type
+        if (opType.valid() && !opType.isNumeric())
+            addError(errLoc(node.LineNum) + "unary operator '-' requires a numeric operand, got '"
+                     + opType.str() + "'");
+        node.ResolvedType = opType.isNumeric() ? opType : Type::Invalid();
+    }
 }
 
 } // namespace sema

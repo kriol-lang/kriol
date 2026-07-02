@@ -1,0 +1,4 @@
+fn inisiu() {
+    nter [6]a = [1, 2] * 3;
+    mostran(a[0]);
+}

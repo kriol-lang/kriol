@@ -52,6 +52,10 @@ namespace sema {
         // How many loops deep we currently are (used for break/continue validation)
         int LoopDepth = 0;
 
+        // How many function bodies deep we currently are (nested functions are
+        // not supported and must be rejected).
+        int FunctionDepth = 0;
+
         // Collected errors
         std::vector<std::string> Errors;
 
@@ -127,6 +131,15 @@ namespace sema {
 
         void registerRecord(ast::MoldaDeclSttmt& node);
         bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
+
+        // Validates that a condition expression has a type usable in a branch
+        // (bool or numeric). Anything else cannot be lowered to a truth value.
+        void checkConditionType(const ast::Expr* cond, int lineNum);
+
+        // Validates that a literal's textual value actually fits the host
+        // representation used during codegen (i64 / double), so codegen never
+        // throws on std::stoll/std::stod.
+        void validateLiteralRange(ast::LiteralExpr& node);
         bool validateArrayInitializer(const Type& expectedType,
                                       ast::Expr* init,
                                       int lineNum,

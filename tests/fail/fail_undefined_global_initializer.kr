@@ -1,0 +1,5 @@
+nter g = h + 1;
+
+fn inisiu() {
+    mostran(g);
+}

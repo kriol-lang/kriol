@@ -14,7 +14,7 @@
 #endif
 
 #if !KRIOL_RUNTIME_NO_GC
-// NOTE: Injected at linking phase of the kriol compiler.
+// NOTE: Injected in the linking phase of the kriol compilation process.
 #include "gc.h"
 #endif
 
@@ -190,5 +190,18 @@ void __kriol_check_bounds(int64_t index, int64_t size, int line) {
         fprintf(stderr, "kriol: array index out of bounds at line %d: %lld not in [0..%lld]\n",
                 line, (long long)index, (long long)size - 1);
         exit(1);
+    }
+}
+
+void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line) {
+    if (rhs == 0)
+        __kriol_panic_at("division by zero", line);
+
+    if (signed_bits > 0 && rhs == -1) {
+        int64_t min = signed_bits >= 64
+            ? INT64_MIN
+            : -((int64_t)1 << (signed_bits - 1));
+        if (lhs == min)
+            __kriol_panic_at("integer overflow in division", line);
     }
 }

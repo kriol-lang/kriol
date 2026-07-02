@@ -109,6 +109,9 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             }
             Builder->CreateCall(getOrDeclareExit(*Mod, Context), {code});
             Builder->CreateUnreachable();
+            // Statements after sai() are unreachable; emit them into a fresh
+            // dead block so the current block keeps a single terminator.
+            startDeadBlock();
             LastValue = nullptr;
             return true;
         }

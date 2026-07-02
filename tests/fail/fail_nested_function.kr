@@ -1,0 +1,6 @@
+fn inisiu() {
+    fn inner() {
+        mostran("inner");
+    }
+    mostran("outer");
+}
