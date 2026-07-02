@@ -1,16 +1,16 @@
-fn ola(textu nomi, bool na_kriolu) {
-    si na_kriolu {
-        mostran(f"Olá {nomi}, ami nta programa na Kriol!");
-    } sinon {
-        mostran(f"Hello {nomi}, I program in Kriol!");
-    }
+fn ola(textu nomi, bool naKriolu) {
+  si naKriolu {
+    mostran(f"Olá {nomi}, ami nta programa na Kriol!");
+  } sinon {
+    mostran(f"Hello {nomi}, I program in Kriol!");
+  }
 }
 
 fn inisiu() {
-    // Toma nomi atravez di entrada
-    textu nomi = toma('Nomi: ');
+  // Toma nomi atravez di entrada
+  textu nomi = toma('Nomi: ');
 
-    // Executa funson `ola` passando parametros
-    ola(nomi, sin);
-    ola(nomi, nau);
+  // Tchoma funson ola
+  ola(nomi, sin);
+  ola(nomi, nau);
 }
