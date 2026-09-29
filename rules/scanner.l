@@ -1,4 +1,5 @@
 %option noyywrap yylineno stack
+%option nounistd never-interactive
 
 %{
     #include "include/kriol/ast.hh"
@@ -27,14 +28,14 @@ FLOAT {INT}\.[0-9]+
 TYPE_IDENT [A-Z][a-zA-Z0-9_]*
 IDENT [a-z_][a-zA-Z0-9_]*
 
-STRING_DQ   ["]([^"\\\n]|\\.|\\\n)*["]
-STRING_SQ   [']([^'\\\n]|\\.|\\\n)*[']
+STRING_DQ   ["]([^"\\\n]|\\.|\\\r?\n)*["]
+STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 
 %x FSTRING_DQ FSTRING_SQ
 
 %%
 
-[ \t\n]         /* ignore */;
+[ \t\r\n]      /* ignore */;
 "//"[^\n]*      /* single-line comment */;
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 

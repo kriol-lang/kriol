@@ -14,7 +14,6 @@ RUN apt-get update \
         cmake \
         flex \
         bison \
-        xxd \
         file \
         zlib1g-dev \
         libzstd-dev \

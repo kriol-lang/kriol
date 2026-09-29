@@ -1,4 +1,5 @@
 set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(KRIOL_EMBED_FILE_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/EmbedFile.cmake)
 
 set(KRIOL_WASI_TARGET "wasm32-wasi" CACHE STRING "Target triple used for Kriol WASI output")
 set(KRIOL_WASI_SYSROOT "/usr" CACHE PATH "WASI sysroot used for Kriol WASI output")
@@ -69,46 +70,32 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/runtime/kriol_runtime.c
 )
 
-function(kriol_embed_file INPUT_FILE OUTPUT_HEADER)
-    get_filename_component(INPUT_NAME ${INPUT_FILE} NAME)
+# Embeds INPUT_FILE as a C array named after SYMBOL (e.g. libgc_native.a ->
+# libgc_native_a / libgc_native_a_len). Extra arguments are added as
+# dependencies, for inputs produced by targets rather than files.
+function(kriol_embed_file INPUT_FILE OUTPUT_HEADER SYMBOL)
     add_custom_command(
         OUTPUT ${OUTPUT_HEADER}
 
         COMMAND
-            ${XXD_PROGRAM}
-            -i
-            ${INPUT_NAME}
-            > ${OUTPUT_HEADER}
-
-        WORKING_DIRECTORY ${GENERATED_DIR}
+            ${CMAKE_COMMAND}
+            -DINPUT=${INPUT_FILE}
+            -DOUTPUT=${OUTPUT_HEADER}
+            -DSYMBOL=${SYMBOL}
+            -P ${KRIOL_EMBED_FILE_SCRIPT}
 
         DEPENDS
             ${INPUT_FILE}
+            ${KRIOL_EMBED_FILE_SCRIPT}
+            ${ARGN}
+
+        VERBATIM
     )
 endfunction()
 
-kriol_embed_file(${RUNTIME_NATIVE_GC_BC} ${RUNTIME_NATIVE_GC_HEADER})
+kriol_embed_file(${RUNTIME_NATIVE_GC_BC} ${RUNTIME_NATIVE_GC_HEADER} kriol_runtime_native_gc.bc)
 
-add_custom_command(
-    OUTPUT ${GC_NATIVE_HEADER}
-
-    COMMAND
-        ${CMAKE_COMMAND}
-        -E copy
-        $<TARGET_FILE:gc>
-        ${GENERATED_DIR}/libgc_native.a
-
-    COMMAND
-        ${XXD_PROGRAM}
-        -i
-        libgc_native.a
-        > ${GC_NATIVE_HEADER}
-
-    WORKING_DIRECTORY ${GENERATED_DIR}
-
-    DEPENDS
-        gc
-)
+kriol_embed_file($<TARGET_FILE:gc> ${GC_NATIVE_HEADER} libgc_native.a gc)
 
 if(KRIOL_ENABLE_WASM)
     set(WASI_LIB_DIR ${KRIOL_WASI_SYSROOT}/lib/wasm32-wasi)
@@ -161,39 +148,16 @@ if(KRIOL_ENABLE_WASM)
             ${CMAKE_SOURCE_DIR}/runtime/kriol_runtime.c
     )
 
-    kriol_embed_file(${RUNTIME_WASM32_WASI_BC} ${RUNTIME_WASM32_WASI_HEADER})
+    get_filename_component(_KRIOL_WASI_RUNTIME_NAME ${RUNTIME_WASM32_WASI_BC} NAME)
+    kriol_embed_file(${RUNTIME_WASM32_WASI_BC} ${RUNTIME_WASM32_WASI_HEADER} ${_KRIOL_WASI_RUNTIME_NAME})
 
-    add_custom_command(
-        OUTPUT ${WASI_CRT1_COMMAND_HEADER}
-        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_CRT1_COMMAND} ${GENERATED_DIR}/wasi_crt1_command.o
-        COMMAND ${XXD_PROGRAM} -i wasi_crt1_command.o > ${WASI_CRT1_COMMAND_HEADER}
-        WORKING_DIRECTORY ${GENERATED_DIR}
-        DEPENDS ${WASI_CRT1_COMMAND}
-    )
+    kriol_embed_file(${WASI_CRT1_COMMAND} ${WASI_CRT1_COMMAND_HEADER} wasi_crt1_command.o)
 
-    add_custom_command(
-        OUTPUT ${WASI_LIBC_HEADER}
-        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_LIBC} ${GENERATED_DIR}/wasi_libc.a
-        COMMAND ${XXD_PROGRAM} -i wasi_libc.a > ${WASI_LIBC_HEADER}
-        WORKING_DIRECTORY ${GENERATED_DIR}
-        DEPENDS ${WASI_LIBC}
-    )
+    kriol_embed_file(${WASI_LIBC} ${WASI_LIBC_HEADER} wasi_libc.a)
 
-    add_custom_command(
-        OUTPUT ${WASI_LIBM_HEADER}
-        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_LIBM} ${GENERATED_DIR}/wasi_libm.a
-        COMMAND ${XXD_PROGRAM} -i wasi_libm.a > ${WASI_LIBM_HEADER}
-        WORKING_DIRECTORY ${GENERATED_DIR}
-        DEPENDS ${WASI_LIBM}
-    )
+    kriol_embed_file(${WASI_LIBM} ${WASI_LIBM_HEADER} wasi_libm.a)
 
-    add_custom_command(
-        OUTPUT ${WASI_BUILTINS_HEADER}
-        COMMAND ${CMAKE_COMMAND} -E copy ${WASI_BUILTINS} ${GENERATED_DIR}/wasi_builtins.a
-        COMMAND ${XXD_PROGRAM} -i wasi_builtins.a > ${WASI_BUILTINS_HEADER}
-        WORKING_DIRECTORY ${GENERATED_DIR}
-        DEPENDS ${WASI_BUILTINS}
-    )
+    kriol_embed_file(${WASI_BUILTINS} ${WASI_BUILTINS_HEADER} wasi_builtins.a)
 
     if(KRIOL_WASI_ENABLE_GC)
         set(WASI_GC_BUILD_DIR ${GENERATED_DIR}/_bdwgc_wasm32_wasi_cross)
@@ -222,26 +186,7 @@ if(KRIOL_ENABLE_WASM)
             INSTALL_COMMAND ""
         )
 
-        add_custom_command(
-            OUTPUT ${GC_WASM32_WASI_HEADER}
-
-            COMMAND
-                ${CMAKE_COMMAND}
-                -E copy
-                ${WASI_GC_LIB}
-                ${GENERATED_DIR}/libgc_wasm32_wasi.a
-
-            COMMAND
-                ${XXD_PROGRAM}
-                -i
-                libgc_wasm32_wasi.a
-                > ${GC_WASM32_WASI_HEADER}
-
-            WORKING_DIRECTORY ${GENERATED_DIR}
-
-            DEPENDS
-                kriol_bdwgc_wasm32_wasi
-        )
+        kriol_embed_file(${WASI_GC_LIB} ${GC_WASM32_WASI_HEADER} libgc_wasm32_wasi.a kriol_bdwgc_wasm32_wasi)
     endif()
 endif()
 

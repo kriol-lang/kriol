@@ -107,7 +107,7 @@ If you want to build the project, currently it only works mostly on Linux based 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```sh
-apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 zlib1g-dev libzstd-dev xxd cmake
+apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 zlib1g-dev libzstd-dev cmake
 ```
 
 WASI output also needs the WASI libc and compiler runtime packages:
@@ -145,6 +145,26 @@ And run with:
 
 ```sh
 ./build/release/kriol --help
+```
+
+### Windows (experimental)
+
+`kriol.exe` builds natively on Windows, and the
+[Windows workflow](.github/workflows/windows.yml) publishes it as the
+`kriol-windows-x86_64` artifact. `--help` and `--emit-ir` work. Producing
+`.exe` programs still depends on Clang plus the Visual Studio Build Tools
+being installed, and `wasm32-wasi` output is disabled on Windows for now.
+
+To build it locally, install the
+[LLVM 20 `x86_64-pc-windows-msvc` archive](https://github.com/llvm/llvm-project/releases/tag/llvmorg-20.1.8)
+(the regular installer lacks the CMake files), the Visual Studio Build Tools,
+[win_flex_bison](https://github.com/lexxmark/winflexbison), CMake and Ninja.
+Then, from a "x64 Native Tools" prompt with the LLVM `bin` folder on `PATH`:
+
+```bat
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=<llvm>\lib\cmake\llvm
+cmake --build build --target kriol
+build\kriol.exe --help
 ```
 
 ## Tests

@@ -37,6 +37,22 @@ extern void yy_delete_buffer(YY_BUFFER_STATE b);
 
 static std::string g_source_file;
 
+// Paths arrive as UTF-8 (main.cc converts the Windows command line), but
+// std::filesystem and the CRT read narrow strings in the ANSI code page there.
+static fs::path PathFromUtf8(const std::string& path)
+{
+    return fs::u8path(path);
+}
+
+static FILE* OpenFileForRead(const std::string& filename)
+{
+#ifdef _WIN32
+    return _wfopen(PathFromUtf8(filename).c_str(), L"rb");
+#else
+    return fopen(filename.c_str(), "rb");
+#endif
+}
+
 void cli::SetSourceFile(const std::string& filename) {
     g_source_file = filename;
 }
@@ -71,8 +87,8 @@ void cli::Compiler::DefineArgs()
         "Inputs:\n"
         "  Provide exactly one of [file] or --text SOURCE.\n\n"
         "Outputs:\n"
-        "  Native builds write ./a.out by default.\n"
-        "  wasm32-wasi builds write ./a.wasm by default.\n"
+        "  Native builds write ./" KR_DEFAULT_OUT_FILE " by default.\n"
+        "  wasm32-wasi builds write ./" KR_DEFAULT_WASM_OUT_FILE " by default.\n"
         "  --emit-ir prints LLVM IR to stdout unless -o is provided.\n\n"
         "Examples:\n"
         "  kriol hello.kriol\n"
@@ -173,7 +189,7 @@ ast::BlockSttmt* cli::KriolLangParserWrapper::ParseCode(
 
 void cli::Compiler::SaveCodeToFile(const std::string& code, const std::string& filename)
 {
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(PathFromUtf8(filename), std::ios::binary);
     if (!file)
         cli::PrintErr("Couldn't create file '" + filename + "': " + std::strerror(errno), 1);
 
@@ -187,22 +203,30 @@ void cli::KriolLangParserWrapper::ParseFile(
     ast::BlockSttmt** program
 )
 {
-    if (!fs::exists(filename))
+    const fs::path path = PathFromUtf8(filename);
+
+    if (!fs::exists(path))
     {
         cli::PrintErr("File '" + filename + "' was not found!", 1);
     }
 
-    if (!fs::is_regular_file(filename))
+    if (!fs::is_regular_file(path))
     {
         cli::PrintErr("Input '" + filename + "' is not a regular file.", 1);
     }
 
-    FILE *file = fopen(filename.c_str(), "r");
+    FILE *file = OpenFileForRead(filename);
 
     if (file == NULL)
     {
         cli::PrintErr("Couldn't open the file '" + filename + "': " + std::strerror(errno), 1);
     }
+
+    // Skip a UTF-8 byte order mark, which Windows editors often write.
+    unsigned char bom[3];
+    if (fread(bom, 1, sizeof bom, file) != sizeof bom ||
+        bom[0] != 0xEF || bom[1] != 0xBB || bom[2] != 0xBF)
+        rewind(file);
 
     yyin = file;
     cli::SetSourceFile(filename);
@@ -299,6 +323,11 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         : KR_DEFAULT_OUT_FILE;
 
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
+#ifdef _WIN32
+    // Windows only runs programs that carry an .exe extension.
+    if (Target == ast::CodegenTarget::Native && !PathFromUtf8(outfile).has_extension())
+        outfile += ".exe";
+#endif
 
     ast::EmitOptions emitOptions = {.Target = Target};
 
@@ -319,7 +348,7 @@ void cli::Compiler::ValidateInput() const
     if (Args.inputKind != CompileInputKind::File || Args.ignoreExtension)
         return;
 
-    const std::string extension = fs::path(Args.input).extension().string();
+    const std::string extension = PathFromUtf8(Args.input).extension().u8string();
     const bool supported = extension == "." + std::string(KR_STANDARD_FILE_EXTENSION) ||
                            extension == "." + std::string(KR_ALTERNATIVE_FILE_EXTENSION);
     if (!supported)

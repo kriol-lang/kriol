@@ -5,8 +5,15 @@ cmake_minimum_required(VERSION 3.20)
 # -----------------------------------------------------------------------------
 
 if(NOT CMAKE_TOOLCHAIN_FILE)
-    find_program(_CLANG NAMES clang-20 clang-19 clang)
-    find_program(_CLANGPP NAMES clang++-20 clang++-19 clang++)
+    if(CMAKE_HOST_WIN32)
+        # LLVM's exported Windows targets carry link.exe-style flags
+        # (-INCLUDE:, -delayload:), which only the MSVC-style driver accepts.
+        find_program(_CLANG NAMES clang-cl)
+        set(_CLANGPP "${_CLANG}")
+    else()
+        find_program(_CLANG NAMES clang-20 clang-19 clang)
+        find_program(_CLANGPP NAMES clang++-20 clang++-19 clang++)
+    endif()
 
     if(_CLANG)
         set(CMAKE_C_COMPILER "${_CLANG}")
@@ -28,7 +35,15 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
-option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
+# WASI output needs a WASI sysroot at build time; on Windows it is opt-in until
+# the sysroot and linker discovery are wired up there.
+if(WIN32)
+    set(_KRIOL_ENABLE_WASM_DEFAULT OFF)
+else()
+    set(_KRIOL_ENABLE_WASM_DEFAULT ON)
+endif()
+
+option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ${_KRIOL_ENABLE_WASM_DEFAULT})
 option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF)
@@ -36,12 +51,17 @@ option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Unix toolchains need libm spelled out; the Windows C runtimes include it.
+set(KRIOL_SYSTEM_LIBS)
+if(UNIX)
+    list(APPEND KRIOL_SYSTEM_LIBS m)
+endif()
+
 # -----------------------------------------------------------------------------
 # Tools
 # -----------------------------------------------------------------------------
 
 find_program(CLANG_PROGRAM NAMES clang-20 clang-19 clang REQUIRED)
-find_program(XXD_PROGRAM xxd REQUIRED)
 find_program(VALGRIND valgrind)
 
 # -----------------------------------------------------------------------------
@@ -299,12 +319,20 @@ function(kriol_configure_target TARGET_NAME)
         ${LLD_INCLUDE_DIR}
     )
 
-    target_compile_options(
-        ${TARGET_NAME}
-        PRIVATE
-        $<$<CONFIG:Debug>:-g -Wall>
-        $<$<CONFIG:Release>:-O2 -DNDEBUG>
-    )
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(
+            ${TARGET_NAME}
+            PRIVATE
+            $<$<CONFIG:Debug>:/W3>
+        )
+    else()
+        target_compile_options(
+            ${TARGET_NAME}
+            PRIVATE
+            $<$<CONFIG:Debug>:-g -Wall>
+            $<$<CONFIG:Release>:-O2 -DNDEBUG>
+        )
+    endif()
 
     target_compile_definitions(
         ${TARGET_NAME}
@@ -343,7 +371,7 @@ endif()
 # Linking
 # -----------------------------------------------------------------------------
 
-if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT WIN32)
     list(FILTER LLVM_LIBS EXCLUDE REGEX "z3")
     target_link_options(
         kriol
@@ -358,7 +386,7 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    m
+    ${KRIOL_SYSTEM_LIBS}
 )
 
 target_link_libraries(
@@ -366,7 +394,7 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    m
+    ${KRIOL_SYSTEM_LIBS}
 )
 
 target_link_libraries(
@@ -380,7 +408,7 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    m
+    ${KRIOL_SYSTEM_LIBS}
 )
 
 target_link_libraries(
@@ -388,7 +416,7 @@ target_link_libraries(
     PRIVATE
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    m
+    ${KRIOL_SYSTEM_LIBS}
 )
 
 if(KRIOL_ENABLE_FUZZING)
@@ -397,7 +425,7 @@ if(KRIOL_ENABLE_FUZZING)
         PRIVATE
         ${KRIOL_LLD_LIBS}
         ${LLVM_LIBS}
-        m
+        ${KRIOL_SYSTEM_LIBS}
     )
 endif()
 

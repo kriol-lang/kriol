@@ -16,7 +16,11 @@
 #define KR_XSTR(x) KR_STR(x)
 #define KR_STR(x) #x
 
+#ifdef _WIN32
+#define KR_DEFAULT_OUT_FILE "a.exe"
+#else
 #define KR_DEFAULT_OUT_FILE "a.out"
+#endif
 #define KR_DEFAULT_WASM_OUT_FILE "a.wasm"
 
 // Maximum number of elements in a fixed-size array declaration.

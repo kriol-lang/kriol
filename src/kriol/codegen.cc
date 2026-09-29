@@ -10,6 +10,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Linker/Linker.h>
@@ -401,30 +402,38 @@ static void emitObjectFile(llvm::Module& module,
     dest.flush();
 }
 
-static std::string writeGcArchive(CodegenTarget target, EmbeddedBlob gcBlob) {
+static bool isWindowsTriple(const std::string& triple) {
+    return llvm::Triple(triple).isOSWindows();
+}
+
+static std::string writeGcArchive(CodegenTarget target,
+                                  const std::string& targetTriple,
+                                  EmbeddedBlob gcBlob) {
     if (!gcBlob.Data || gcBlob.Len == 0)
         return {};
 
     const char* stem = target == CodegenTarget::Wasm32Wasi
         ? "embedded_libgc_wasm32_wasi"
         : "embedded_libgc_native";
-    return writeTempBlob(stem, "a", gcBlob);
+    return writeTempBlob(stem, isWindowsTriple(targetTriple) ? "lib" : "a", gcBlob);
 }
 
 static void linkNativeExecutable(const std::string& objPath,
                                  const std::string& tempLibGc,
-                                 const std::string& outputPath) {
+                                 const std::string& outputPath,
+                                 const std::string& targetTriple) {
+    const bool windows = isWindowsTriple(targetTriple);
     std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
-    std::vector<std::string> linkArgs = {
-        ccPath,
-        "-no-pie",
-        objPath
-    };
+    std::vector<std::string> linkArgs = {ccPath};
+    if (!windows)
+        linkArgs.push_back("-no-pie");
+    linkArgs.push_back(objPath);
     if (!tempLibGc.empty())
         linkArgs.push_back(tempLibGc);
     linkArgs.push_back("-o");
     linkArgs.push_back(outputPath);
-    linkArgs.push_back("-lm");
+    if (!windows)
+        linkArgs.push_back("-lm");
     runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
 
@@ -719,12 +728,12 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
 }
 
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
-    std::string objPath = outputPath + ".o";
     TargetResources resources = selectTargetResources(options.Target);
+    std::string objPath = outputPath + (isWindowsTriple(resources.Triple) ? ".obj" : ".o");
 
     linkRuntimeBitcode(*Mod, Context, resources.Runtime);
     emitObjectFile(*Mod, resources.Triple, objPath);
-    std::string tempLibGc = writeGcArchive(options.Target, resources.GcArchive);
+    std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
 #if KRIOL_ENABLE_WASM
     WasiInputs wasiInputs;
     if (options.Target == CodegenTarget::Wasm32Wasi)
@@ -739,7 +748,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
             throw std::runtime_error("kriol was built without wasm32-wasi support.");
 #endif
         } else {
-            linkNativeExecutable(objPath, tempLibGc, outputPath);
+            linkNativeExecutable(objPath, tempLibGc, outputPath, resources.Triple);
         }
     } catch (...) {
         std::remove(objPath.c_str());

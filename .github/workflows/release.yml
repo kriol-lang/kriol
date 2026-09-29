@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends flex bison \
-            clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 cmake xxd \
+            clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 cmake \
             zlib1g-dev libzstd-dev wasi-libc libclang-rt-20-dev-wasm32
 
       - name: Add LLVM 20 to PATH
