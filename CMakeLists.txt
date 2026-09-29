@@ -72,6 +72,46 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
+# The Windows LLVM release archives record the DIA SDK library by the absolute
+# path it had on LLVM's build machine; point it at the local Visual Studio copy.
+if(WIN32 AND TARGET LLVMDebugInfoPDB)
+    get_target_property(_KRIOL_PDB_LIBS LLVMDebugInfoPDB INTERFACE_LINK_LIBRARIES)
+
+    if(_KRIOL_PDB_LIBS MATCHES "([^;]*diaguids\\.lib)" AND NOT EXISTS "${CMAKE_MATCH_1}")
+        set(_KRIOL_STALE_DIAGUIDS "${CMAKE_MATCH_1}")
+
+        set(_KRIOL_VS_DIRS "$ENV{VSINSTALLDIR}")
+        set(_KRIOL_PROGRAM_FILES_X86 "ProgramFiles(x86)")
+        set(_KRIOL_VSWHERE "$ENV{${_KRIOL_PROGRAM_FILES_X86}}/Microsoft Visual Studio/Installer/vswhere.exe")
+        if(EXISTS "${_KRIOL_VSWHERE}")
+            execute_process(
+                COMMAND "${_KRIOL_VSWHERE}" -latest -products * -property installationPath
+                OUTPUT_VARIABLE _KRIOL_VSWHERE_DIR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            list(APPEND _KRIOL_VS_DIRS "${_KRIOL_VSWHERE_DIR}")
+        endif()
+
+        set(_KRIOL_DIA_HINTS)
+        foreach(_KRIOL_VS_DIR IN LISTS _KRIOL_VS_DIRS)
+            list(APPEND _KRIOL_DIA_HINTS "${_KRIOL_VS_DIR}/DIA SDK/lib/amd64")
+        endforeach()
+
+        find_library(KRIOL_DIAGUIDS_LIBRARY diaguids HINTS ${_KRIOL_DIA_HINTS})
+        if(NOT KRIOL_DIAGUIDS_LIBRARY)
+            message(FATAL_ERROR
+                "LLVM links against '${_KRIOL_STALE_DIAGUIDS}', which does not exist here.\n"
+                "Install the Visual Studio C++ tools (they include the DIA SDK) or pass "
+                "-DKRIOL_DIAGUIDS_LIBRARY=<path to diaguids.lib>."
+            )
+        endif()
+
+        list(TRANSFORM _KRIOL_PDB_LIBS REPLACE ".*diaguids\\.lib$" "${KRIOL_DIAGUIDS_LIBRARY}")
+        set_target_properties(LLVMDebugInfoPDB PROPERTIES INTERFACE_LINK_LIBRARIES "${_KRIOL_PDB_LIBS}")
+        message(STATUS "Using DIA SDK: ${KRIOL_DIAGUIDS_LIBRARY}")
+    endif()
+endif()
+
 set(KRIOL_LLVM_COMPONENTS
     core
     native
