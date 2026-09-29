@@ -23,12 +23,15 @@ static llvm::Function* getOrDeclareRuntimePrint(llvm::Module& Mod,
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, Mod);
 }
 
+// Printing goes through the runtime, which knows how to write to Windows
+// consoles, rather than straight to the C library's putchar.
 static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
-    if (auto* fn = Mod.getFunction("putchar")) return fn;
+    if (auto* fn = Mod.getFunction("__kriol_print_char")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
     auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    auto* ftype = llvm::FunctionType::get(i32Ty, {i32Ty}, false);
-    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "putchar", Mod);
+    auto* ftype = llvm::FunctionType::get(voidTy, {i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_print_char", Mod);
 }
 
 static llvm::Function* getOrDeclareRuntimeReadLine(llvm::Module& Mod, llvm::LLVMContext& Context)

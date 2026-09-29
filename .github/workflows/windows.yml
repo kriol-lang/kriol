@@ -2,10 +2,7 @@ name: Windows
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - 'windows-*'
+  workflow_call:
 
 concurrency:
   group: windows-${{ github.ref }}
@@ -27,14 +24,25 @@ jobs:
         with:
           submodules: true
 
+      # Same as a "x64 Native Tools" prompt: exports what vcvars64.bat changes.
       - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -property installationPath `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+          if (-not $vs) { throw 'Visual Studio with the C++ x64 tools was not found' }
+
+          $before = [Environment]::GetEnvironmentVariables()
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" | Add-Content $env:GITHUB_ENV
+            }
+          }
 
       - name: Cache LLVM
         id: cache-llvm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\llvm
           key: llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc
@@ -50,7 +58,7 @@ jobs:
 
       - name: Cache llvm-mingw
         id: cache-mingw
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\llvm-mingw
           key: llvm-mingw-${{ env.MINGW_VERSION }}-msvcrt-x86_64
@@ -127,7 +135,7 @@ jobs:
           dumpbin /nologo /dependents hello.exe
           .\hello.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: kriol-windows-x86_64
           path: ${{ env.STAGE }}

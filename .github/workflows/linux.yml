@@ -1,0 +1,59 @@
+name: Linux
+
+on:
+  workflow_dispatch:
+  # release.yml builds its Linux archives through this workflow.
+  workflow_call:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LLVM_VERSION: 20.1.8
+  STAGE: kriol-linux-x86_64
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends flex bison \
+            clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 cmake \
+            zlib1g-dev libzstd-dev wasi-libc libclang-rt-20-dev-wasm32
+
+      - name: Add LLVM 20 to PATH
+        run: echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
+
+      - name: Build and test
+        run: |
+          cmake -B build/release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DKRIOL_STATIC=ON \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20
+
+          cmake --build build/release --target check
+
+      # kriol statically links LLVM and embeds Boehm GC, plus wasi-libc and
+      # compiler-rt for wasm32-wasi output.
+      - name: Stage artifact
+        run: |
+          mkdir -p "$STAGE/licenses"
+          cp build/release/kriol LICENSE README.md "$STAGE/"
+          curl -fsSL -o "$STAGE/licenses/LLVM.txt" \
+            "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-$LLVM_VERSION/llvm/LICENSE.TXT"
+          cp include/external/bdwgc/README.QUICK "$STAGE/licenses/bdwgc.txt"
+          cp /usr/share/doc/wasi-libc/copyright "$STAGE/licenses/wasi-libc.txt"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: kriol-linux-x86_64
+          path: ${{ env.STAGE }}

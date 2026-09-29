@@ -151,20 +151,32 @@ And run with:
 
 `kriol.exe` builds natively on Windows, and the
 [Windows workflow](.github/workflows/windows.yml) publishes it as the
-`kriol-windows-x86_64` artifact. `--help` and `--emit-ir` work. Producing
-`.exe` programs still depends on Clang plus the Visual Studio Build Tools
-being installed, and `wasm32-wasi` output is disabled on Windows for now.
+`kriol-windows-x86_64` artifact. Keep `ld.lld.exe` in the same folder as
+`kriol.exe`; with it, `kriol hello.kriol` produces `a.exe` without Visual Studio
+or any other toolchain installed. The programs it builds run on Windows 7 and
+later. `wasm32-wasi` output is disabled on Windows for now.
 
-To build it locally, install the
+Windows programs are built against a bundled MinGW runtime taken from an
+[llvm-mingw](https://github.com/mstorsjo/llvm-mingw) release (the `msvcrt`
+variant). Pointing `KRIOL_MINGW_SYSROOT` at one also enables
+`--target x86_64-windows` in Linux builds, which needs `ld.lld` on `PATH`:
+
+```sh
+cmake -B build -DKRIOL_MINGW_SYSROOT=/opt/llvm-mingw-20260922-msvcrt-ubuntu-22.04-x86_64
+kriol hello.kriol --target x86_64-windows -o hello.exe
+```
+
+To build it on Windows, install the
 [LLVM 20 `x86_64-pc-windows-msvc` archive](https://github.com/llvm/llvm-project/releases/tag/llvmorg-20.1.8)
-(the regular installer lacks the CMake files), the Visual Studio Build Tools,
+(the regular installer lacks the CMake files), an llvm-mingw `msvcrt-x86_64`
+release, the Visual Studio Build Tools,
 [win_flex_bison](https://github.com/lexxmark/winflexbison), CMake and Ninja.
 Then, from a "x64 Native Tools" prompt with the LLVM `bin` folder on `PATH`:
 
 ```bat
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=<llvm>\lib\cmake\llvm
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=<llvm>\lib\cmake\llvm -DKRIOL_MINGW_SYSROOT=<llvm-mingw>
 cmake --build build --target kriol
-build\kriol.exe --help
+.\run_tests.ps1 build\kriol.exe .
 ```
 
 ## Tests
