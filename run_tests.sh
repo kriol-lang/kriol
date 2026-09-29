@@ -73,6 +73,18 @@ else
 fi
 rm -f "$tmpbin"
 
+# ---- intermediate files stay out of the output directory --------------------
+printf "  %-44s" "output directory left untouched"
+tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)
+echo precious > "$tmpdir/program.o"
+if "$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpdir/program" 2>/dev/null && \
+   [ "$(cat "$tmpdir/program.o" 2>/dev/null)" = "precious" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "output directory left untouched"
+fi
+rm -rf "$tmpdir"
+
 
 # ---- tests/fail/*.kr -------------------------------------------------------
 if [ -d "$ROOT/tests/fail" ]; then

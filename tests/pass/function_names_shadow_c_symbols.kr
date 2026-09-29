@@ -1,0 +1,33 @@
+// Kriol functions may use names that the C library, the runtime or the C
+// entry point also use; they must not replace or collide with them.
+fn exit(nter code) nter {
+    divolvi code + 1;
+}
+
+fn main() nter {
+    divolvi 41;
+}
+
+fn free() {
+}
+
+fn malloc(nter bytes) nter {
+    divolvi bytes;
+}
+
+fn puts(textu s) {
+    mostran(f"puts: {s}");
+}
+
+fn inisiu() {
+    konfirma(exit(1) == 2);
+    konfirma(main() == 41);
+    konfirma(malloc(8) == 8);
+    free();
+    puts("kriol");
+
+    textu formatted = f"{exit(2)} {main()}";
+    mostran(formatted);
+
+    sai(0);
+}

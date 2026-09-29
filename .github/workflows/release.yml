@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*.*.*'
 
+# Only the publishing job below needs to write.
+permissions:
+  contents: read
+
 jobs:
   linux:
     uses: ./.github/workflows/linux.yml

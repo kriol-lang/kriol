@@ -91,6 +91,15 @@ $ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kuale, Mundu!"); }', '-o'
 $output = if ($ok) { & $exe } else { $null }
 Write-Result 'inline source text' ($output -eq 'Kuale, Mundu!')
 
+# Intermediate object files must not overwrite files next to the output.
+$outputDir = Join-Path $Work 'output'
+New-Item -ItemType Directory $outputDir | Out-Null
+$sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }
+$sentinels | ForEach-Object { Set-Content $_ 'precious' }
+$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("x"); }', '-o', (Join-Path $outputDir 'program'))
+$untouched = -not ($sentinels | Where-Object { (Get-Content $_ -ErrorAction SilentlyContinue) -ne 'precious' })
+Write-Result 'output directory left untouched' ($ok -and $untouched)
+
 foreach ($source in Get-Sources (Join-Path $Root 'tests/fail') '.kr') {
     $rejected = -not (Invoke-Kriol @($source.FullName, '-o', (Join-Path $Work 'rejected.exe')))
     $name = [IO.Path]::GetRelativePath($Root, $source.FullName)

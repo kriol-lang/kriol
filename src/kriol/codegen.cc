@@ -328,13 +328,6 @@ static WasiInputs writeWasiInputs() {
         )
     };
 }
-
-static void removeWasiInputs(const WasiInputs& inputs) {
-    if (!inputs.Crt1Command.empty()) llvm::sys::fs::remove(inputs.Crt1Command);
-    if (!inputs.Libc.empty()) llvm::sys::fs::remove(inputs.Libc);
-    if (!inputs.Libm.empty()) llvm::sys::fs::remove(inputs.Libm);
-    if (!inputs.Builtins.empty()) llvm::sys::fs::remove(inputs.Builtins);
-}
 #endif
 
 static TargetResources selectTargetResources(CodegenTarget target) {
@@ -642,6 +635,19 @@ static kriol::Type promotedNumericTypeForExpr(const Expr* lhsExpr,
     return promotedNumericType(lhs, rhs);
 }
 
+// User functions get a "kriol." prefix and internal linkage, so no Kriol name
+// (exit, free, main, ...) can clash with a C library or runtime symbol. Only
+// inisiu is exported, as the C entry point.
+static std::string llvmFunctionName(const std::string& kriolName) {
+    return kriolName == "inisiu" ? "main" : "kriol." + kriolName;
+}
+
+static llvm::GlobalValue::LinkageTypes functionLinkage(const std::string& kriolName) {
+    return kriolName == "inisiu"
+        ? llvm::GlobalValue::ExternalLinkage
+        : llvm::GlobalValue::InternalLinkage;
+}
+
 }
 
 CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
@@ -837,20 +843,37 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
 
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
     TargetResources resources = selectTargetResources(options.Target);
-    std::string objPath = outputPath + (isWindowsTriple(resources.Triple) ? ".obj" : ".o");
 
-    linkRuntimeBitcode(*Mod, Context, resources.Runtime);
-    emitObjectFile(*Mod, resources.Triple, objPath);
-    std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
-#if KRIOL_ENABLE_WASM
-    WasiInputs wasiInputs;
-    if (options.Target == CodegenTarget::Wasm32Wasi)
-        wasiInputs = writeWasiInputs();
-#endif
+    // Intermediate files go to the temp directory, never next to the output,
+    // where they could overwrite a file of the user's.
+    std::vector<std::string> tempFiles;
+    auto removeTempFiles = [&tempFiles] {
+        for (const auto& path : tempFiles)
+            llvm::sys::fs::remove(path);
+    };
 
     try {
+        llvm::SmallString<128> objPathBuf;
+        std::error_code ec = llvm::sys::fs::createTemporaryFile(
+            "kriol_object", isWindowsTriple(resources.Triple) ? "obj" : "o", objPathBuf);
+        if (ec)
+            throw std::runtime_error("Failed to allocate temporary object file: " + ec.message());
+        const std::string objPath(objPathBuf.str());
+        tempFiles.push_back(objPath);
+
+        linkRuntimeBitcode(*Mod, Context, resources.Runtime);
+        emitObjectFile(*Mod, resources.Triple, objPath);
+
+        std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
+        if (!tempLibGc.empty())
+            tempFiles.push_back(tempLibGc);
+
         if (options.Target == CodegenTarget::Wasm32Wasi) {
 #if KRIOL_ENABLE_WASM
+            WasiInputs wasiInputs = writeWasiInputs();
+            tempFiles.insert(tempFiles.end(), {
+                wasiInputs.Crt1Command, wasiInputs.Libc, wasiInputs.Libm, wasiInputs.Builtins
+            });
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
             throw std::runtime_error("kriol was built without wasm32-wasi support.");
@@ -865,21 +888,10 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
             linkNativeExecutable(objPath, tempLibGc, outputPath, resources.Triple);
         }
     } catch (...) {
-        std::remove(objPath.c_str());
-        if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
-#if KRIOL_ENABLE_WASM
-        if (options.Target == CodegenTarget::Wasm32Wasi)
-            removeWasiInputs(wasiInputs);
-#endif
+        removeTempFiles();
         throw;
     }
-
-    std::remove(objPath.c_str());
-    if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
-#if KRIOL_ENABLE_WASM
-    if (options.Target == CodegenTarget::Wasm32Wasi)
-        removeWasiInputs(wasiInputs);
-#endif
+    removeTempFiles();
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {
@@ -913,6 +925,18 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     // Function scope
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
+
+    // Locals start zeroed, like globals: sema does not prove that every path
+    // assigns a 'dipoz' variable before it is read.
+    if (!node.Value) {
+        if (ty->isAggregateType())
+            Builder->CreateMemSet(alloca, Builder->getInt8(0),
+                                  llvm::ConstantExpr::getSizeOf(ty), alloca->getAlign());
+        else
+            Builder->CreateStore(llvm::Constant::getNullValue(ty), alloca);
+        LastValue = nullptr;
+        return;
+    }
 
     if (node.IsArray) {
         if (node.Value) {
@@ -1038,11 +1062,15 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
         LValue base = resolveLValue(arr->Base.get());
         if (!base.Ptr || !base.Type || !base.Type->isArrayTy()) return {};
 
-        if (arr->Index) arr->Index->accept(*this);
+        if (!arr->Index) return {};
+        arr->Index->accept(*this);
         if (!LastValue) return {};
 
+        // Widen by the index's own signedness: an u8 holding 200 stays 200.
         auto* i64Ty = llvm::Type::getInt64Ty(Context);
-        llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+        const Type& indexType = arr->Index->ResolvedType;
+        llvm::Value* idx = coerceToType(LastValue, indexType,
+            indexType.isUnsignedInteger() ? Type::UnsignedInteger(64) : Type::SignedInteger(64));
 
         auto* sizeConst = llvm::ConstantInt::get(i64Ty, base.Type->getArrayNumElements());
         auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arr->LineNum);
@@ -1245,7 +1273,7 @@ void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    std::string name = llvmFunctionName(node.Name);
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
@@ -1269,7 +1297,7 @@ void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
         : mapType(node.Type);
 
     auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-    llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
 }
 
 void CodeGenVisitor::visit(BlockSttmt& node) {
@@ -1345,7 +1373,7 @@ static llvm::Function* emitWasiMainWrapper(
 
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    std::string name = llvmFunctionName(node.Name);
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
@@ -1370,7 +1398,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 
     if (!fn) {
         auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-        fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+        fn = llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
     }
 
     if (node.Args) {
@@ -1553,9 +1581,10 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     if (!callee) { LastValue = nullptr; return; }
     if (emitPreludeCall(node, callee->Name)) return;
 
-    auto* fn = Mod->getFunction(callee->Name);
+    const std::string name = llvmFunctionName(callee->Name);
+    auto* fn = Mod->getFunction(name);
     if (!fn) { LastValue = nullptr; return; }
-    auto sigIt = FunctionSigs.find(callee->Name);
+    auto sigIt = FunctionSigs.find(name);
 
     std::vector<llvm::Value*> callArgs;
     if (node.Args) {

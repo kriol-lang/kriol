@@ -1,38 +1,26 @@
 name: CI
 
+# pull_request runs contributor code in GitHub's sandboxed PR context: a
+# read-only token, no secrets and caches scoped to the PR. (Running it from an
+# issue_comment instead would give that code the base repository's context.)
 on:
-  issue_comment:
-    types: [created]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    if: |
-      github.event.issue.pull_request &&
-      github.event.comment.body == '/test'
     runs-on: ubuntu-26.04
 
     steps:
-      - name: Check permission
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const assoc = context.payload.comment.author_association;
-
-            const allowed = [
-              'OWNER',
-              'MEMBER',
-              'COLLABORATOR'
-            ];
-
-            if (!allowed.includes(assoc)) {
-              core.setFailed(
-                `User is not allowed (${assoc})`
-              );
-            }
-
       - uses: actions/checkout@v5
         with:
-          ref: refs/pull/${{ github.event.issue.number }}/merge
+          submodules: true
 
       - name: Install dependencies
         run: |
@@ -43,9 +31,6 @@ jobs:
 
       - name: Add LLVM 20 to PATH
         run: echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
-
-      - name: Clone submodules
-        run: git submodule update --init
 
       - name: Run tests
         run: |

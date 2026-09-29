@@ -1,8 +1,62 @@
 #include "include/kriol/cli.hh"
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 
+namespace fs = std::filesystem;
+
+static fs::path writeSource(const std::string& name, const std::string& source) {
+    fs::path path = fs::temp_directory_path() / name;
+    std::ofstream(path, std::ios::binary) << source;
+    return path;
+}
+
+// A file whose parse stops at a syntax error must not leave buffered input
+// behind for the next file compiled in the same process.
+static int checkFileCompileAfterSyntaxError() {
+    fs::path bad = writeSource("kriol_api_bad.kriol",
+        "fn inisiu() {\n"
+        "    nter x = ;\n"
+        "    mostran(\"text left in the scanner buffer\");\n"
+        "}\n");
+    fs::path good = writeSource("kriol_api_good.kriol",
+        "fn inisiu() {\n"
+        "    mostran(\"Kuale, Mundu!\");\n"
+        "}\n");
+
+    int status = 0;
+    kriol::cli::CompileOptions options;
+    options.emitIR = true;
+
+    options.input = bad.string();
+    try {
+        kriol::cli::Compile(options);
+        std::cerr << "expected the file with a syntax error to fail\n";
+        status = 1;
+    } catch (const kriol::cli::FatalError&) {
+    }
+
+    options.input = good.string();
+    try {
+        if (kriol::cli::Compile(options).ir.empty()) {
+            std::cerr << "expected the valid file to produce LLVM IR\n";
+            status = 1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "valid file failed after a syntax error: " << e.what() << '\n';
+        status = 1;
+    }
+
+    fs::remove(bad);
+    fs::remove(good);
+    return status;
+}
+
 int main() {
+    if (checkFileCompileAfterSyntaxError() != 0)
+        return 1;
+
     kriol::cli::CompileOptions options;
     options.inputKind = kriol::cli::CompileInputKind::SourceText;
     options.input =

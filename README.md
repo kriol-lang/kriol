@@ -27,7 +27,9 @@ The file extension of the KriolLang programming language is `.kriol` or `.kr` an
 
 # Install
 
-The easiest way to test it currently is using a linux-based OS (if you're on Windows I would recommend trying it inside WSL), and as a dependency at least make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system.
+### Linux
+
+As a dependency, make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system.
 
 You can install it using the following command:
 
@@ -42,6 +44,23 @@ export PATH="$HOME/.kriol:$PATH"
 ```
 
 Then close and reopen the shell and try `kriol --version`.
+
+### Windows
+
+Windows releases need nothing else installed: the zip contains `kriol.exe` and
+the `ld.lld.exe` it links programs with, and the programs it builds run on
+Windows 7 and later. Install it from PowerShell with:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kriol-lang/kriol/refs/heads/main/install.ps1))) -Pre
+```
+
+This installs to `%LOCALAPPDATA%\Programs\kriol` and adds it to your user
+`PATH`; open a new terminal and try `kriol --version`. It needs Windows
+PowerShell 5.1 (included in Windows 10 and later, and installable on Windows 7
+through WMF 5.1) or PowerShell 7. You can also download the
+`kriol-<version>-windows-x86_64.zip` from the releases page and keep its files
+together in one folder.
 
 
 ## Usage

@@ -5,6 +5,9 @@ on:
   # release.yml builds its Linux archives through this workflow.
   workflow_call:
 
+permissions:
+  contents: read
+
 concurrency:
   group: linux-${{ github.ref }}
   cancel-in-progress: true

@@ -30,6 +30,7 @@ extern int yyparse(kriol::ast::BlockSttmt** Program);
 extern int yylex_destroy(void);
 extern int yylineno;
 extern void kriol_scanner_reset_state(void);
+extern void yyrestart(FILE* input_file);
 struct yy_buffer_state;
 typedef yy_buffer_state *YY_BUFFER_STATE;
 extern YY_BUFFER_STATE yy_scan_string(const char *yy_str);
@@ -249,7 +250,11 @@ void cli::KriolLangParserWrapper::ParseFile(
         bom[0] != 0xEF || bom[1] != 0xBB || bom[2] != 0xBF)
         rewind(file);
 
+    // A previous parse may have stopped mid-file (syntax errors throw), leaving
+    // its buffered input and start conditions behind.
     yyin = file;
+    yyrestart(file);
+    kriol_scanner_reset_state();
     cli::SetSourceFile(filename);
     yylineno = 1;
     try {
