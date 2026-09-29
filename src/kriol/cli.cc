@@ -37,6 +37,7 @@ extern YY_BUFFER_STATE yy_scan_string(const char *yy_str);
 extern void yy_delete_buffer(YY_BUFFER_STATE b);
 
 static std::string g_source_file;
+static std::vector<std::string> g_parse_errors;
 
 // Paths arrive as UTF-8 (main.cc converts the Windows command line), but
 // std::filesystem and the CRT read narrow strings in the ANSI code page there.
@@ -82,6 +83,11 @@ const std::string& cli::GetSourceFile() {
     return g_source_file;
 }
 
+void cli::ReportParseError(int line, const std::string& message) {
+    std::string location = g_source_file.empty() ? "" : g_source_file + ":" + std::to_string(line) + ": ";
+    g_parse_errors.push_back(location + message);
+}
+
 void cli::PrintErr(std::string message)
 {
     std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
@@ -93,11 +99,6 @@ void cli::PrintErr(std::string message, int exitNum)
     throw cli::FatalError(message, exitNum);
 }
 
-void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
-    std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
-    std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
-    if (exitNum >= 0) throw cli::FatalError(location + msg, exitNum);
-}
 
 void cli::Compiler::DefineArgs()
 {
@@ -140,12 +141,19 @@ void cli::Compiler::DefineArgs()
         .default_value(false)
         .implicit_value(true);
 
-    Parser->add_argument("--target")
+    // Only the targets this build supports are offered.
+    auto& target = Parser->add_argument("--target")
         .help("Compilation target.")
         .metavar("TARGET")
         .default_value(std::string("native"))
-        .nargs(1)
-        .choices("native", "wasm32-wasi", "x86_64-windows");
+        .nargs(1);
+    target.add_choice("native");
+#if KRIOL_ENABLE_WASM
+    target.add_choice("wasm32-wasi");
+#endif
+#if KRIOL_ENABLE_WINDOWS_TARGET
+    target.add_choice("x86_64-windows");
+#endif
 
     Parser->add_argument("-O", "--opt-level")
         .help("Optimization level for the generated program, 0 (none) to 3.")
@@ -281,6 +289,7 @@ void cli::KriolLangParserWrapper::ParseFile(
     yyrestart(file);
     kriol_scanner_reset_state();
     cli::SetSourceFile(filename);
+    g_parse_errors.clear();
     yylineno = 1;
     try {
         yyparse(program);
@@ -301,6 +310,7 @@ void cli::KriolLangParserWrapper::ParseText(
     if (!buffer)
         cli::PrintErr("Couldn't create scanner buffer for source text!", 1);
 
+    g_parse_errors.clear();
     yylineno = 1;
     try {
         yyparse(program);
@@ -339,6 +349,13 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         options.inputKind
     );
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
+
+    if (!g_parse_errors.empty())
+    {
+        result.diagnostics = std::move(g_parse_errors);
+        g_parse_errors.clear();
+        return result;
+    }
 
     if (ProgramNode)
     {

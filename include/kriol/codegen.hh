@@ -116,8 +116,6 @@ namespace ast {
             if (!Scopes.empty()) Scopes.back()[name] = a;
         }
 
-        llvm::Function* getOrDeclarePrintf();
-
         // Forward-declare a user function in the LLVM module (type + name, no body).
         // Called in the program-root pre-pass so mutual/forward calls resolve.
         void forwardDeclareFunc(ast::FuncDeclSttmt& node);
@@ -167,9 +165,6 @@ namespace ast {
 
         /// Compile the module and return the emitted bytes without keeping a file.
         std::vector<unsigned char> emitToMemory(const EmitOptions& options = {});
-
-        /// Compile the module to a native executable at outputPath.
-        void emitNative(const std::string& outputPath);
 
         void visit(VarDeclSttmt&      node) override;
         void visit(MoldaDeclSttmt&    node) override;

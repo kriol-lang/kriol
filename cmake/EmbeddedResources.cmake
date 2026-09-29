@@ -1,6 +1,19 @@
 set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(KRIOL_EMBED_FILE_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/EmbedFile.cmake)
 
+# #embed (Clang 19+, and the Clang-based compilers this project defaults to)
+# compiles embedded files far faster than hex initializers.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_QUIET ON)
+check_cxx_source_compiles("
+    const unsigned char data[] = {
+    #embed \"${CMAKE_CURRENT_LIST_DIR}/EmbedFile.cmake\"
+    };
+    int main() { return data[0] == 0; }
+" KRIOL_HAVE_EMBED)
+unset(CMAKE_REQUIRED_QUIET)
+message(STATUS "Embedding resources with #embed: ${KRIOL_HAVE_EMBED}")
+
 set(KRIOL_WASI_TARGET "wasm32-wasi" CACHE STRING "Target triple used for Kriol WASI output")
 set(KRIOL_WASI_SYSROOT "/usr" CACHE PATH "WASI sysroot used for Kriol WASI output")
 
@@ -82,6 +95,7 @@ function(kriol_embed_file INPUT_FILE OUTPUT_HEADER SYMBOL)
             -DINPUT=${INPUT_FILE}
             -DOUTPUT=${OUTPUT_HEADER}
             -DSYMBOL=${SYMBOL}
+            -DUSE_EMBED=${KRIOL_HAVE_EMBED}
             -P ${KRIOL_EMBED_FILE_SCRIPT}
 
         DEPENDS

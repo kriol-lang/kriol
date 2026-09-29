@@ -170,6 +170,16 @@ And run with:
 ./build/release/kriol --help
 ```
 
+To install it, with its documentation and the licenses of the libraries it
+embeds, into a prefix of your choice:
+
+```sh
+cmake --install build/release --prefix ~/.local
+```
+
+The release archives use a flat layout instead (configure with
+`-DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.`).
+
 ### Windows (experimental)
 
 `kriol.exe` builds natively on Windows, and the

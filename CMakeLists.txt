@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Normalize install destinations such as "./licenses" (the flat release layout).
+if(POLICY CMP0177)
+    cmake_policy(SET CMP0177 NEW)
+endif()
+
 # -----------------------------------------------------------------------------
 # Compiler selection
 # -----------------------------------------------------------------------------
@@ -245,27 +250,12 @@ else()
 endif()
 
 # -----------------------------------------------------------------------------
-# Runtime
-# -----------------------------------------------------------------------------
-
-add_library(
-    kriol_runtime
-    OBJECT
-    runtime/kriol_runtime.c
-)
-
-target_include_directories(
-    kriol_runtime
-    BEFORE PRIVATE
-    ${BDWGC_DIR}/include
-)
-
-# -----------------------------------------------------------------------------
 # Sources
 # -----------------------------------------------------------------------------
 
 set(KRIOL_CORE_SOURCES
     src/kriol/sema.cc
+    src/kriol/type_rules.cc
     ${PARSER_SRC}
     ${SCANNER_SRC}
 )
@@ -286,43 +276,50 @@ include(cmake/EmbeddedResources.cmake)
 # Executable
 # -----------------------------------------------------------------------------
 
-add_executable(
-    kriol
-    main.cc
+# The compiler itself, shared by kriol and the test drivers so its sources
+# (codegen.cc embeds several MB of runtime libraries) compile only once.
+add_library(
+    kriol_core
+    STATIC
     ${KRIOL_CORE_SOURCES}
     ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
+    kriol
+    main.cc
+)
+
+# Test drivers build only for `check` (or when named), not by default.
+add_executable(
     kriol_api_compile_memory_test
+    EXCLUDE_FROM_ALL
     tests/api/compile_memory.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
     kriol_type_model_test
+    EXCLUDE_FROM_ALL
     tests/api/type_model.cc
 )
 
 add_executable(
     kriol_gc_runtime_test
+    EXCLUDE_FROM_ALL
     tests/runtime/gc_stress.c
     runtime/kriol_runtime.c
 )
 
 add_executable(
     kriol_compile_fuzz_smoke
+    EXCLUDE_FROM_ALL
     tests/fuzz/compile_fuzz_smoke.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
     kriol_compile_random_fuzz
+    EXCLUDE_FROM_ALL
     tests/fuzz/compile_random_fuzz.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 if(KRIOL_ENABLE_FUZZING)
@@ -330,6 +327,8 @@ if(KRIOL_ENABLE_FUZZING)
         message(FATAL_ERROR "KRIOL_ENABLE_FUZZING requires Clang with libFuzzer support")
     endif()
 
+    # libFuzzer needs the compiler sources built with its instrumentation, so
+    # this target compiles them itself instead of using kriol_core.
     add_executable(
         kriol_compile_fuzzer
         tests/fuzz/compile_fuzzer.cc
@@ -343,10 +342,7 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
 )
 
-add_dependencies(kriol kriol_embedded_resources)
-add_dependencies(kriol_api_compile_memory_test kriol_embedded_resources)
-add_dependencies(kriol_compile_fuzz_smoke kriol_embedded_resources)
-add_dependencies(kriol_compile_random_fuzz kriol_embedded_resources)
+add_dependencies(kriol_core kriol_embedded_resources)
 
 if(KRIOL_ENABLE_FUZZING)
     add_dependencies(kriol_compile_fuzzer kriol_embedded_resources)
@@ -401,10 +397,10 @@ function(kriol_configure_target TARGET_NAME)
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
         KRIOL_ENABLE_WINDOWS_TARGET=$<BOOL:${KRIOL_ENABLE_WINDOWS_TARGET}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
-        KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"
     )
 endfunction()
 
+kriol_configure_target(kriol_core)
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_type_model_test)
@@ -442,41 +438,26 @@ if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT WIN32)
 endif()
 
 target_link_libraries(
-    kriol
-    PRIVATE
+    kriol_core
+    PUBLIC
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
     ${KRIOL_SYSTEM_LIBS}
 )
 
-target_link_libraries(
+foreach(_KRIOL_COMPILER_TARGET IN ITEMS
+    kriol
     kriol_api_compile_memory_test
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    ${KRIOL_SYSTEM_LIBS}
+    kriol_compile_fuzz_smoke
+    kriol_compile_random_fuzz
 )
+    target_link_libraries(${_KRIOL_COMPILER_TARGET} PRIVATE kriol_core)
+endforeach()
 
 target_link_libraries(
     kriol_gc_runtime_test
     PRIVATE
     gc
-)
-
-target_link_libraries(
-    kriol_compile_fuzz_smoke
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    ${KRIOL_SYSTEM_LIBS}
-)
-
-target_link_libraries(
-    kriol_compile_random_fuzz
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    ${KRIOL_SYSTEM_LIBS}
 )
 
 if(KRIOL_ENABLE_FUZZING)
@@ -501,13 +482,47 @@ add_custom_target(
 # Installation
 # -----------------------------------------------------------------------------
 
-install(TARGETS kriol DESTINATION bin)
+# `cmake --install` lays out a complete distribution. The release archives are
+# flat (configured with -DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.).
 
-install(
-    FILES $<TARGET_OBJECTS:kriol_runtime>
-    DESTINATION bin/runtime
-    RENAME kriol_runtime.o
-)
+include(GNUInstallDirs)
+
+install(TARGETS kriol RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# kriol.exe links Windows programs with the ld.lld next to it.
+if(WIN32 AND KRIOL_ENABLE_WINDOWS_TARGET)
+    find_program(KRIOL_BUNDLED_LLD NAMES ld.lld HINTS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+    if(NOT KRIOL_BUNDLED_LLD)
+        message(FATAL_ERROR "ld.lld was not found in ${LLVM_TOOLS_BINARY_DIR}; it is installed next to kriol.exe")
+    endif()
+    install(PROGRAMS ${KRIOL_BUNDLED_LLD} DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+install(FILES LICENSE README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+# Licenses of everything kriol bundles or embeds into the programs it builds.
+set(_KRIOL_LICENSE_DIR ${CMAKE_INSTALL_DOCDIR}/licenses)
+install(FILES licenses/LLVM.txt DESTINATION ${_KRIOL_LICENSE_DIR})
+install(FILES ${BDWGC_DIR}/README.QUICK DESTINATION ${_KRIOL_LICENSE_DIR} RENAME bdwgc.txt)
+
+if(KRIOL_ENABLE_WINDOWS_TARGET)
+    set(_KRIOL_MINGW_LICENSE
+        ${KRIOL_MINGW_SYSROOT}/x86_64-w64-mingw32/share/mingw32/COPYING.MinGW-w64-runtime.txt)
+    if(NOT EXISTS ${_KRIOL_MINGW_LICENSE})
+        message(FATAL_ERROR "MinGW-w64 runtime license not found at ${_KRIOL_MINGW_LICENSE}")
+    endif()
+    install(FILES ${_KRIOL_MINGW_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME MinGW-w64-runtime.txt)
+endif()
+
+if(KRIOL_ENABLE_WASM)
+    # Debian and Ubuntu's wasi-libc package; other sysroots may not ship one.
+    set(_KRIOL_WASI_LICENSE ${KRIOL_WASI_SYSROOT}/share/doc/wasi-libc/copyright)
+    if(EXISTS ${_KRIOL_WASI_LICENSE})
+        install(FILES ${_KRIOL_WASI_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME wasi-libc.txt)
+    else()
+        message(WARNING "wasi-libc license not found at ${_KRIOL_WASI_LICENSE}; it will be missing from installs")
+    endif()
+endif()
 
 # -----------------------------------------------------------------------------
 # Utility targets

@@ -1,5 +1,5 @@
 %option noyywrap yylineno stack
-%option nounistd never-interactive
+%option nounistd never-interactive nounput noinput noyy_top_state
 
 %{
     #include "include/kriol/ast.hh"
@@ -11,12 +11,23 @@
     #include <cstring>
     #include "parser.hh"
 
-    #define YYERROR_VERBOSE 1
-
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
     #define TOKENIZE(sym) (yylval.token   = sym)
 
-    int yyerror(char const*);
+    // Gives each token the lines it spans, for Bison's @n locations. yylineno
+    // already counts the token's own newlines when this runs.
+    #define YY_USER_ACTION                                  \
+        {                                                   \
+            int newlines = 0;                               \
+            for (int i = 0; i < yyleng; ++i)                \
+                newlines += yytext[i] == '\n';              \
+            yylloc.first_line = yylineno - newlines;        \
+            yylloc.last_line = yylineno;                    \
+        }
+
+    // Scanner errors are reported and scanning continues, so the parser can
+    // recover and report further errors.
+    #define SCAN_ERROR(message) kriol::cli::ReportParseError(yylloc.first_line, message)
 
     static int g_fstr_depth = 0;
 %}
@@ -113,24 +124,22 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
     "\""                  { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
-    \n                    { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "raw newline inside f-string (missing closing quote?)", 1); }
-    .                     { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unexpected character '" + std::string(yytext) + "' inside f-string", 1); }
+    <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    .                     { SCAN_ERROR("unexpected character '" + std::string(yytext) + "' inside f-string"); }
 }
 
 <FSTRING_SQ>{
     "'"                   { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    <<EOF>>               { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unterminated f-string", 1); }
-    \n                    { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "raw newline inside f-string (missing closing quote?)", 1); }
-    .                     { kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, "unexpected character '" + std::string(yytext) + "' inside f-string", 1); }
+    <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    .                     { SCAN_ERROR("unexpected character '" + std::string(yytext) + "' inside f-string"); }
 }
 
-. {
-    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
-        "unknown token '" + std::string(yytext) + "'", 1);
-}
+[\xC0-\xFF][\x80-\xBF]* { SCAN_ERROR("unknown character '" + std::string(yytext) + "'; names and keywords use ASCII letters"); }
+.               { SCAN_ERROR("unknown token '" + std::string(yytext) + "'"); }
 
 %%
 

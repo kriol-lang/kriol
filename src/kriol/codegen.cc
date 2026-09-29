@@ -35,8 +35,10 @@ LLD_HAS_DRIVER(wasm)
 #include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/type_rules.hh"
 
 using namespace kriol::ast;
+using namespace kriol::typerules;
 
 // NOTE: these includes below are generated and
 // injected in compile time by the build system.
@@ -607,87 +609,6 @@ static bool isReachableFromEntry(llvm::BasicBlock* target) {
     return false;
 }
 
-static kriol::Type promotedNumericType(const kriol::Type& lhs, const kriol::Type& rhs) {
-    if (!lhs.valid()) return rhs;
-    if (!rhs.valid()) return lhs;
-    if (lhs.isFloat() || rhs.isFloat()) {
-        unsigned bits = std::max(lhs.isFloat() ? lhs.bitWidth() : 0,
-                                 rhs.isFloat() ? rhs.bitWidth() : 0);
-        return kriol::Type::Float(bits == 32 ? 32 : 64);
-    }
-    if (lhs.isInteger() && rhs.isInteger()) {
-        unsigned bits = std::max(lhs.bitWidth(), rhs.bitWidth());
-        bool isSigned = lhs.isSigned() || rhs.isSigned();
-        if (lhs.isSigned() != rhs.isSigned())
-            bits = std::max(bits, std::min(64u, bits * 2));
-        return isSigned ? kriol::Type::SignedInteger(bits) : kriol::Type::UnsignedInteger(bits);
-    }
-    return lhs.valid() ? lhs : rhs;
-}
-
-static const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
-    if (!expr) return nullptr;
-    if (auto* par = dynamic_cast<const ParExpr*>(expr))
-        return integerLiteralExpr(par->Content.get(), negative);
-    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
-        if (unary->Op != "-") return nullptr;
-        negative = !negative;
-        return integerLiteralExpr(unary->Operand.get(), negative);
-    }
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    return lit && lit->Type.isInteger() ? lit : nullptr;
-}
-
-static bool integerLiteralFitsType(const Expr* expr, const kriol::Type& to) {
-    if (!to.isInteger()) return false;
-
-    bool negative = false;
-    auto* lit = integerLiteralExpr(expr, negative);
-    if (!lit) return false;
-
-    long long value = 0;
-    try {
-        value = std::stoll(lit->Value);
-    } catch (...) {
-        return false;
-    }
-    if (negative) value = -value;
-
-    const unsigned bits = to.bitWidth();
-    if (bits == 0 || bits > 64) return false;
-
-    if (to.isSigned()) {
-        if (bits == 64) return true;
-        const long long min = -(1LL << (bits - 1));
-        const long long max = (1LL << (bits - 1)) - 1;
-        return value >= min && value <= max;
-    }
-
-    if (value < 0) return false;
-    if (bits == 64) return true;
-    const unsigned long long max = (1ULL << bits) - 1;
-    return static_cast<unsigned long long>(value) <= max;
-}
-
-static kriol::Type promotedNumericTypeForExpr(const Expr* lhsExpr,
-                                              const Expr* rhsExpr,
-                                              const kriol::Type& lhs,
-                                              const kriol::Type& rhs) {
-    if (lhs.isInteger() && rhs.isInteger()) {
-        bool ignored = false;
-        const bool lhsLiteral = integerLiteralExpr(lhsExpr, ignored) != nullptr;
-        ignored = false;
-        const bool rhsLiteral = integerLiteralExpr(rhsExpr, ignored) != nullptr;
-
-        if (lhsLiteral && !rhsLiteral && integerLiteralFitsType(lhsExpr, rhs))
-            return rhs;
-        if (rhsLiteral && !lhsLiteral && integerLiteralFitsType(rhsExpr, lhs))
-            return lhs;
-    }
-
-    return promotedNumericType(lhs, rhs);
-}
-
 // User functions get a "kriol." prefix and internal linkage, so no Kriol name
 // (exit, free, main, ...) can clash with a C library or runtime symbol. Only
 // inisiu is exported, as the C entry point.
@@ -767,15 +688,6 @@ llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {
 llvm::GlobalVariable* CodeGenVisitor::lookupGlobal(const std::string& name) {
     auto it = GlobalVars.find(name);
     return it != GlobalVars.end() ? it->second : nullptr;
-}
-
-llvm::Function* CodeGenVisitor::getOrDeclarePrintf() {
-    if (auto* fn = Mod->getFunction("printf")) return fn;
-    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
-    auto* ftype  = llvm::FunctionType::get(
-        llvm::Type::getInt32Ty(Context), {ptrTy}, /*isVarArg=*/true);
-    return llvm::Function::Create(
-        ftype, llvm::Function::ExternalLinkage, "printf", *Mod);
 }
 
 llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
@@ -860,10 +772,6 @@ std::string CodeGenVisitor::emitIR() {
     llvm::raw_string_ostream os(buf);
     Mod->print(os, nullptr);
     return buf;
-}
-
-void CodeGenVisitor::emitNative(const std::string& outputPath) {
-    emit(outputPath, {});
 }
 
 std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& options) {
@@ -1580,10 +1488,12 @@ void CodeGenVisitor::visit(IfSttmt& node) {
 
     auto* fn      = Builder->GetInsertBlock()->getParent();
     auto* thenBB  = llvm::BasicBlock::Create(Context, "then",   fn);
-    auto* elseBB  = llvm::BasicBlock::Create(Context, "else");
+    // Only created when used: a block never inserted into a function has no
+    // owner and would leak.
+    auto* elseBB  = node.Else ? llvm::BasicBlock::Create(Context, "else") : nullptr;
     auto* mergeBB = llvm::BasicBlock::Create(Context, "ifcont");
 
-    Builder->CreateCondBr(cond, thenBB, node.Else ? elseBB : mergeBB);
+    Builder->CreateCondBr(cond, thenBB, elseBB ? elseBB : mergeBB);
 
     // then
     Builder->SetInsertPoint(thenBB);

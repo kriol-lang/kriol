@@ -90,7 +90,9 @@ jobs:
             -DCMAKE_C_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
             -DCMAKE_CXX_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
             -DCLANG_PROGRAM="$env:LLVM_ROOT\bin\clang.exe" `
-            -DKRIOL_MINGW_SYSROOT="$env:MINGW_ROOT"
+            -DKRIOL_MINGW_SYSROOT="$env:MINGW_ROOT" `
+            -DCMAKE_INSTALL_BINDIR=. `
+            -DCMAKE_INSTALL_DOCDIR=.
 
       - name: Build
         run: cmake --build build --target kriol
@@ -117,13 +119,9 @@ jobs:
       - name: Stage artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory $env:STAGE, "$env:STAGE\licenses" | Out-Null
-          Copy-Item build\kriol.exe, LICENSE, README.md $env:STAGE
-          # kriol links Windows programs with the ld.lld that sits next to it.
-          Copy-Item "$env:LLVM_ROOT\bin\ld.lld.exe" $env:STAGE
-          Copy-Item "$env:MINGW_ROOT\LICENSE.TXT" "$env:STAGE\licenses\LLVM.txt"
-          Copy-Item "$env:MINGW_ROOT\x86_64-w64-mingw32\share\mingw32\COPYING.MinGW-w64-runtime.txt" "$env:STAGE\licenses\MinGW-w64-runtime.txt"
-          Copy-Item include\external\bdwgc\README.QUICK "$env:STAGE\licenses\bdwgc.txt"
+          # The install rules lay out the archive: kriol.exe, the ld.lld.exe it
+          # links programs with, docs and licenses/.
+          cmake --install build --prefix $env:STAGE
           dumpbin /nologo /dependents "$env:STAGE\ld.lld.exe"
 
       - name: Test

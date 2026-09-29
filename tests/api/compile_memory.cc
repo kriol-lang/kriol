@@ -29,12 +29,13 @@ static int checkFileCompileAfterSyntaxError() {
     kriol::cli::CompileOptions options;
     options.emitIR = true;
 
+    // Syntax errors come back as diagnostics, with the line they are on.
     options.input = bad.string();
-    try {
-        kriol::cli::Compile(options);
-        std::cerr << "expected the file with a syntax error to fail\n";
+    auto badResult = kriol::cli::Compile(options);
+    if (badResult.diagnostics.empty()
+            || badResult.diagnostics[0].find(":2: syntax error") == std::string::npos) {
+        std::cerr << "expected a syntax error diagnostic on line 2\n";
         status = 1;
-    } catch (const kriol::cli::FatalError&) {
     }
 
     options.input = good.string();
@@ -56,6 +57,11 @@ static int checkFileCompileAfterSyntaxError() {
 int main() {
     if (checkFileCompileAfterSyntaxError() != 0)
         return 1;
+
+#if !KRIOL_ENABLE_WASM
+    // In-memory output is wasm32-wasi only, which this build leaves out.
+    return 0;
+#endif
 
     kriol::cli::CompileOptions options;
     options.inputKind = kriol::cli::CompileInputKind::SourceText;

@@ -117,7 +117,7 @@ if [ -d "$ROOT/tests/fail" ]; then
 fi
 
 # ---- wasm32-wasi compile checks --------------------------------------------
-if "$KRIOL" --help 2>&1 | grep -Fq "wasm32-wasi"; then
+if "$KRIOL" --target wasm32-wasi --text 'fn inisiu() {}' --emit-ir >/dev/null 2>&1; then
     printf "  %-44s" "wasm32-wasi hello_world"
     tmpwasm=$(mktemp /tmp/kriol_wasm_XXXX.wasm)
     if "$KRIOL" "$ROOT/examples/hello_world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then

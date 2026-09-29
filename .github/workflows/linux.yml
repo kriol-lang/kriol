@@ -13,7 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  LLVM_VERSION: 20.1.8
   STAGE: kriol-linux-x86_64
 
 jobs:
@@ -41,20 +40,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DKRIOL_STATIC=ON \
             -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_INSTALL_BINDIR=. \
+            -DCMAKE_INSTALL_DOCDIR=.
 
           cmake --build build/release --target check
 
-      # kriol statically links LLVM and embeds Boehm GC, plus wasi-libc and
-      # compiler-rt for wasm32-wasi output.
+      # The install rules lay out the archive: kriol, docs and licenses/.
       - name: Stage artifact
-        run: |
-          mkdir -p "$STAGE/licenses"
-          cp build/release/kriol LICENSE README.md "$STAGE/"
-          curl -fsSL -o "$STAGE/licenses/LLVM.txt" \
-            "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-$LLVM_VERSION/llvm/LICENSE.TXT"
-          cp include/external/bdwgc/README.QUICK "$STAGE/licenses/bdwgc.txt"
-          cp /usr/share/doc/wasi-libc/copyright "$STAGE/licenses/wasi-libc.txt"
+        run: cmake --install build/release --prefix "$STAGE"
 
       - uses: actions/upload-artifact@v6
         with:
