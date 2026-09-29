@@ -6,8 +6,7 @@
 namespace kriol {
 namespace typerules {
 
-// Numeric typing rules. Sema uses them to check programs and codegen to pick
-// the types it emits, so both phases must share one definition.
+// Numeric typing rules shared by sema and codegen.
 
 // The type both operands of a binary operator are converted to.
 Type promotedNumericType(const Type& lhs, const Type& rhs);

@@ -1,5 +1,3 @@
-// Arrays of the maximum size must compile quickly: repeat initializers become
-// loops and printing an array is a single runtime call.
 nter[1048576] grandi = [3; 1048576];
 
 fn inisiu() {

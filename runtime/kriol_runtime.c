@@ -25,10 +25,9 @@
 #endif
 
 /*
- * Output. Everything the program prints goes through __kriol_write so that
- * Windows consoles can be given UTF-16 through WriteConsoleW: UTF-8 bytes
- * written through the C runtime come out garbled before Windows 10, whatever
- * the console code page is. Other streams get the bytes unchanged.
+ * All output must go through __kriol_write: Windows consoles get UTF-16 via
+ * WriteConsoleW, since UTF-8 written through the C runtime is garbled before
+ * Windows 10 whatever the code page.
  */
 
 #ifdef _WIN32
@@ -252,11 +251,7 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
 }
 
 #ifdef _WIN32
-/*
- * Reads one line from a console as UTF-16 and returns it as UTF-8 without the
- * line ending; bytes read through the C runtime would be in the console's
- * legacy code page. Ctrl+Z ends the input, as it does for the C runtime.
- */
+/* The C runtime would return console input in the legacy code page. */
 static char* __kriol_read_console_line(HANDLE console) {
     size_t cap = 128;
     size_t len = 0;
@@ -360,11 +355,7 @@ char* __kriol_format(const char* fmt, ...) {
     return buf;
 }
 
-/*
- * Array formatting. Codegen passes the array's storage and describes its
- * element type, so printing or interpolating an array is one call whatever
- * its length. The kinds must match codegen's ArrayElementKind.
- */
+/* Must match codegen's ArrayElementKind. */
 enum {
     KRIOL_ELEMENT_SIGNED = 0,
     KRIOL_ELEMENT_UNSIGNED = 1,

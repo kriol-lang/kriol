@@ -1,5 +1,3 @@
-// A 'dipoz' variable assigned only on a path that never runs must read as
-// zero, not as whatever an earlier call left on the stack.
 molda Pontu {
     nter x;
     textu nomi;
@@ -36,8 +34,7 @@ fn inisiu() {
     suja_stack();
     le_dipoz();
 
-    // Each iteration declares a fresh variable, even though the previous one
-    // left 7 in the same stack slot.
+    // The previous iteration leaves 7 in the same stack slot.
     pa nter i = 0; i < 3; i += 1 {
         dipoz nter novu;
         si i == 99 {

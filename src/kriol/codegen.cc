@@ -244,9 +244,7 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
-        // Same 8 MiB stack as the native targets (wasm-ld defaults to 64 KiB),
-        // placed first in memory so an overflow traps instead of silently
-        // overwriting static data.
+        // Stack first in memory, so an overflow traps instead of overwriting data.
         "-z",
         "stack-size=8388608",
         "--stack-first",
@@ -408,9 +406,6 @@ static void linkRuntimeBitcode(llvm::Module& module,
     }
 }
 
-// Runs LLVM's standard per-module pipeline. It sees the runtime helpers too
-// (their bitcode is linked in first), so bounds checks and printing calls can
-// be inlined into the program.
 static void optimizeModule(llvm::Module& module,
                            llvm::TargetMachine& targetMachine,
                            unsigned optLevel) {
@@ -571,8 +566,7 @@ static void linkMingwExecutable(const std::string& objPath,
     std::string linkerPath = findMingwLinker();
     MingwInputs inputs = writeMingwInputs();
 
-    // Mirrors what the MinGW clang driver passes to ld.lld for a C program,
-    // plus the 8 MiB stack Linux gives programs (Windows defaults to 1 MiB).
+    // What the MinGW clang driver passes to ld.lld, plus Linux's 8 MiB stack.
     std::vector<std::string> linkArgs = {
         linkerPath, "-m", "i386pep", "--subsystem", "console",
         "--stack", "8388608", "-o", outputPath
@@ -805,8 +799,6 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
     TargetResources resources = selectTargetResources(options.Target);
 
-    // Intermediate files go to the temp directory, never next to the output,
-    // where they could overwrite a file of the user's.
     std::vector<std::string> tempFiles;
     auto removeTempFiles = [&tempFiles] {
         for (const auto& path : tempFiles)
@@ -887,8 +879,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
 
-    // Locals start zeroed, like globals: sema does not prove that every path
-    // assigns a 'dipoz' variable before it is read.
+    // Sema does not prove that every path assigns a 'dipoz' variable before use.
     if (!node.Value) {
         if (ty->isAggregateType())
             Builder->CreateMemSet(alloca, Builder->getInt8(0),
@@ -914,8 +905,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
 void CodeGenVisitor::emitArrayFill(llvm::Value* storage,
                                    llvm::ArrayType* arrayTy,
                                    llvm::Value* fill) {
-    // Arrays always have at least one element (sema rejects size 0), so the
-    // loop body runs before the first bound check.
+    // Sema rejects size 0, so the body can run before the bound check.
     auto* i64Ty = llvm::Type::getInt64Ty(Context);
     auto* fn = Builder->GetInsertBlock()->getParent();
     auto* entryBB = Builder->GetInsertBlock();
@@ -1051,7 +1041,7 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
         arr->Index->accept(*this);
         if (!LastValue) return {};
 
-        // Widen by the index's own signedness: an u8 holding 200 stays 200.
+        // An u8 holding 200 must stay 200.
         auto* i64Ty = llvm::Type::getInt64Ty(Context);
         const Type& indexType = arr->Index->ResolvedType;
         llvm::Value* idx = coerceToType(LastValue, indexType,
@@ -1185,7 +1175,6 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
     if (fill->getType() != elemTy)
         fill = coerceToType(fill, node.Fill->ResolvedType, node.ResolvedType.elementType());
 
-    // A constant fill needs no per-element code at all.
     if (auto* constantFill = llvm::dyn_cast<llvm::Constant>(fill)) {
         std::vector<llvm::Constant*> elements(arrayTy->getNumElements(), constantFill);
         LastValue = llvm::ConstantArray::get(arrayTy, elements);
@@ -1488,8 +1477,7 @@ void CodeGenVisitor::visit(IfSttmt& node) {
 
     auto* fn      = Builder->GetInsertBlock()->getParent();
     auto* thenBB  = llvm::BasicBlock::Create(Context, "then",   fn);
-    // Only created when used: a block never inserted into a function has no
-    // owner and would leak.
+    // A block never inserted into a function has no owner and would leak.
     auto* elseBB  = node.Else ? llvm::BasicBlock::Create(Context, "else") : nullptr;
     auto* mergeBB = llvm::BasicBlock::Create(Context, "ifcont");
 

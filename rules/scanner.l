@@ -14,8 +14,7 @@
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
     #define TOKENIZE(sym) (yylval.token   = sym)
 
-    // Gives each token the lines it spans, for Bison's @n locations. yylineno
-    // already counts the token's own newlines when this runs.
+    // yylineno already counts the token's own newlines when this runs.
     #define YY_USER_ACTION                                  \
         {                                                   \
             int newlines = 0;                               \
@@ -25,8 +24,6 @@
             yylloc.last_line = yylineno;                    \
         }
 
-    // Scanner errors are reported and scanning continues, so the parser can
-    // recover and report further errors.
     #define SCAN_ERROR(message) kriol::cli::ReportParseError(yylloc.first_line, message)
 
     static int g_fstr_depth = 0;

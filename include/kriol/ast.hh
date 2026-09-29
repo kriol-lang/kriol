@@ -85,8 +85,7 @@ namespace ast {
     class Expr : public Sttmt {
     public:
         Type ResolvedType;
-        // Height of this expression tree, kept as nodes are built so the
-        // parser can reject trees too deep for the recursive passes.
+        // Height of this expression tree, maintained by the constructors.
         int Depth = 1;
         virtual ~Expr() = default;
     };

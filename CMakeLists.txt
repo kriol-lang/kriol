@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-# Normalize install destinations such as "./licenses" (the flat release layout).
+# Normalizes "./licenses"-style destinations (flat release layout).
 if(POLICY CMP0177)
     cmake_policy(SET CMP0177 NEW)
 endif()
@@ -40,8 +40,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
-# WASI output needs a WASI sysroot at build time; on Windows it is opt-in until
-# the sysroot and linker discovery are wired up there.
+# WASI output needs a WASI sysroot at build time, not yet set up on Windows.
 if(WIN32)
     set(_KRIOL_ENABLE_WASM_DEFAULT OFF)
 else()
@@ -64,7 +63,6 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Unix toolchains need libm spelled out; the Windows C runtimes include it.
 set(KRIOL_SYSTEM_LIBS)
 if(UNIX)
     list(APPEND KRIOL_SYSTEM_LIBS m)
@@ -276,8 +274,6 @@ include(cmake/EmbeddedResources.cmake)
 # Executable
 # -----------------------------------------------------------------------------
 
-# The compiler itself, shared by kriol and the test drivers so its sources
-# (codegen.cc embeds several MB of runtime libraries) compile only once.
 add_library(
     kriol_core
     STATIC
@@ -326,8 +322,7 @@ if(KRIOL_ENABLE_FUZZING)
         message(FATAL_ERROR "KRIOL_ENABLE_FUZZING requires Clang with libFuzzer support")
     endif()
 
-    # libFuzzer needs the compiler sources built with its instrumentation, so
-    # this target compiles them itself instead of using kriol_core.
+    # Compiles the sources itself: libFuzzer needs them instrumented.
     add_executable(
         kriol_compile_fuzzer
         tests/fuzz/compile_fuzzer.cc
@@ -378,8 +373,7 @@ function(kriol_configure_target TARGET_NAME)
         )
     endif()
 
-    # The compiler recurses over the syntax tree; give it the 8 MiB stack it
-    # gets on Linux instead of the 1 MiB Windows default.
+    # The compiler recurses over the syntax tree: match Linux's 8 MiB stack.
     if(WIN32)
         if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
             target_link_options(${TARGET_NAME} PRIVATE /STACK:8388608)
@@ -481,8 +475,7 @@ add_custom_target(
 # Installation
 # -----------------------------------------------------------------------------
 
-# `cmake --install` lays out a complete distribution. The release archives are
-# flat (configured with -DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.).
+# Release archives are flat: -DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.
 
 include(GNUInstallDirs)
 
@@ -499,7 +492,6 @@ endif()
 
 install(FILES LICENSE README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
-# Licenses of everything kriol bundles or embeds into the programs it builds.
 set(_KRIOL_LICENSE_DIR ${CMAKE_INSTALL_DOCDIR}/licenses)
 install(FILES licenses/LLVM.txt DESTINATION ${_KRIOL_LICENSE_DIR})
 install(FILES ${BDWGC_DIR}/README.QUICK DESTINATION ${_KRIOL_LICENSE_DIR} RENAME bdwgc.txt)
@@ -514,7 +506,7 @@ if(KRIOL_ENABLE_WINDOWS_TARGET)
 endif()
 
 if(KRIOL_ENABLE_WASM)
-    # Debian and Ubuntu's wasi-libc package; other sysroots may not ship one.
+    # Debian/Ubuntu wasi-libc package layout; other sysroots may lack it.
     set(_KRIOL_WASI_LICENSE ${KRIOL_WASI_SYSROOT}/share/doc/wasi-libc/copyright)
     if(EXISTS ${_KRIOL_WASI_LICENSE})
         install(FILES ${_KRIOL_WASI_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME wasi-libc.txt)

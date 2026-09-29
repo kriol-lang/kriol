@@ -1,5 +1,3 @@
-// Locals live on the stack; ones over KR_MAX_LOCAL_BYTES (1 MiB) must be
-// declared at the top level instead.
 fn inisiu() {
     nter[200000] a = [0; 200000];
     mostran(a[0]);

@@ -91,8 +91,9 @@ Then execute the compiled binary with:
 ./fibonacci_recursive
 ```
 
-Programs are optimized at `-O2` by default. Use `-O0` to turn optimization off
-(for example, when debugging the compiler) or `-O1`/`-O3` for the other levels.
+Programs are optimized at level 2 by default. Use `--opt-lvl 0` to turn
+optimization off (for example, when debugging the compiler), or `--opt-lvl 1`
+or `--opt-lvl 3` for the other levels.
 
 To inspect the generated LLVM IR instead of producing a binary (the IR is shown
 before optimization):

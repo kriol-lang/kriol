@@ -29,7 +29,6 @@ static int checkFileCompileAfterSyntaxError() {
     kriol::cli::CompileOptions options;
     options.emitIR = true;
 
-    // Syntax errors come back as diagnostics, with the line they are on.
     options.input = bad.string();
     auto badResult = kriol::cli::Compile(options);
     if (badResult.diagnostics.empty()

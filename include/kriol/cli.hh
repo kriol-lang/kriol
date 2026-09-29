@@ -34,9 +34,7 @@ namespace kriol::cli
     void SetSourceFile(const std::string& filename);
     const std::string& GetSourceFile();
 
-    // Records a scanner or parser error at `line` of the current source file.
-    // Parsing continues (Bison error recovery), and Compile() returns all the
-    // recorded errors as diagnostics.
+    // Compile() returns the recorded errors as diagnostics after parsing.
     void ReportParseError(int line, const std::string& message);
 
     enum class CompileInputKind

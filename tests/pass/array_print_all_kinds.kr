@@ -1,5 +1,3 @@
-// Prints and interpolates arrays of every element type through the runtime's
-// array formatter.
 fn inisiu() {
     i8[3] a = [-128, 0, 127];
     u8[2] b = [0, 255];

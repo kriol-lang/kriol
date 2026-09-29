@@ -2,7 +2,6 @@ name: Linux
 
 on:
   workflow_dispatch:
-  # release.yml builds its Linux archives through this workflow.
   workflow_call:
 
 permissions:
@@ -46,7 +45,6 @@ jobs:
 
           cmake --build build/release --target check
 
-      # The archive layout comes from CMake's install rules.
       - name: Stage artifact
         run: cmake --install build/release --prefix "$STAGE"
 

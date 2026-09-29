@@ -18,11 +18,7 @@
     extern int yylex();
     void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
 
-    // Errors never throw out of yyparse: they are reported, and Bison's error
-    // recovery (see `statement : error SEMIC`) resumes parsing, destroying
-    // discarded values through %destructor. An action that fails calls
-    // YYERROR, which does not reclaim the action's own values, so it frees
-    // them first.
+    // YYERROR does not reclaim the failing action's own values: free them first.
 
     // Parses an array size / repeat count literal; false after reporting.
     static bool kriol_parse_array_size(const std::string& text, int line, std::size_t& size) {
@@ -42,8 +38,6 @@
         return true;
     }
 
-    // Rejects an expression tree as soon as it grows past KR_MAX_EXPR_DEPTH,
-    // before any recursive pass has to walk it.
     #define KRIOL_CHECK_DEPTH(node, line)                                           \
         do {                                                                       \
             if ((node)->Depth > KR_MAX_EXPR_DEPTH) {                               \
@@ -183,7 +177,7 @@ initializer : expression { $$ = $1; }
                   n->LineNum = @$.first_line;
                   $$ = n;
               }
-            // Not valid syntax: rejects `[value] * N` with a pointer to `[value; N]`.
+            // Only to point `[value] * N` to `[value; N]`.
             | array_initializer MUL INT_LIT {
                   kriol::cli::ReportParseError(@2.first_line,
                       "a repeated array is written [value; count], for example [0; " + *$3 + "]");
@@ -381,11 +375,8 @@ record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLi
                           ;
 %%
 
-// The parser is not pure, so the offending token's location is the global
-// yylloc rather than an argument.
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    // Bison reports a full parser stack this way; for Kriol that means blocks
-    // or brackets nested thousands of levels deep.
+    // Bison's message for a full parser stack.
     const std::string message = std::string(err) == "memory exhausted"
         ? "code is nested too deeply for the parser"
         : err;

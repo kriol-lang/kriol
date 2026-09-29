@@ -1,5 +1,3 @@
-// Kriol functions may use names that the C library, the runtime or the C
-// entry point also use; they must not replace or collide with them.
 fn exit(nter code) nter {
     divolvi code + 1;
 }

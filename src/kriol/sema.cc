@@ -370,8 +370,6 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (!validateTypeKnown(node.Type, node.LineNum, kind + " '" + node.Name + "'"))
         canDeclare = false;
 
-    // Locals live on the stack, so an oversized one would overflow it at run
-    // time instead of failing here.
     if (canDeclare && FunctionDepth > 0) {
         const std::size_t bytes = storageBytes(node.Type);
         if (bytes > KR_MAX_LOCAL_BYTES) {

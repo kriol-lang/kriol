@@ -38,7 +38,6 @@ function Invoke-Kriol([string[]] $Arguments) {
     return $LASTEXITCODE -eq 0
 }
 
-# Runs a compiled program with stdin from a file; false on failure or timeout.
 function Invoke-Program([string] $Exe, [string] $Stdin) {
     $info = [Diagnostics.ProcessStartInfo]::new($Exe)
     $info.UseShellExecute = $false
@@ -91,14 +90,13 @@ $ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kuale, Mundu!"); }', '-o'
 $output = if ($ok) { & $exe } else { $null }
 Write-Result 'inline source text' ($output -eq 'Kuale, Mundu!')
 
-foreach ($level in '-O0', '-O3') {
+foreach ($level in '0', '3') {
     $exe = Join-Path $Work 'optimized.exe'
-    $ok = Invoke-Kriol @($level, '--text', 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
+    $ok = Invoke-Kriol @('--opt-lvl', $level, '--text', 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
     $output = if ($ok) { & $exe } else { $null }
     Write-Result "optimization level $level" ($output -eq '3')
 }
 
-# Intermediate object files must not overwrite files next to the output.
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }

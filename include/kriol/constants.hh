@@ -29,15 +29,11 @@
 // codegen (e.g. repeat initializers are unrolled element by element).
 #define KR_MAX_ARRAY_SIZE (1u << 20)
 
-// Maximum nesting depth of one expression, counting operators, calls,
-// brackets and element initializers. Sema, codegen and the AST destructors
-// recurse over expression trees; long operator chains nest as deeply as
-// brackets do (same default as clang's -fbracket-depth).
+// Bounds the recursion of sema, codegen and AST destructors. Operator chains
+// such as 1 + 1 + ... count one level per operator.
 #define KR_MAX_EXPR_DEPTH 256
 
-// Largest local variable or parameter, in bytes. Locals live on the stack,
-// which kriol programs get 8 MiB of on every target; bigger values belong in
-// top-level variables, which live in static storage.
+// Largest local variable or parameter, in bytes; programs get an 8 MiB stack.
 #define KR_MAX_LOCAL_BYTES (1u << 20)
 
 #endif // _KRIOL_CNST_HEADER

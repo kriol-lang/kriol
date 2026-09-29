@@ -1,8 +1,6 @@
 set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(KRIOL_EMBED_FILE_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/EmbedFile.cmake)
 
-# #embed (Clang 19+, and the Clang-based compilers this project defaults to)
-# compiles embedded files far faster than hex initializers.
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_QUIET ON)
 check_cxx_source_compiles("
@@ -205,9 +203,8 @@ if(KRIOL_ENABLE_WASM)
 endif()
 
 if(KRIOL_ENABLE_WINDOWS_TARGET)
-    # x86_64-windows output links MinGW programs against msvcrt.dll, which
-    # every Windows release ships, using CRT pieces from an llvm-mingw
-    # (msvcrt variant) toolchain. They are embedded here in link order.
+    # MinGW CRT pieces from an llvm-mingw msvcrt toolchain, in link order.
+    # msvcrt.dll ships with every Windows release.
     set(KRIOL_MINGW_TARGET "x86_64-w64-windows-gnu")
     set(_KRIOL_MINGW_LIB_DIR "${KRIOL_MINGW_SYSROOT}/x86_64-w64-mingw32/lib")
 
@@ -264,8 +261,7 @@ if(KRIOL_ENABLE_WINDOWS_TARGET)
         VERBATIM
     )
 
-    # Boehm GC's single-file build, with the definitions its CMake build uses
-    # for Kriol's configuration (static, no threads).
+    # Same definitions bdwgc's CMake build uses for Kriol (static, no threads).
     add_custom_command(
         OUTPUT ${GC_X86_64_WINDOWS_OBJ}
         COMMAND

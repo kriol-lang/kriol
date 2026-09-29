@@ -141,7 +141,6 @@ void cli::Compiler::DefineArgs()
         .default_value(false)
         .implicit_value(true);
 
-    // Only the targets this build supports are offered.
     auto& target = Parser->add_argument("--target")
         .help("Compilation target.")
         .metavar("TARGET")
@@ -155,9 +154,9 @@ void cli::Compiler::DefineArgs()
     target.add_choice("x86_64-windows");
 #endif
 
-    Parser->add_argument("-O", "--opt-level")
+    Parser->add_argument("--opt-lvl")
         .help("Optimization level for the generated program, 0 (none) to 3.")
-        .metavar("LEVEL")
+        .metavar("N")
         .default_value(std::string("2"))
         .nargs(1)
         .choices("0", "1", "2", "3");
@@ -174,26 +173,9 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 {
     DefineArgs();
 
-    // Accept the attached "-O2" spelling compilers use; argparse only
-    // understands "-O 2".
-    std::vector<std::string> arguments;
-    for (int i = 0; i < argc; ++i)
-    {
-        const std::string argument = argv[i];
-        if (i > 0 && argument.size() == 3 && argument.compare(0, 2, "-O") == 0)
-        {
-            arguments.push_back("-O");
-            arguments.push_back(argument.substr(2));
-        }
-        else
-        {
-            arguments.push_back(argument);
-        }
-    }
-
     try
     {
-        Parser->parse_args(arguments);
+        Parser->parse_args(argc, argv);
     }
     catch (const std::exception &e)
     {
@@ -224,7 +206,7 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 
     Args.outfile = Parser->present<std::string>("--output").value_or("");
     Args.target = Parser->get<std::string>("--target");
-    Args.optLevel = static_cast<unsigned>(std::stoul(Parser->get<std::string>("--opt-level")));
+    Args.optLevel = static_cast<unsigned>(std::stoul(Parser->get<std::string>("--opt-lvl")));
     Args.emitIR = Parser->get<bool>("--emit-ir");
     Args.ignoreExtension = Parser->get<bool>("--ignore-extension");
 }

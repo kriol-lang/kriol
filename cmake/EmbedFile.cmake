@@ -7,9 +7,8 @@
 # The symbol defaults to the input file name made into a C identifier
 # (libgc_native.a -> libgc_native_a and libgc_native_a_len).
 #
-# With USE_EMBED the header uses the compiler's #embed, which compiles about
-# ten times faster than a hex initializer. Otherwise, and for empty files
-# (which #embed cannot turn into a valid array), it writes the bytes as hex.
+# With USE_EMBED the header uses #embed, except for empty files, which #embed
+# cannot turn into a valid array; otherwise the bytes are written as hex.
 
 if(NOT DEFINED INPUT OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "EmbedFile.cmake requires -DINPUT=<file> and -DOUTPUT=<header>")
