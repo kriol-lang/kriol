@@ -4,9 +4,8 @@
 #   cmake -DINPUT=<file> -DOUTPUT=<header> [-DSYMBOL=<name>] [-DUSE_EMBED=ON]
 #         -P EmbedFile.cmake
 #
-# The symbol defaults to the input file name made into a C identifier, which is
-# the same naming `xxd -i` uses (e.g. libgc_native.a -> libgc_native_a and
-# libgc_native_a_len).
+# The symbol defaults to the input file name made into a C identifier
+# (libgc_native.a -> libgc_native_a and libgc_native_a_len).
 #
 # With USE_EMBED the header uses the compiler's #embed, which compiles about
 # ten times faster than a hex initializer. Otherwise, and for empty files

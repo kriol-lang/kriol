@@ -317,7 +317,7 @@ namespace ast {
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
-    /// Array repeat initializer: `[fill] * N`.
+    /// Array repeat initializer: `[fill; N]`.
     /// Declares a fully-initialized array where every element is a copy of fill.
     class ArrayRepeatExpr : public Expr {
     public:

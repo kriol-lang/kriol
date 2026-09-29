@@ -107,7 +107,7 @@ jobs:
           build\kriol.exe --version
           build\kriol.exe --help
 
-          # Checked out with CRLF line endings on Windows runners.
+          # Windows runners check out with CRLF line endings, so this also covers CRLF sources.
           build\kriol.exe examples\hello_world.kriol --emit-ir -o hello.ll
           Get-Content hello.ll -TotalCount 5
 
@@ -119,8 +119,7 @@ jobs:
       - name: Stage artifact
         shell: pwsh
         run: |
-          # The install rules lay out the archive: kriol.exe, the ld.lld.exe it
-          # links programs with, docs and licenses/.
+          # The archive layout comes from CMake's install rules.
           cmake --install build --prefix $env:STAGE
           dumpbin /nologo /dependents "$env:STAGE\ld.lld.exe"
 

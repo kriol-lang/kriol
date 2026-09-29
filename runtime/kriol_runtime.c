@@ -362,8 +362,8 @@ char* __kriol_format(const char* fmt, ...) {
 
 /*
  * Array formatting. Codegen passes the array's storage and describes its
- * element type, so printing or interpolating an array is one call instead of
- * code unrolled per element. The kinds must match codegen's ArrayElementKind.
+ * element type, so printing or interpolating an array is one call whatever
+ * its length. The kinds must match codegen's ArrayElementKind.
  */
 enum {
     KRIOL_ELEMENT_SIGNED = 0,

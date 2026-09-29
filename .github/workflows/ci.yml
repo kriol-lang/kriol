@@ -1,8 +1,8 @@
 name: CI
 
-# pull_request runs contributor code in GitHub's sandboxed PR context: a
-# read-only token, no secrets and caches scoped to the PR. (Running it from an
-# issue_comment instead would give that code the base repository's context.)
+# pull_request runs contributor code sandboxed: read-only token, no secrets,
+# caches scoped to the PR. An issue_comment trigger would run it with the base
+# repository's token and caches.
 on:
   pull_request:
 

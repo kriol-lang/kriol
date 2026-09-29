@@ -174,22 +174,23 @@ array_declarator : LBRAC INT_LIT RBRAC declarator {
 
 initializer : expression { $$ = $1; }
             | array_initializer { $$ = $1; }
-            | array_initializer MUL INT_LIT {
-                  auto* lit = static_cast<ast::ArrayLiteralExpr*>($1);
+            | LBRAC value_expression SEMIC INT_LIT RBRAC {
                   std::size_t count = 0;
-                  bool ok = lit->Elements.size() == 1;
-                  if (!ok)
-                      kriol::cli::ReportParseError(@1.first_line,
-                          "repeat initializer '[value] * N' requires exactly one fill element");
-                  else
-                      ok = kriol_parse_array_size(*$3, @3.first_line, count);
-                  delete $3;
-                  if (!ok) { delete lit; YYERROR; }
-                  auto fill = std::move(lit->Elements[0]);
-                  delete lit;
-                  auto n = new ast::ArrayRepeatExpr(std::move(fill), count);
+                  const bool ok = kriol_parse_array_size(*$4, @4.first_line, count);
+                  delete $4;
+                  if (!ok) { delete $2; YYERROR; }
+                  auto n = new ast::ArrayRepeatExpr(std::unique_ptr<ast::Expr>($2), count);
                   n->LineNum = @$.first_line;
                   $$ = n;
+              }
+            // Not valid syntax: rejects `[value] * N` with a pointer to `[value; N]`.
+            | array_initializer MUL INT_LIT {
+                  kriol::cli::ReportParseError(@2.first_line,
+                      "a repeated array is written [value; count], for example [0; " + *$3 + "]");
+                  delete $1;
+                  delete $3;
+                  $$ = nullptr;
+                  YYERROR;
               }
             ;
 

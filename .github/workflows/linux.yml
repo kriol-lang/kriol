@@ -46,7 +46,7 @@ jobs:
 
           cmake --build build/release --target check
 
-      # The install rules lay out the archive: kriol, docs and licenses/.
+      # The archive layout comes from CMake's install rules.
       - name: Stage artifact
         run: cmake --install build/release --prefix "$STAGE"
 

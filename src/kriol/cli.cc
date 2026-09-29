@@ -283,8 +283,8 @@ void cli::KriolLangParserWrapper::ParseFile(
         bom[0] != 0xEF || bom[1] != 0xBB || bom[2] != 0xBF)
         rewind(file);
 
-    // A previous parse may have stopped mid-file (syntax errors throw), leaving
-    // its buffered input and start conditions behind.
+    // A previous parse may have stopped before the end of its input (an aborted
+    // parse or an exception), leaving buffered input and start conditions behind.
     yyin = file;
     yyrestart(file);
     kriol_scanner_reset_state();

@@ -7,7 +7,7 @@ molda Pontu {
 
 // Leaves non-zero values where the next call's locals will live.
 fn suja_stack() {
-    nter[64] lixu = [123456789] * 64;
+    nter[64] lixu = [123456789; 64];
     konfirma(lixu[63] == 123456789);
 }
 

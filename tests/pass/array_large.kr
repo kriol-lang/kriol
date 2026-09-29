@@ -1,11 +1,11 @@
-// Large arrays compile to loops and single runtime calls, not code per
-// element: this used to take minutes and gigabytes of memory to compile.
-nter[1048576] grandi = [3] * 1048576;
+// Arrays of the maximum size must compile quickly: repeat initializers become
+// loops and printing an array is a single runtime call.
+nter[1048576] grandi = [3; 1048576];
 
 fn inisiu() {
     konfirma(grandi[0] == 3 && grandi[1048575] == 3);
 
-    nter[100000] lokal = [7] * 100000;
+    nter[100000] lokal = [7; 100000];
     lokal[99999] = 9;
     konfirma(lokal[0] == 7 && lokal[99999] == 9);
 

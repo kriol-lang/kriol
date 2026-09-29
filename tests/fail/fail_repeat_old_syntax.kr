@@ -1,0 +1,5 @@
+// `[value] * N` is rejected with a message pointing to `[value; N]`.
+fn inisiu() {
+    nter[3] a = [0] * 3;
+    mostran(a[0]);
+}

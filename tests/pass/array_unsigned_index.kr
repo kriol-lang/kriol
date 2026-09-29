@@ -1,6 +1,6 @@
 // Unsigned indexes keep their value when widened for the bounds check.
 fn inisiu() {
-    nter[256] a = [7] * 256;
+    nter[256] a = [7; 256];
     a[255] = 9;
 
     u8 i = 200;

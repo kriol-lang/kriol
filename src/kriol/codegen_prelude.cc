@@ -23,8 +23,8 @@ static llvm::Function* getOrDeclareRuntimePrint(llvm::Module& Mod,
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, Mod);
 }
 
-// Printing goes through the runtime, which knows how to write to Windows
-// consoles, rather than straight to the C library's putchar.
+// Printing goes through the runtime, which writes to Windows consoles as UTF-16;
+// the C library's putchar would bypass that.
 static llvm::Function* getOrDeclarePutchar(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_print_char")) return fn;

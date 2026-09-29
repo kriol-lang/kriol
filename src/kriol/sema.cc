@@ -242,8 +242,8 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
         initRep->accept(*this);
         if (initRep->Count != expectedSize) {
             addError(errLoc(lineNum) + context + " has size "
-                     + std::to_string(expectedSize) + " but repeat initializer [value] * "
-                     + std::to_string(initRep->Count) + " has a different count");
+                     + std::to_string(expectedSize) + " but repeat initializer [value; "
+                     + std::to_string(initRep->Count) + "] has a different count");
             return false;
         }
 
@@ -387,7 +387,7 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
         auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get());
         if (!initLit && !initRep) {
-            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value] * N");
+            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value; N]");
             canDeclare = false;
         } else {
             initState.elementInitialized.assign(node.ArraySize, false);

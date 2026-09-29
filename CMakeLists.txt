@@ -290,7 +290,6 @@ add_executable(
     main.cc
 )
 
-# Test drivers build only for `check` (or when named), not by default.
 add_executable(
     kriol_api_compile_memory_test
     EXCLUDE_FROM_ALL
