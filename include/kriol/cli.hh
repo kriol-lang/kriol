@@ -53,6 +53,7 @@ namespace kriol::cli
         std::string sourceName;
         std::string outfile;
         std::string target = "native";
+        unsigned optLevel = 2;
         bool emitIR = false;
         bool outputToMemory = false;
     };
@@ -88,6 +89,7 @@ namespace kriol::cli
             std::string sourceName;
             std::string outfile;
             std::string target = "native";
+            unsigned optLevel = 2;
             bool emitIR = false;
             bool ignoreExtension = false;
         };

@@ -73,6 +73,19 @@ else
 fi
 rm -f "$tmpbin"
 
+# ---- optimization levels -----------------------------------------------------
+for level in -O0 -O3; do
+    printf "  %-44s" "optimization level $level"
+    tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
+    if "$KRIOL" "$level" --text 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
+       [ "$(timeout 5 "$tmpbin")" = "3" ]; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "optimization level $level"
+    fi
+    rm -f "$tmpbin"
+done
+
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)

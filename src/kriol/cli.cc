@@ -147,6 +147,13 @@ void cli::Compiler::DefineArgs()
         .nargs(1)
         .choices("native", "wasm32-wasi", "x86_64-windows");
 
+    Parser->add_argument("-O", "--opt-level")
+        .help("Optimization level for the generated program, 0 (none) to 3.")
+        .metavar("LEVEL")
+        .default_value(std::string("2"))
+        .nargs(1)
+        .choices("0", "1", "2", "3");
+
     Parser->add_argument("--ignore-extension")
         .help("Accept file inputs without a ." +
               std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
@@ -159,9 +166,26 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 {
     DefineArgs();
 
+    // Accept the attached "-O2" spelling compilers use; argparse only
+    // understands "-O 2".
+    std::vector<std::string> arguments;
+    for (int i = 0; i < argc; ++i)
+    {
+        const std::string argument = argv[i];
+        if (i > 0 && argument.size() == 3 && argument.compare(0, 2, "-O") == 0)
+        {
+            arguments.push_back("-O");
+            arguments.push_back(argument.substr(2));
+        }
+        else
+        {
+            arguments.push_back(argument);
+        }
+    }
+
     try
     {
-        Parser->parse_args(argc, argv);
+        Parser->parse_args(arguments);
     }
     catch (const std::exception &e)
     {
@@ -192,6 +216,7 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 
     Args.outfile = Parser->present<std::string>("--output").value_or("");
     Args.target = Parser->get<std::string>("--target");
+    Args.optLevel = static_cast<unsigned>(std::stoul(Parser->get<std::string>("--opt-level")));
     Args.emitIR = Parser->get<bool>("--emit-ir");
     Args.ignoreExtension = Parser->get<bool>("--ignore-extension");
 }
@@ -298,6 +323,8 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         throw std::invalid_argument("emitIR and outputToMemory cannot be used together.");
     if (options.outputToMemory && !options.outfile.empty())
         throw std::invalid_argument("outfile cannot be used with outputToMemory.");
+    if (options.optLevel > 3)
+        throw std::invalid_argument("Optimization level must be between 0 and 3.");
     if (options.outputToMemory && options.target != "wasm32-wasi")
         throw std::invalid_argument("In-memory output is currently supported only for wasm32-wasi.");
 
@@ -356,7 +383,7 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
     if (windowsExecutable && !PathFromUtf8(outfile).has_extension())
         outfile += ".exe";
 
-    ast::EmitOptions emitOptions = {.Target = Target};
+    ast::EmitOptions emitOptions = {.Target = Target, .OptLevel = options.optLevel};
 
     if (options.outputToMemory)
     {
@@ -395,6 +422,7 @@ cli::CompileOptions cli::Compiler::MakeCompileOptions() const
     options.sourceName = Args.sourceName;
     options.outfile = Args.outfile;
     options.target = Args.target;
+    options.optLevel = Args.optLevel;
     options.emitIR = Args.emitIR;
     return options;
 }

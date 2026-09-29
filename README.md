@@ -91,7 +91,11 @@ Then execute the compiled binary with:
 ./fibonacci_recursive
 ```
 
-To inspect the generated LLVM IR instead of producing a binary:
+Programs are optimized at `-O2` by default. Use `-O0` to turn optimization off
+(for example, when debugging the compiler) or `-O1`/`-O3` for the other levels.
+
+To inspect the generated LLVM IR instead of producing a binary (the IR is shown
+before optimization):
 
 ```sh
 kriol examples/mensage_special.kriol --emit-ir

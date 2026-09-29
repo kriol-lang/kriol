@@ -18,6 +18,8 @@
 
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/OptimizationLevel.h>
 
 #if KRIOL_USE_EMBEDDED_LLD
 
@@ -392,11 +394,46 @@ static void linkRuntimeBitcode(llvm::Module& module,
     bool linkErr = llvm::Linker::linkModules(module, std::move(expectedMod.get()));
     if (linkErr)
         throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
+
+    // clang tags the runtime with its baseline CPU attributes, which kriol's
+    // functions lack, and LLVM never inlines across differing target
+    // attributes. Dropping them lets hot helpers (bounds and division checks)
+    // inline and fold; the target machine uses the same baseline CPU anyway.
+    for (llvm::Function& fn : module) {
+        fn.removeFnAttr("target-cpu");
+        fn.removeFnAttr("target-features");
+        fn.removeFnAttr("tune-cpu");
+    }
+}
+
+// Runs LLVM's standard per-module pipeline. It sees the runtime helpers too
+// (their bitcode is linked in first), so bounds checks and printing calls can
+// be inlined into the program.
+static void optimizeModule(llvm::Module& module,
+                           llvm::TargetMachine& targetMachine,
+                           unsigned optLevel) {
+    llvm::LoopAnalysisManager loopAM;
+    llvm::FunctionAnalysisManager functionAM;
+    llvm::CGSCCAnalysisManager cgsccAM;
+    llvm::ModuleAnalysisManager moduleAM;
+
+    llvm::PassBuilder passBuilder(&targetMachine);
+    passBuilder.registerModuleAnalyses(moduleAM);
+    passBuilder.registerCGSCCAnalyses(cgsccAM);
+    passBuilder.registerFunctionAnalyses(functionAM);
+    passBuilder.registerLoopAnalyses(loopAM);
+    passBuilder.crossRegisterProxies(loopAM, functionAM, cgsccAM, moduleAM);
+
+    const llvm::OptimizationLevel level = optLevel >= 3 ? llvm::OptimizationLevel::O3
+                                        : optLevel == 2 ? llvm::OptimizationLevel::O2
+                                        : llvm::OptimizationLevel::O1;
+    passBuilder.buildPerModuleDefaultPipeline(level).run(module, moduleAM);
 }
 
 static void emitObjectFile(llvm::Module& module,
                            const std::string& targetTriple,
-                           const std::string& objPath) {
+                           const std::string& objPath,
+                           unsigned optLevel) {
     module.setTargetTriple(targetTriple);
 
     std::string Error;
@@ -408,9 +445,17 @@ static void emitObjectFile(llvm::Module& module,
     auto Features = "";
     llvm::TargetOptions opt;
     auto RM = std::optional<llvm::Reloc::Model>();
-    auto TargetMachine = Target->createTargetMachine(targetTriple, CPU, Features, opt, RM);
+    const llvm::CodeGenOptLevel codeGenLevel = optLevel == 0 ? llvm::CodeGenOptLevel::None
+                                             : optLevel == 1 ? llvm::CodeGenOptLevel::Less
+                                             : optLevel == 2 ? llvm::CodeGenOptLevel::Default
+                                             : llvm::CodeGenOptLevel::Aggressive;
+    std::unique_ptr<llvm::TargetMachine> TargetMachine(Target->createTargetMachine(
+        targetTriple, CPU, Features, opt, RM, std::nullopt, codeGenLevel));
 
     module.setDataLayout(TargetMachine->createDataLayout());
+
+    if (optLevel > 0)
+        optimizeModule(module, *TargetMachine, optLevel);
 
     std::error_code EC;
     llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
@@ -870,7 +915,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
         tempFiles.push_back(objPath);
 
         linkRuntimeBitcode(*Mod, Context, resources.Runtime);
-        emitObjectFile(*Mod, resources.Triple, objPath);
+        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel);
 
         std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
         if (!tempLibGc.empty())

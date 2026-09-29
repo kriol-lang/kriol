@@ -27,6 +27,7 @@ namespace ast {
 
     struct EmitOptions {
         CodegenTarget Target = CodegenTarget::Native;
+        unsigned OptLevel = 2;
     };
 
     class CodeGenVisitor : public Visitor {

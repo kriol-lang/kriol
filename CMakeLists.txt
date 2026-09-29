@@ -125,6 +125,7 @@ set(KRIOL_LLVM_COMPONENTS
     native
     linker
     bitreader
+    passes
 )
 
 if(KRIOL_ENABLE_WASM)

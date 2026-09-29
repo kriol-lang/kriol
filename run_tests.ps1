@@ -91,6 +91,13 @@ $ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kuale, Mundu!"); }', '-o'
 $output = if ($ok) { & $exe } else { $null }
 Write-Result 'inline source text' ($output -eq 'Kuale, Mundu!')
 
+foreach ($level in '-O0', '-O3') {
+    $exe = Join-Path $Work 'optimized.exe'
+    $ok = Invoke-Kriol @($level, '--text', 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
+    $output = if ($ok) { & $exe } else { $null }
+    Write-Result "optimization level $level" ($output -eq '3')
+}
+
 # Intermediate object files must not overwrite files next to the output.
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
