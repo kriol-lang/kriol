@@ -72,6 +72,23 @@ Write-Host ''
 Write-Host "-> Kriol installed successfully at: $InstallDir\kriol.exe"
 Write-Host ''
 
+# The binaries are not code-signed yet, so drop any downloaded-from-the-internet
+# mark and check that Windows actually lets kriol.exe run.
+Get-ChildItem $InstallDir -Recurse -File | Unblock-File -ErrorAction SilentlyContinue
+$runs = $false
+try {
+    & (Join-Path $InstallDir 'kriol.exe') --version *> $null
+    $runs = $LASTEXITCODE -eq 0
+} catch {}
+
+if (-not $runs) {
+    Write-Warning 'Windows did not let kriol.exe run. Windows support is experimental and'
+    Write-Warning 'the binaries are not code-signed yet, so Smart App Control or an App'
+    Write-Warning 'Control policy may block them. For workarounds, see:'
+    Write-Warning "  https://github.com/$Repo#if-windows-blocks-kriolexe"
+    Write-Host ''
+}
+
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $onPath = ($userPath -split ';') -contains $InstallDir
 

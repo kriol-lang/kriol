@@ -45,7 +45,12 @@ export PATH="$HOME/.kriol:$PATH"
 
 Then close and reopen the shell and try `kriol --version`.
 
-### Windows
+### Windows (experimental)
+
+> [!WARNING]
+> Windows support is experimental. The Windows binaries are not code-signed
+> yet, so Windows may refuse to run them. See
+> [If Windows blocks kriol.exe](#if-windows-blocks-kriolexe).
 
 Windows releases need nothing else installed: the zip contains `kriol.exe` and
 the `ld.lld.exe` it links programs with, and the programs it builds run on
@@ -61,6 +66,50 @@ PowerShell 5.1 (included in Windows 10 and later, and installable on Windows 7
 through WMF 5.1) or PowerShell 7. You can also download the
 `kriol-<version>-windows-x86_64.zip` from the releases page and keep its files
 together in one folder.
+
+#### If Windows blocks kriol.exe
+
+Because `kriol.exe` and `ld.lld.exe` are not signed, running them can fail
+with an error such as *"An Application Control policy has blocked this file"*
+(or *"Uma política de Controlo de Aplicações bloqueou este ficheiro"*), or with
+a SmartScreen *"Windows protected your PC"* prompt. This comes from Windows
+security features, not from kriol. To work around it:
+
+1. If you downloaded the zip by hand, unblock the files, then try again. Run
+   this in the folder you extracted, or on the zip before extracting it:
+
+   ```powershell
+   Get-ChildItem -Recurse | Unblock-File
+   ```
+
+   For the SmartScreen prompt, you can also choose **More info → Run anyway**.
+
+2. If the *Application Control policy* error persists, **Smart App Control**
+   is blocking unsigned programs. You can check its state in *Windows Security
+   → App & browser control → Smart App Control*. In that case we recommend
+   using the Linux release inside
+   [WSL](https://learn.microsoft.com/windows/wsl/install), which keeps Smart
+   App Control on. Install WSL from PowerShell and restart when asked:
+
+   ```powershell
+   wsl --install
+   ```
+
+   Then, in the WSL (Ubuntu) terminal, install a C compiler and kriol as in the
+   [Linux instructions](#linux):
+
+   ```sh
+   sudo apt update && sudo apt install -y gcc curl
+   curl -fsSL https://raw.githubusercontent.com/kriol-lang/kriol/refs/heads/main/install.sh | sh -s -- --pre
+   ```
+
+3. Otherwise, the only way around Smart App Control for now is to turn it off
+   in the same place. On many Windows 11 versions it cannot be turned back on
+   without resetting Windows, so decide carefully. You can also
+   [build kriol from source](#build).
+
+4. On company-managed PCs, the block can come from an IT policy (App Control
+   for Business / WDAC). Ask your administrator to allow the files.
 
 
 ## Usage
