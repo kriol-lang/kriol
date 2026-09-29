@@ -1,12 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Normalizes "./licenses"-style destinations (flat release layout).
+if(POLICY CMP0177)
+    cmake_policy(SET CMP0177 NEW)
+endif()
+
 # -----------------------------------------------------------------------------
 # Compiler selection
 # -----------------------------------------------------------------------------
 
 if(NOT CMAKE_TOOLCHAIN_FILE)
-    find_program(_CLANG NAMES clang-20 clang-19 clang)
-    find_program(_CLANGPP NAMES clang++-20 clang++-19 clang++)
+    if(CMAKE_HOST_WIN32)
+        # LLVM's exported Windows targets carry link.exe-style flags
+        # (-INCLUDE:, -delayload:), which only the MSVC-style driver accepts.
+        find_program(_CLANG NAMES clang-cl)
+        set(_CLANGPP "${_CLANG}")
+    else()
+        find_program(_CLANG NAMES clang-20 clang-19 clang)
+        find_program(_CLANGPP NAMES clang++-20 clang++-19 clang++)
+    endif()
 
     if(_CLANG)
         set(CMAKE_C_COMPILER "${_CLANG}")
@@ -28,20 +40,39 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(KRIOL_STATIC "Statically link the kriol binary in Release builds" OFF)
-option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ON)
+# WASI output needs a WASI sysroot at build time, not yet set up on Windows.
+if(WIN32)
+    set(_KRIOL_ENABLE_WASM_DEFAULT OFF)
+else()
+    set(_KRIOL_ENABLE_WASM_DEFAULT ON)
+endif()
+
+option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output support" ${_KRIOL_ENABLE_WASM_DEFAULT})
 option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF)
 
+set(KRIOL_MINGW_SYSROOT "" CACHE PATH
+    "Root of an llvm-mingw (msvcrt) toolchain; enables x86_64-windows output")
+if(KRIOL_MINGW_SYSROOT)
+    set(KRIOL_ENABLE_WINDOWS_TARGET ON)
+else()
+    set(KRIOL_ENABLE_WINDOWS_TARGET OFF)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(KRIOL_SYSTEM_LIBS)
+if(UNIX)
+    list(APPEND KRIOL_SYSTEM_LIBS m)
+endif()
 
 # -----------------------------------------------------------------------------
 # Tools
 # -----------------------------------------------------------------------------
 
 find_program(CLANG_PROGRAM NAMES clang-20 clang-19 clang REQUIRED)
-find_program(XXD_PROGRAM xxd REQUIRED)
 find_program(VALGRIND valgrind)
 
 # -----------------------------------------------------------------------------
@@ -52,11 +83,52 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
+# The Windows LLVM release archives record the DIA SDK library by the absolute
+# path it had on LLVM's build machine; point it at the local Visual Studio copy.
+if(WIN32 AND TARGET LLVMDebugInfoPDB)
+    get_target_property(_KRIOL_PDB_LIBS LLVMDebugInfoPDB INTERFACE_LINK_LIBRARIES)
+
+    if(_KRIOL_PDB_LIBS MATCHES "([^;]*diaguids\\.lib)" AND NOT EXISTS "${CMAKE_MATCH_1}")
+        set(_KRIOL_STALE_DIAGUIDS "${CMAKE_MATCH_1}")
+
+        set(_KRIOL_VS_DIRS "$ENV{VSINSTALLDIR}")
+        set(_KRIOL_PROGRAM_FILES_X86 "ProgramFiles(x86)")
+        set(_KRIOL_VSWHERE "$ENV{${_KRIOL_PROGRAM_FILES_X86}}/Microsoft Visual Studio/Installer/vswhere.exe")
+        if(EXISTS "${_KRIOL_VSWHERE}")
+            execute_process(
+                COMMAND "${_KRIOL_VSWHERE}" -latest -products * -property installationPath
+                OUTPUT_VARIABLE _KRIOL_VSWHERE_DIR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            list(APPEND _KRIOL_VS_DIRS "${_KRIOL_VSWHERE_DIR}")
+        endif()
+
+        set(_KRIOL_DIA_HINTS)
+        foreach(_KRIOL_VS_DIR IN LISTS _KRIOL_VS_DIRS)
+            list(APPEND _KRIOL_DIA_HINTS "${_KRIOL_VS_DIR}/DIA SDK/lib/amd64")
+        endforeach()
+
+        find_library(KRIOL_DIAGUIDS_LIBRARY diaguids HINTS ${_KRIOL_DIA_HINTS})
+        if(NOT KRIOL_DIAGUIDS_LIBRARY)
+            message(FATAL_ERROR
+                "LLVM links against '${_KRIOL_STALE_DIAGUIDS}', which does not exist here.\n"
+                "Install the Visual Studio C++ tools (they include the DIA SDK) or pass "
+                "-DKRIOL_DIAGUIDS_LIBRARY=<path to diaguids.lib>."
+            )
+        endif()
+
+        list(TRANSFORM _KRIOL_PDB_LIBS REPLACE ".*diaguids\\.lib$" "${KRIOL_DIAGUIDS_LIBRARY}")
+        set_target_properties(LLVMDebugInfoPDB PROPERTIES INTERFACE_LINK_LIBRARIES "${_KRIOL_PDB_LIBS}")
+        message(STATUS "Using DIA SDK: ${KRIOL_DIAGUIDS_LIBRARY}")
+    endif()
+endif()
+
 set(KRIOL_LLVM_COMPONENTS
     core
     native
     linker
     bitreader
+    passes
 )
 
 if(KRIOL_ENABLE_WASM)
@@ -176,27 +248,12 @@ else()
 endif()
 
 # -----------------------------------------------------------------------------
-# Runtime
-# -----------------------------------------------------------------------------
-
-add_library(
-    kriol_runtime
-    OBJECT
-    runtime/kriol_runtime.c
-)
-
-target_include_directories(
-    kriol_runtime
-    BEFORE PRIVATE
-    ${BDWGC_DIR}/include
-)
-
-# -----------------------------------------------------------------------------
 # Sources
 # -----------------------------------------------------------------------------
 
 set(KRIOL_CORE_SOURCES
     src/kriol/sema.cc
+    src/kriol/type_rules.cc
     ${PARSER_SRC}
     ${SCANNER_SRC}
 )
@@ -217,43 +274,47 @@ include(cmake/EmbeddedResources.cmake)
 # Executable
 # -----------------------------------------------------------------------------
 
+add_library(
+    kriol_core
+    STATIC
+    ${KRIOL_CORE_SOURCES}
+    ${KRIOL_LLVM_SOURCES}
+)
+
 add_executable(
     kriol
     main.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
     kriol_api_compile_memory_test
+    EXCLUDE_FROM_ALL
     tests/api/compile_memory.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
     kriol_type_model_test
+    EXCLUDE_FROM_ALL
     tests/api/type_model.cc
 )
 
 add_executable(
     kriol_gc_runtime_test
+    EXCLUDE_FROM_ALL
     tests/runtime/gc_stress.c
     runtime/kriol_runtime.c
 )
 
 add_executable(
     kriol_compile_fuzz_smoke
+    EXCLUDE_FROM_ALL
     tests/fuzz/compile_fuzz_smoke.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 add_executable(
     kriol_compile_random_fuzz
+    EXCLUDE_FROM_ALL
     tests/fuzz/compile_random_fuzz.cc
-    ${KRIOL_CORE_SOURCES}
-    ${KRIOL_LLVM_SOURCES}
 )
 
 if(KRIOL_ENABLE_FUZZING)
@@ -261,6 +322,7 @@ if(KRIOL_ENABLE_FUZZING)
         message(FATAL_ERROR "KRIOL_ENABLE_FUZZING requires Clang with libFuzzer support")
     endif()
 
+    # Compiles the sources itself: libFuzzer needs them instrumented.
     add_executable(
         kriol_compile_fuzzer
         tests/fuzz/compile_fuzzer.cc
@@ -274,10 +336,7 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "${LLVM_DEFINITIONS_LIST}"
 )
 
-add_dependencies(kriol kriol_embedded_resources)
-add_dependencies(kriol_api_compile_memory_test kriol_embedded_resources)
-add_dependencies(kriol_compile_fuzz_smoke kriol_embedded_resources)
-add_dependencies(kriol_compile_random_fuzz kriol_embedded_resources)
+add_dependencies(kriol_core kriol_embedded_resources)
 
 if(KRIOL_ENABLE_FUZZING)
     add_dependencies(kriol_compile_fuzzer kriol_embedded_resources)
@@ -299,12 +358,29 @@ function(kriol_configure_target TARGET_NAME)
         ${LLD_INCLUDE_DIR}
     )
 
-    target_compile_options(
-        ${TARGET_NAME}
-        PRIVATE
-        $<$<CONFIG:Debug>:-g -Wall>
-        $<$<CONFIG:Release>:-O2 -DNDEBUG>
-    )
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(
+            ${TARGET_NAME}
+            PRIVATE
+            $<$<CONFIG:Debug>:/W3>
+        )
+    else()
+        target_compile_options(
+            ${TARGET_NAME}
+            PRIVATE
+            $<$<CONFIG:Debug>:-g -Wall>
+            $<$<CONFIG:Release>:-O2 -DNDEBUG>
+        )
+    endif()
+
+    # The compiler recurses over the syntax tree: match Linux's 8 MiB stack.
+    if(WIN32)
+        if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+            target_link_options(${TARGET_NAME} PRIVATE /STACK:8388608)
+        else()
+            target_link_options(${TARGET_NAME} PRIVATE -Wl,--stack,8388608)
+        endif()
+    endif()
 
     target_compile_definitions(
         ${TARGET_NAME}
@@ -312,11 +388,12 @@ function(kriol_configure_target TARGET_NAME)
         KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
         KRIOL_WASI_ENABLE_GC=$<BOOL:${KRIOL_WASI_ENABLE_GC}>
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
+        KRIOL_ENABLE_WINDOWS_TARGET=$<BOOL:${KRIOL_ENABLE_WINDOWS_TARGET}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
-        KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"
     )
 endfunction()
 
+kriol_configure_target(kriol_core)
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_type_model_test)
@@ -343,7 +420,7 @@ endif()
 # Linking
 # -----------------------------------------------------------------------------
 
-if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT WIN32)
     list(FILTER LLVM_LIBS EXCLUDE REGEX "z3")
     target_link_options(
         kriol
@@ -354,41 +431,26 @@ if(KRIOL_STATIC AND CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 target_link_libraries(
-    kriol
-    PRIVATE
+    kriol_core
+    PUBLIC
     ${KRIOL_LLD_LIBS}
     ${LLVM_LIBS}
-    m
+    ${KRIOL_SYSTEM_LIBS}
 )
 
-target_link_libraries(
+foreach(_KRIOL_COMPILER_TARGET IN ITEMS
+    kriol
     kriol_api_compile_memory_test
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    m
+    kriol_compile_fuzz_smoke
+    kriol_compile_random_fuzz
 )
+    target_link_libraries(${_KRIOL_COMPILER_TARGET} PRIVATE kriol_core)
+endforeach()
 
 target_link_libraries(
     kriol_gc_runtime_test
     PRIVATE
     gc
-)
-
-target_link_libraries(
-    kriol_compile_fuzz_smoke
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    m
-)
-
-target_link_libraries(
-    kriol_compile_random_fuzz
-    PRIVATE
-    ${KRIOL_LLD_LIBS}
-    ${LLVM_LIBS}
-    m
 )
 
 if(KRIOL_ENABLE_FUZZING)
@@ -397,7 +459,7 @@ if(KRIOL_ENABLE_FUZZING)
         PRIVATE
         ${KRIOL_LLD_LIBS}
         ${LLVM_LIBS}
-        m
+        ${KRIOL_SYSTEM_LIBS}
     )
 endif()
 
@@ -413,13 +475,45 @@ add_custom_target(
 # Installation
 # -----------------------------------------------------------------------------
 
-install(TARGETS kriol DESTINATION bin)
+# Release archives are flat: -DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.
 
-install(
-    FILES $<TARGET_OBJECTS:kriol_runtime>
-    DESTINATION bin/runtime
-    RENAME kriol_runtime.o
-)
+include(GNUInstallDirs)
+
+install(TARGETS kriol RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# kriol.exe links Windows programs with the ld.lld next to it.
+if(WIN32 AND KRIOL_ENABLE_WINDOWS_TARGET)
+    find_program(KRIOL_BUNDLED_LLD NAMES ld.lld HINTS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+    if(NOT KRIOL_BUNDLED_LLD)
+        message(FATAL_ERROR "ld.lld was not found in ${LLVM_TOOLS_BINARY_DIR}; it is installed next to kriol.exe")
+    endif()
+    install(PROGRAMS ${KRIOL_BUNDLED_LLD} DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+install(FILES LICENSE README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+set(_KRIOL_LICENSE_DIR ${CMAKE_INSTALL_DOCDIR}/licenses)
+install(FILES licenses/LLVM.txt DESTINATION ${_KRIOL_LICENSE_DIR})
+install(FILES ${BDWGC_DIR}/README.QUICK DESTINATION ${_KRIOL_LICENSE_DIR} RENAME bdwgc.txt)
+
+if(KRIOL_ENABLE_WINDOWS_TARGET)
+    set(_KRIOL_MINGW_LICENSE
+        ${KRIOL_MINGW_SYSROOT}/x86_64-w64-mingw32/share/mingw32/COPYING.MinGW-w64-runtime.txt)
+    if(NOT EXISTS ${_KRIOL_MINGW_LICENSE})
+        message(FATAL_ERROR "MinGW-w64 runtime license not found at ${_KRIOL_MINGW_LICENSE}")
+    endif()
+    install(FILES ${_KRIOL_MINGW_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME MinGW-w64-runtime.txt)
+endif()
+
+if(KRIOL_ENABLE_WASM)
+    # Debian/Ubuntu wasi-libc package layout; other sysroots may lack it.
+    set(_KRIOL_WASI_LICENSE ${KRIOL_WASI_SYSROOT}/share/doc/wasi-libc/copyright)
+    if(EXISTS ${_KRIOL_WASI_LICENSE})
+        install(FILES ${_KRIOL_WASI_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME wasi-libc.txt)
+    else()
+        message(WARNING "wasi-libc license not found at ${_KRIOL_WASI_LICENSE}; it will be missing from installs")
+    endif()
+endif()
 
 # -----------------------------------------------------------------------------
 # Utility targets

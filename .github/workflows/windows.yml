@@ -1,0 +1,138 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LLVM_VERSION: 20.1.8
+  LLVM_ROOT: C:\llvm\clang+llvm-20.1.8-x86_64-pc-windows-msvc
+  MINGW_VERSION: '20260922'
+  MINGW_ROOT: C:\llvm-mingw\llvm-mingw-20260922-msvcrt-x86_64
+  STAGE: kriol-windows-x86_64
+
+jobs:
+  build:
+    runs-on: windows-2025
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # Same as a "x64 Native Tools" prompt: exports what vcvars64.bat changes.
+      - name: Set up MSVC environment
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -property installationPath `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+          if (-not $vs) { throw 'Visual Studio with the C++ x64 tools was not found' }
+
+          $before = [Environment]::GetEnvironmentVariables()
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
+              "$($Matches[1])=$($Matches[2])" | Add-Content $env:GITHUB_ENV
+            }
+          }
+
+      - name: Cache LLVM
+        id: cache-llvm
+        uses: actions/cache@v5
+        with:
+          path: C:\llvm
+          key: llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc
+
+      - name: Download LLVM
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $archive = "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+          curl.exe -fsSL -o llvm.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$archive"
+          7z x llvm.tar.xz -so | 7z x -si -ttar -oC:\llvm -y | Out-Null
+          Remove-Item llvm.tar.xz
+
+      - name: Cache llvm-mingw
+        id: cache-mingw
+        uses: actions/cache@v5
+        with:
+          path: C:\llvm-mingw
+          key: llvm-mingw-${{ env.MINGW_VERSION }}-msvcrt-x86_64
+
+      - name: Download llvm-mingw
+        if: steps.cache-mingw.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $archive = "llvm-mingw-$env:MINGW_VERSION-msvcrt-x86_64.zip"
+          curl.exe -fsSL -o mingw.zip "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:MINGW_VERSION/$archive"
+          7z x mingw.zip -oC:\llvm-mingw -y | Out-Null
+          Remove-Item mingw.zip
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          choco install winflexbison3 ninja --no-progress -y
+          Add-Content $env:GITHUB_PATH "$env:LLVM_ROOT\bin"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DLLVM_DIR="$env:LLVM_ROOT\lib\cmake\llvm" `
+            -DCMAKE_C_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
+            -DCMAKE_CXX_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
+            -DCLANG_PROGRAM="$env:LLVM_ROOT\bin\clang.exe" `
+            -DKRIOL_MINGW_SYSROOT="$env:MINGW_ROOT" `
+            -DCMAKE_INSTALL_BINDIR=. `
+            -DCMAKE_INSTALL_DOCDIR=.
+
+      - name: Build
+        run: cmake --build build --target kriol
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          dumpbin /nologo /dependents build\kriol.exe
+          build\kriol.exe --version
+          build\kriol.exe --help
+
+          build\kriol.exe examples\hello_world.kriol --emit-ir -o hello.ll
+          Get-Content hello.ll -TotalCount 5
+
+          $utf8Path = Join-Path $env:RUNNER_TEMP 'olá mundu.kriol'
+          Copy-Item examples\hello_world.kriol $utf8Path
+          build\kriol.exe $utf8Path --emit-ir | Select-Object -First 3
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          cmake --install build --prefix $env:STAGE
+          dumpbin /nologo /dependents "$env:STAGE\ld.lld.exe"
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'llvm' }) -join ';'
+          if (Get-Command ld.lld -ErrorAction SilentlyContinue) { throw 'ld.lld is still on PATH' }
+
+          .\run_tests.ps1 "$env:STAGE\kriol.exe" .
+
+          & "$env:STAGE\kriol.exe" examples\hello_world.kriol -o hello
+          dumpbin /nologo /dependents hello.exe
+          .\hello.exe
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: kriol-windows-x86_64
+          path: ${{ env.STAGE }}

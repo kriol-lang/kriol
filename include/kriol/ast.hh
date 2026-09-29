@@ -1,6 +1,7 @@
 #ifndef _KRIOL_AST_HEADER
 #define _KRIOL_AST_HEADER
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <memory>
@@ -84,8 +85,12 @@ namespace ast {
     class Expr : public Sttmt {
     public:
         Type ResolvedType;
+        // Height of this expression tree, maintained by the constructors.
+        int Depth = 1;
         virtual ~Expr() = default;
     };
+
+    inline int depthOf(const std::unique_ptr<Expr>& expr) { return expr ? expr->Depth : 0; }
 
     class VarDeclSttmt : public Sttmt {
     public:
@@ -198,7 +203,13 @@ namespace ast {
         std::unique_ptr<FuncCallArgs> Args;
 
         FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
-            : Callee(std::move(Callee)), Args(std::move(Args)) {}
+            : Callee(std::move(Callee)), Args(std::move(Args)) {
+            int deepest = depthOf(this->Callee);
+            if (this->Args)
+                for (const auto& arg : this->Args->Args)
+                    deepest = std::max(deepest, depthOf(arg));
+            Depth = 1 + deepest;
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -209,7 +220,9 @@ namespace ast {
         std::unique_ptr<Expr> RHS;
 
         BinExpr(std::string Op, std::unique_ptr<Expr> LHS, std::unique_ptr<Expr> RHS)
-            : Op(std::move(Op)), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+            : Op(std::move(Op)), LHS(std::move(LHS)), RHS(std::move(RHS)) {
+            Depth = 1 + std::max(depthOf(this->LHS), depthOf(this->RHS));
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -244,7 +257,9 @@ namespace ast {
     public:
         std::unique_ptr<Expr> Content;
 
-        ParExpr(std::unique_ptr<Expr> Content) : Content(std::move(Content)) {}
+        ParExpr(std::unique_ptr<Expr> Content) : Content(std::move(Content)) {
+            Depth = 1 + depthOf(this->Content);
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -254,7 +269,9 @@ namespace ast {
         std::unique_ptr<Expr> Index;
 
         ArrayAccessExpr(std::unique_ptr<Expr> Base, std::unique_ptr<Expr> Index)
-            : Base(std::move(Base)), Index(std::move(Index)) {}
+            : Base(std::move(Base)), Index(std::move(Index)) {
+            Depth = 1 + std::max(depthOf(this->Base), depthOf(this->Index));
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -264,7 +281,9 @@ namespace ast {
         std::string Member;
 
         MemberAccessExpr(std::unique_ptr<Expr> base, std::string member)
-            : Base(std::move(base)), Member(std::move(member)) {}
+            : Base(std::move(base)), Member(std::move(member)) {
+            Depth = 1 + depthOf(Base);
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -274,7 +293,9 @@ namespace ast {
         std::string Member;
 
         QualifiedAccessExpr(std::unique_ptr<Expr> qualifier, std::string member)
-            : Qualifier(std::move(qualifier)), Member(std::move(member)) {}
+            : Qualifier(std::move(qualifier)), Member(std::move(member)) {
+            Depth = 1 + depthOf(Qualifier);
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -284,6 +305,7 @@ namespace ast {
         kriol::Type ExplicitElementType;
 
         void addElement(std::unique_ptr<Expr> element) {
+            Depth = std::max(Depth, 1 + depthOf(element));
             Elements.push_back(std::move(element));
         }
 
@@ -294,7 +316,7 @@ namespace ast {
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
-    /// Array repeat initializer: `[fill] * N`.
+    /// Array repeat initializer: `[fill; N]`.
     /// Declares a fully-initialized array where every element is a copy of fill.
     class ArrayRepeatExpr : public Expr {
     public:
@@ -302,7 +324,9 @@ namespace ast {
         std::size_t           Count;
 
         ArrayRepeatExpr(std::unique_ptr<Expr> fill, std::size_t count)
-            : Fill(std::move(fill)), Count(count) {}
+            : Fill(std::move(fill)), Count(count) {
+            Depth = 1 + depthOf(Fill);
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -320,6 +344,7 @@ namespace ast {
             : TypeName(std::move(typeName)) {}
 
         void AddField(std::string name, std::unique_ptr<Expr> value) {
+            Depth = std::max(Depth, 1 + depthOf(value));
             Fields.push_back({std::move(name), std::move(value)});
         }
 
@@ -333,7 +358,9 @@ namespace ast {
         std::unique_ptr<Expr> Assigned;
 
         AssignExpr(std::string AssignOp, std::unique_ptr<Expr> Assignee, std::unique_ptr<Expr> Assigned)
-            : AssignOp(std::move(AssignOp)), Assignee(std::move(Assignee)), Assigned(std::move(Assigned)) {}
+            : AssignOp(std::move(AssignOp)), Assignee(std::move(Assignee)), Assigned(std::move(Assigned)) {
+            Depth = 1 + std::max(depthOf(this->Assignee), depthOf(this->Assigned));
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -366,7 +393,10 @@ namespace ast {
         std::vector<Segment> Parts;
 
         void addText(const std::string& t) { Parts.push_back({t, nullptr}); }
-        void addExpr(std::unique_ptr<Expr> e) { Parts.push_back({"", std::move(e)}); }
+        void addExpr(std::unique_ptr<Expr> e) {
+            Depth = std::max(Depth, 1 + depthOf(e));
+            Parts.push_back({"", std::move(e)});
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 
@@ -376,7 +406,9 @@ namespace ast {
         std::unique_ptr<Expr> Operand;
 
         UnaryExpr(std::string op, std::unique_ptr<Expr> operand)
-            : Op(std::move(op)), Operand(std::move(operand)) {}
+            : Op(std::move(op)), Operand(std::move(operand)) {
+            Depth = 1 + depthOf(Operand);
+        }
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

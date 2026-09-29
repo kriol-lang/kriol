@@ -27,7 +27,9 @@ The file extension of the KriolLang programming language is `.kriol` or `.kr` an
 
 # Install
 
-The easiest way to test it currently is using a linux-based OS (if you're on Windows I would recommend trying it inside WSL), and as a dependency at least make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system.
+### Linux
+
+As a dependency, make sure to have a cc linker available like `gcc` or `clang` to ensure proper linkage of the produced object file `.o` into the binary code required to run in the system.
 
 You can install it using the following command:
 
@@ -42,6 +44,23 @@ export PATH="$HOME/.kriol:$PATH"
 ```
 
 Then close and reopen the shell and try `kriol --version`.
+
+### Windows
+
+Windows releases need nothing else installed: the zip contains `kriol.exe` and
+the `ld.lld.exe` it links programs with, and the programs it builds run on
+Windows 7 and later. Install it from PowerShell with:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kriol-lang/kriol/refs/heads/main/install.ps1))) -Pre
+```
+
+This installs to `%LOCALAPPDATA%\Programs\kriol` and adds it to your user
+`PATH`; open a new terminal and try `kriol --version`. It needs Windows
+PowerShell 5.1 (included in Windows 10 and later, and installable on Windows 7
+through WMF 5.1) or PowerShell 7. You can also download the
+`kriol-<version>-windows-x86_64.zip` from the releases page and keep its files
+together in one folder.
 
 
 ## Usage
@@ -72,7 +91,12 @@ Then execute the compiled binary with:
 ./fibonacci_recursive
 ```
 
-To inspect the generated LLVM IR instead of producing a binary:
+Programs are optimized at level 2 by default. Use `--opt-lvl 0` to turn
+optimization off (for example, when debugging the compiler), or `--opt-lvl 1`
+or `--opt-lvl 3` for the other levels.
+
+To inspect the generated LLVM IR instead of producing a binary (the IR is shown
+before optimization):
 
 ```sh
 kriol examples/mensage_special.kriol --emit-ir
@@ -107,7 +131,7 @@ If you want to build the project, currently it only works mostly on Linux based 
 If you are on a Debian (or Ubuntu) based Linux operating system you can install the dependencies using the following command:
 
 ```sh
-apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 zlib1g-dev libzstd-dev xxd cmake
+apt install make flex bison clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 zlib1g-dev libzstd-dev cmake
 ```
 
 WASI output also needs the WASI libc and compiler runtime packages:
@@ -145,6 +169,48 @@ And run with:
 
 ```sh
 ./build/release/kriol --help
+```
+
+To install it, with its documentation and the licenses of the libraries it
+embeds, into a prefix of your choice:
+
+```sh
+cmake --install build/release --prefix ~/.local
+```
+
+The release archives use a flat layout instead (configure with
+`-DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.`).
+
+### Windows (experimental)
+
+`kriol.exe` builds natively on Windows, and the
+[Windows workflow](.github/workflows/windows.yml) publishes it as the
+`kriol-windows-x86_64` artifact. Keep `ld.lld.exe` in the same folder as
+`kriol.exe`; with it, `kriol hello.kriol` produces `a.exe` without Visual Studio
+or any other toolchain installed. The programs it builds run on Windows 7 and
+later. `wasm32-wasi` output is disabled on Windows for now.
+
+Windows programs are built against a bundled MinGW runtime taken from an
+[llvm-mingw](https://github.com/mstorsjo/llvm-mingw) release (the `msvcrt`
+variant). Pointing `KRIOL_MINGW_SYSROOT` at one also enables
+`--target x86_64-windows` in Linux builds, which needs `ld.lld` on `PATH`:
+
+```sh
+cmake -B build -DKRIOL_MINGW_SYSROOT=/opt/llvm-mingw-20260922-msvcrt-ubuntu-22.04-x86_64
+kriol hello.kriol --target x86_64-windows -o hello.exe
+```
+
+To build it on Windows, install the
+[LLVM 20 `x86_64-pc-windows-msvc` archive](https://github.com/llvm/llvm-project/releases/tag/llvmorg-20.1.8)
+(the regular installer lacks the CMake files), an llvm-mingw `msvcrt-x86_64`
+release, the Visual Studio Build Tools,
+[win_flex_bison](https://github.com/lexxmark/winflexbison), CMake and Ninja.
+Then, from a "x64 Native Tools" prompt with the LLVM `bin` folder on `PATH`:
+
+```bat
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=<llvm>\lib\cmake\llvm -DKRIOL_MINGW_SYSROOT=<llvm-mingw>
+cmake --build build --target kriol
+.\run_tests.ps1 build\kriol.exe .
 ```
 
 ## Tests

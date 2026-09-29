@@ -1,0 +1,14 @@
+fn inisiu() {
+    nter[256] a = [7; 256];
+    a[255] = 9;
+
+    u8 i = 200;
+    konfirma(a[i] == 7);
+
+    u8 last = 255;
+    konfirma(a[last] == 9);
+
+    u16 j = 128;
+    a[j] = 3;
+    konfirma(a[j] == 3);
+}

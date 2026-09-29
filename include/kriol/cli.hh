@@ -30,15 +30,12 @@ namespace kriol::cli
 
     void PrintErr(std::string message);
     void PrintErr(std::string message, int exitNum);
-    void PrintErr(
-        const std::string& file,
-        int line,
-        const std::string& message,
-        int exitNum = -1
-    );
 
     void SetSourceFile(const std::string& filename);
     const std::string& GetSourceFile();
+
+    // Compile() returns the recorded errors as diagnostics after parsing.
+    void ReportParseError(int line, const std::string& message);
 
     enum class CompileInputKind
     {
@@ -53,6 +50,7 @@ namespace kriol::cli
         std::string sourceName;
         std::string outfile;
         std::string target = "native";
+        unsigned optLevel = 2;
         bool emitIR = false;
         bool outputToMemory = false;
     };
@@ -88,6 +86,7 @@ namespace kriol::cli
             std::string sourceName;
             std::string outfile;
             std::string target = "native";
+            unsigned optLevel = 2;
             bool emitIR = false;
             bool ignoreExtension = false;
         };

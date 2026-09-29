@@ -21,11 +21,13 @@ namespace ast {
 
     enum class CodegenTarget {
         Native,
-        Wasm32Wasi
+        Wasm32Wasi,
+        X86_64Windows
     };
 
     struct EmitOptions {
         CodegenTarget Target = CodegenTarget::Native;
+        unsigned OptLevel = 2;
     };
 
     class CodeGenVisitor : public Visitor {
@@ -114,8 +116,6 @@ namespace ast {
             if (!Scopes.empty()) Scopes.back()[name] = a;
         }
 
-        llvm::Function* getOrDeclarePrintf();
-
         // Forward-declare a user function in the LLVM module (type + name, no body).
         // Called in the program-root pre-pass so mutual/forward calls resolve.
         void forwardDeclareFunc(ast::FuncDeclSttmt& node);
@@ -137,13 +137,13 @@ namespace ast {
         static const char* formatSpec(const Type& kriolType);
         static Type        llvmTypeToKriol(llvm::Type* ty);
 
-        // Recursively appends format specifiers and argument values for an array
-        // to outFmt and outArgs, for use with __kriol_format.
-        void appendArrayFormatParts(llvm::Value* storage,
-                                    llvm::ArrayType* arrayTy,
-                                    const Type& arrayKriolType,
-                                    std::string& outFmt,
-                                    std::vector<llvm::Value*>& outArgs);
+        llvm::Value* emitArrayToText(llvm::Value* storage, const Type& arrayType);
+
+        void emitArrayFill(llvm::Value* storage, llvm::ArrayType* arrayTy, llvm::Value* fill);
+
+        void emitArrayInitializer(llvm::Value* storage,
+                                  const Type& arrayType,
+                                  ast::Expr* init);
         bool emitPreludeCall(ast::FunCallExpr& node, const std::string& name);
         void emitPrintBuiltin(ast::FuncCallArgs* args, bool addNewline);
 
@@ -160,9 +160,6 @@ namespace ast {
 
         /// Compile the module and return the emitted bytes without keeping a file.
         std::vector<unsigned char> emitToMemory(const EmitOptions& options = {});
-
-        /// Compile the module to a native executable at outputPath.
-        void emitNative(const std::string& outputPath);
 
         void visit(VarDeclSttmt&      node) override;
         void visit(MoldaDeclSttmt&    node) override;

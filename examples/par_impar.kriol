@@ -1,0 +1,14 @@
+fn num_par(nter n) bool {
+  divolvi (n % 2) == 0;
+}
+
+fn inisiu() {
+  pa u8 i = 1 ; i <= 10 ; i += 1 {
+    mostra(f'Numeru {i} e ');
+    si num_par(i) {
+      mostran('PAR.');
+    } sinon {
+      mostran('IMPAR.');
+    }
+  }
+}

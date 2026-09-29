@@ -30,12 +30,50 @@ extern int yyparse(kriol::ast::BlockSttmt** Program);
 extern int yylex_destroy(void);
 extern int yylineno;
 extern void kriol_scanner_reset_state(void);
+extern void yyrestart(FILE* input_file);
 struct yy_buffer_state;
 typedef yy_buffer_state *YY_BUFFER_STATE;
 extern YY_BUFFER_STATE yy_scan_string(const char *yy_str);
 extern void yy_delete_buffer(YY_BUFFER_STATE b);
 
 static std::string g_source_file;
+static std::vector<std::string> g_parse_errors;
+
+// Paths arrive as UTF-8 (main.cc converts the Windows command line), but
+// std::filesystem and the CRT read narrow strings in the ANSI code page there.
+static fs::path PathFromUtf8(const std::string& path)
+{
+    return fs::u8path(path);
+}
+
+static bool IsKnownTarget(const std::string& target)
+{
+    return target == "native" || target == "wasm32-wasi" || target == "x86_64-windows";
+}
+
+static ast::CodegenTarget ResolveTarget(const std::string& target)
+{
+    if (target == "wasm32-wasi")
+        return ast::CodegenTarget::Wasm32Wasi;
+    if (target == "x86_64-windows")
+        return ast::CodegenTarget::X86_64Windows;
+#if defined(_WIN32) && KRIOL_ENABLE_WINDOWS_TARGET
+    // The bundled MinGW runtime needs no Visual Studio install, unlike the
+    // host's default MSVC target.
+    return ast::CodegenTarget::X86_64Windows;
+#else
+    return ast::CodegenTarget::Native;
+#endif
+}
+
+static FILE* OpenFileForRead(const std::string& filename)
+{
+#ifdef _WIN32
+    return _wfopen(PathFromUtf8(filename).c_str(), L"rb");
+#else
+    return fopen(filename.c_str(), "rb");
+#endif
+}
 
 void cli::SetSourceFile(const std::string& filename) {
     g_source_file = filename;
@@ -43,6 +81,11 @@ void cli::SetSourceFile(const std::string& filename) {
 
 const std::string& cli::GetSourceFile() {
     return g_source_file;
+}
+
+void cli::ReportParseError(int line, const std::string& message) {
+    std::string location = g_source_file.empty() ? "" : g_source_file + ":" + std::to_string(line) + ": ";
+    g_parse_errors.push_back(location + message);
 }
 
 void cli::PrintErr(std::string message)
@@ -56,11 +99,6 @@ void cli::PrintErr(std::string message, int exitNum)
     throw cli::FatalError(message, exitNum);
 }
 
-void cli::PrintErr(const std::string& file, int line, const std::string& msg, int exitNum) {
-    std::string location = file.empty() ? "" : file + ":" + std::to_string(line) + ": ";
-    std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << location << msg << std::endl;
-    if (exitNum >= 0) throw cli::FatalError(location + msg, exitNum);
-}
 
 void cli::Compiler::DefineArgs()
 {
@@ -71,8 +109,9 @@ void cli::Compiler::DefineArgs()
         "Inputs:\n"
         "  Provide exactly one of [file] or --text SOURCE.\n\n"
         "Outputs:\n"
-        "  Native builds write ./a.out by default.\n"
-        "  wasm32-wasi builds write ./a.wasm by default.\n"
+        "  Native builds write ./" KR_DEFAULT_OUT_FILE " by default.\n"
+        "  wasm32-wasi builds write ./" KR_DEFAULT_WASM_OUT_FILE " by default.\n"
+        "  x86_64-windows builds write ./" KR_DEFAULT_WINDOWS_OUT_FILE " by default.\n"
         "  --emit-ir prints LLVM IR to stdout unless -o is provided.\n\n"
         "Examples:\n"
         "  kriol hello.kriol\n"
@@ -102,12 +141,25 @@ void cli::Compiler::DefineArgs()
         .default_value(false)
         .implicit_value(true);
 
-    Parser->add_argument("--target")
+    auto& target = Parser->add_argument("--target")
         .help("Compilation target.")
         .metavar("TARGET")
         .default_value(std::string("native"))
+        .nargs(1);
+    target.add_choice("native");
+#if KRIOL_ENABLE_WASM
+    target.add_choice("wasm32-wasi");
+#endif
+#if KRIOL_ENABLE_WINDOWS_TARGET
+    target.add_choice("x86_64-windows");
+#endif
+
+    Parser->add_argument("--opt-lvl")
+        .help("Optimization level for the generated program, 0 (none) to 3.")
+        .metavar("N")
+        .default_value(std::string("2"))
         .nargs(1)
-        .choices("native", "wasm32-wasi");
+        .choices("0", "1", "2", "3");
 
     Parser->add_argument("--ignore-extension")
         .help("Accept file inputs without a ." +
@@ -154,6 +206,7 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
 
     Args.outfile = Parser->present<std::string>("--output").value_or("");
     Args.target = Parser->get<std::string>("--target");
+    Args.optLevel = static_cast<unsigned>(std::stoul(Parser->get<std::string>("--opt-lvl")));
     Args.emitIR = Parser->get<bool>("--emit-ir");
     Args.ignoreExtension = Parser->get<bool>("--ignore-extension");
 }
@@ -173,7 +226,7 @@ ast::BlockSttmt* cli::KriolLangParserWrapper::ParseCode(
 
 void cli::Compiler::SaveCodeToFile(const std::string& code, const std::string& filename)
 {
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(PathFromUtf8(filename), std::ios::binary);
     if (!file)
         cli::PrintErr("Couldn't create file '" + filename + "': " + std::strerror(errno), 1);
 
@@ -187,25 +240,38 @@ void cli::KriolLangParserWrapper::ParseFile(
     ast::BlockSttmt** program
 )
 {
-    if (!fs::exists(filename))
+    const fs::path path = PathFromUtf8(filename);
+
+    if (!fs::exists(path))
     {
         cli::PrintErr("File '" + filename + "' was not found!", 1);
     }
 
-    if (!fs::is_regular_file(filename))
+    if (!fs::is_regular_file(path))
     {
         cli::PrintErr("Input '" + filename + "' is not a regular file.", 1);
     }
 
-    FILE *file = fopen(filename.c_str(), "r");
+    FILE *file = OpenFileForRead(filename);
 
     if (file == NULL)
     {
         cli::PrintErr("Couldn't open the file '" + filename + "': " + std::strerror(errno), 1);
     }
 
+    // Skip a UTF-8 byte order mark, which Windows editors often write.
+    unsigned char bom[3];
+    if (fread(bom, 1, sizeof bom, file) != sizeof bom ||
+        bom[0] != 0xEF || bom[1] != 0xBB || bom[2] != 0xBF)
+        rewind(file);
+
+    // A previous parse may have stopped before the end of its input (an aborted
+    // parse or an exception), leaving buffered input and start conditions behind.
     yyin = file;
+    yyrestart(file);
+    kriol_scanner_reset_state();
     cli::SetSourceFile(filename);
+    g_parse_errors.clear();
     yylineno = 1;
     try {
         yyparse(program);
@@ -226,6 +292,7 @@ void cli::KriolLangParserWrapper::ParseText(
     if (!buffer)
         cli::PrintErr("Couldn't create scanner buffer for source text!", 1);
 
+    g_parse_errors.clear();
     yylineno = 1;
     try {
         yyparse(program);
@@ -242,12 +309,14 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 {
     if (options.input.empty())
         throw std::invalid_argument("Compilation input cannot be empty.");
-    if (options.target != "native" && options.target != "wasm32-wasi")
+    if (!IsKnownTarget(options.target))
         throw std::invalid_argument("Unknown compilation target '" + options.target + "'.");
     if (options.emitIR && options.outputToMemory)
         throw std::invalid_argument("emitIR and outputToMemory cannot be used together.");
     if (options.outputToMemory && !options.outfile.empty())
         throw std::invalid_argument("outfile cannot be used with outputToMemory.");
+    if (options.optLevel > 3)
+        throw std::invalid_argument("Optimization level must be between 0 and 3.");
     if (options.outputToMemory && options.target != "wasm32-wasi")
         throw std::invalid_argument("In-memory output is currently supported only for wasm32-wasi.");
 
@@ -263,6 +332,13 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
     );
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
+    if (!g_parse_errors.empty())
+    {
+        result.diagnostics = std::move(g_parse_errors);
+        g_parse_errors.clear();
+        return result;
+    }
+
     if (ProgramNode)
     {
         kriol::sema::SemanticAnalyzer sema;
@@ -275,9 +351,7 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         }
     }
 
-    ast::CodegenTarget Target = options.target == "wasm32-wasi"
-        ? ast::CodegenTarget::Wasm32Wasi
-        : ast::CodegenTarget::Native;
+    ast::CodegenTarget Target = ResolveTarget(options.target);
 
     ast::CodeGenVisitor codegenVisitor(sourceName);
     codegenVisitor.CurrentTarget = Target;
@@ -294,13 +368,21 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         return result;
     }
 
+    bool windowsExecutable = Target == ast::CodegenTarget::X86_64Windows;
+#ifdef _WIN32
+    windowsExecutable = windowsExecutable || Target == ast::CodegenTarget::Native;
+#endif
+
     std::string defaultOutfile = Target == ast::CodegenTarget::Wasm32Wasi
         ? KR_DEFAULT_WASM_OUT_FILE
-        : KR_DEFAULT_OUT_FILE;
+        : windowsExecutable ? KR_DEFAULT_WINDOWS_OUT_FILE : KR_DEFAULT_OUT_FILE;
 
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
+    // Windows only runs programs that carry an .exe extension.
+    if (windowsExecutable && !PathFromUtf8(outfile).has_extension())
+        outfile += ".exe";
 
-    ast::EmitOptions emitOptions = {.Target = Target};
+    ast::EmitOptions emitOptions = {.Target = Target, .OptLevel = options.optLevel};
 
     if (options.outputToMemory)
     {
@@ -319,7 +401,7 @@ void cli::Compiler::ValidateInput() const
     if (Args.inputKind != CompileInputKind::File || Args.ignoreExtension)
         return;
 
-    const std::string extension = fs::path(Args.input).extension().string();
+    const std::string extension = PathFromUtf8(Args.input).extension().u8string();
     const bool supported = extension == "." + std::string(KR_STANDARD_FILE_EXTENSION) ||
                            extension == "." + std::string(KR_ALTERNATIVE_FILE_EXTENSION);
     if (!supported)
@@ -339,6 +421,7 @@ cli::CompileOptions cli::Compiler::MakeCompileOptions() const
     options.sourceName = Args.sourceName;
     options.outfile = Args.outfile;
     options.target = Args.target;
+    options.optLevel = Args.optLevel;
     options.emitIR = Args.emitIR;
     return options;
 }

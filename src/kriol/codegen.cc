@@ -10,6 +10,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Linker/Linker.h>
@@ -17,6 +18,8 @@
 
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/OptimizationLevel.h>
 
 #if KRIOL_USE_EMBEDDED_LLD
 
@@ -32,8 +35,10 @@ LLD_HAS_DRIVER(wasm)
 #include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/type_rules.hh"
 
 using namespace kriol::ast;
+using namespace kriol::typerules;
 
 // NOTE: these includes below are generated and
 // injected in compile time by the build system.
@@ -56,7 +61,22 @@ using namespace kriol::ast;
 
 #endif // KRIOL_ENABLE_WASM
 
+#if KRIOL_ENABLE_WINDOWS_TARGET
+
+struct KriolEmbeddedFile {
+    const char* Name;
+    const unsigned char* Data;
+    unsigned int Len;
+};
+
+#include "kriol_runtime_x86_64_windows.bc.h"
+#include "libgc_x86_64_windows.o.h"
+#include "mingw_link_inputs.h"
+
+#endif // KRIOL_ENABLE_WINDOWS_TARGET
+
 #define __WASI_MAIN "__main_argc_argv"
+#define KRIOL_MINGW_TRIPLE "x86_64-w64-windows-gnu"
 
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
@@ -224,6 +244,10 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
+        // Stack first in memory, so an overflow traps instead of overwriting data.
+        "-z",
+        "stack-size=8388608",
+        "--stack-first",
         "--export=" __WASI_MAIN,
         wasiInputs.Crt1Command,
         objPath,
@@ -312,13 +336,6 @@ static WasiInputs writeWasiInputs() {
         )
     };
 }
-
-static void removeWasiInputs(const WasiInputs& inputs) {
-    if (!inputs.Crt1Command.empty()) llvm::sys::fs::remove(inputs.Crt1Command);
-    if (!inputs.Libc.empty()) llvm::sys::fs::remove(inputs.Libc);
-    if (!inputs.Libm.empty()) llvm::sys::fs::remove(inputs.Libm);
-    if (!inputs.Builtins.empty()) llvm::sys::fs::remove(inputs.Builtins);
-}
 #endif
 
 static TargetResources selectTargetResources(CodegenTarget target) {
@@ -347,6 +364,16 @@ static TargetResources selectTargetResources(CodegenTarget target) {
 #else
             throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
 #endif
+        case CodegenTarget::X86_64Windows:
+#if KRIOL_ENABLE_WINDOWS_TARGET
+            return TargetResources{
+                KRIOL_MINGW_TRIPLE,
+                EmbeddedBlob{kriol_runtime_x86_64_windows_bc, kriol_runtime_x86_64_windows_bc_len},
+                EmbeddedBlob{libgc_x86_64_windows_o, libgc_x86_64_windows_o_len}
+            };
+#else
+            throw std::runtime_error("This build of the compiler was built without 'x86_64-windows' support.");
+#endif
     }
 
     throw std::runtime_error("Unsupported codegen target.");
@@ -367,11 +394,43 @@ static void linkRuntimeBitcode(llvm::Module& module,
     bool linkErr = llvm::Linker::linkModules(module, std::move(expectedMod.get()));
     if (linkErr)
         throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
+
+    // clang tags the runtime with its baseline CPU attributes, which kriol's
+    // functions lack, and LLVM never inlines across differing target
+    // attributes. Dropping them lets hot helpers (bounds and division checks)
+    // inline and fold; the target machine uses the same baseline CPU anyway.
+    for (llvm::Function& fn : module) {
+        fn.removeFnAttr("target-cpu");
+        fn.removeFnAttr("target-features");
+        fn.removeFnAttr("tune-cpu");
+    }
+}
+
+static void optimizeModule(llvm::Module& module,
+                           llvm::TargetMachine& targetMachine,
+                           unsigned optLevel) {
+    llvm::LoopAnalysisManager loopAM;
+    llvm::FunctionAnalysisManager functionAM;
+    llvm::CGSCCAnalysisManager cgsccAM;
+    llvm::ModuleAnalysisManager moduleAM;
+
+    llvm::PassBuilder passBuilder(&targetMachine);
+    passBuilder.registerModuleAnalyses(moduleAM);
+    passBuilder.registerCGSCCAnalyses(cgsccAM);
+    passBuilder.registerFunctionAnalyses(functionAM);
+    passBuilder.registerLoopAnalyses(loopAM);
+    passBuilder.crossRegisterProxies(loopAM, functionAM, cgsccAM, moduleAM);
+
+    const llvm::OptimizationLevel level = optLevel >= 3 ? llvm::OptimizationLevel::O3
+                                        : optLevel == 2 ? llvm::OptimizationLevel::O2
+                                        : llvm::OptimizationLevel::O1;
+    passBuilder.buildPerModuleDefaultPipeline(level).run(module, moduleAM);
 }
 
 static void emitObjectFile(llvm::Module& module,
                            const std::string& targetTriple,
-                           const std::string& objPath) {
+                           const std::string& objPath,
+                           unsigned optLevel) {
     module.setTargetTriple(targetTriple);
 
     std::string Error;
@@ -383,9 +442,17 @@ static void emitObjectFile(llvm::Module& module,
     auto Features = "";
     llvm::TargetOptions opt;
     auto RM = std::optional<llvm::Reloc::Model>();
-    auto TargetMachine = Target->createTargetMachine(targetTriple, CPU, Features, opt, RM);
+    const llvm::CodeGenOptLevel codeGenLevel = optLevel == 0 ? llvm::CodeGenOptLevel::None
+                                             : optLevel == 1 ? llvm::CodeGenOptLevel::Less
+                                             : optLevel == 2 ? llvm::CodeGenOptLevel::Default
+                                             : llvm::CodeGenOptLevel::Aggressive;
+    std::unique_ptr<llvm::TargetMachine> TargetMachine(Target->createTargetMachine(
+        targetTriple, CPU, Features, opt, RM, std::nullopt, codeGenLevel));
 
     module.setDataLayout(TargetMachine->createDataLayout());
+
+    if (optLevel > 0)
+        optimizeModule(module, *TargetMachine, optLevel);
 
     std::error_code EC;
     llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
@@ -401,32 +468,124 @@ static void emitObjectFile(llvm::Module& module,
     dest.flush();
 }
 
-static std::string writeGcArchive(CodegenTarget target, EmbeddedBlob gcBlob) {
+static bool isWindowsTriple(const std::string& triple) {
+    return llvm::Triple(triple).isOSWindows();
+}
+
+static std::string writeGcArchive(CodegenTarget target,
+                                  const std::string& targetTriple,
+                                  EmbeddedBlob gcBlob) {
     if (!gcBlob.Data || gcBlob.Len == 0)
         return {};
+
+    if (target == CodegenTarget::X86_64Windows)
+        return writeTempBlob("embedded_libgc_x86_64_windows", "o", gcBlob);
 
     const char* stem = target == CodegenTarget::Wasm32Wasi
         ? "embedded_libgc_wasm32_wasi"
         : "embedded_libgc_native";
-    return writeTempBlob(stem, "a", gcBlob);
+    return writeTempBlob(stem, isWindowsTriple(targetTriple) ? "lib" : "a", gcBlob);
 }
 
 static void linkNativeExecutable(const std::string& objPath,
                                  const std::string& tempLibGc,
-                                 const std::string& outputPath) {
+                                 const std::string& outputPath,
+                                 const std::string& targetTriple) {
+    const bool windows = isWindowsTriple(targetTriple);
     std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
-    std::vector<std::string> linkArgs = {
-        ccPath,
-        "-no-pie",
-        objPath
-    };
+    std::vector<std::string> linkArgs = {ccPath};
+    if (!windows)
+        linkArgs.push_back("-no-pie");
+    linkArgs.push_back(objPath);
     if (!tempLibGc.empty())
         linkArgs.push_back(tempLibGc);
     linkArgs.push_back("-o");
     linkArgs.push_back(outputPath);
-    linkArgs.push_back("-lm");
+    if (!windows)
+        linkArgs.push_back("-lm");
     runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
+
+#if KRIOL_ENABLE_WINDOWS_TARGET
+struct MingwInputs {
+    std::vector<std::string> Startup;
+    std::vector<std::string> Libraries;
+};
+
+static void removeMingwInputs(const MingwInputs& inputs) {
+    for (const auto& path : inputs.Startup) llvm::sys::fs::remove(path);
+    for (const auto& path : inputs.Libraries) llvm::sys::fs::remove(path);
+}
+
+template <size_t N>
+static void writeMingwGroup(const KriolEmbeddedFile (&files)[N],
+                            std::vector<std::string>& paths) {
+    for (const auto& file : files) {
+        std::string stem = "kriol_mingw_" + llvm::sys::path::stem(file.Name).str();
+        std::string suffix = llvm::sys::path::extension(file.Name).drop_front().str();
+        paths.push_back(writeTempBlob(stem.c_str(), suffix.c_str(), EmbeddedBlob{file.Data, file.Len}));
+    }
+}
+
+static MingwInputs writeMingwInputs() {
+    MingwInputs inputs;
+    try {
+        writeMingwGroup(kriol_mingw_startup_inputs, inputs.Startup);
+        writeMingwGroup(kriol_mingw_library_inputs, inputs.Libraries);
+    } catch (...) {
+        removeMingwInputs(inputs);
+        throw;
+    }
+    return inputs;
+}
+
+static std::string findMingwLinker() {
+    // Release archives ship ld.lld next to kriol, so that copy wins over PATH.
+    std::string self = llvm::sys::fs::getMainExecutable(
+        nullptr, reinterpret_cast<void*>(&findMingwLinker));
+    if (!self.empty()) {
+        llvm::SmallString<256> bundled(llvm::sys::path::parent_path(self));
+#ifdef _WIN32
+        llvm::sys::path::append(bundled, "ld.lld.exe");
+#else
+        llvm::sys::path::append(bundled, "ld.lld");
+#endif
+        if (llvm::sys::fs::can_execute(bundled))
+            return std::string(bundled.str());
+    }
+
+    return findProgram(
+        {"ld.lld-20", "ld.lld-19", "ld.lld"},
+        "linker 'ld.lld' (place it next to kriol or on PATH)"
+    );
+}
+
+static void linkMingwExecutable(const std::string& objPath,
+                                const std::string& gcObject,
+                                const std::string& outputPath) {
+    std::string linkerPath = findMingwLinker();
+    MingwInputs inputs = writeMingwInputs();
+
+    // What the MinGW clang driver passes to ld.lld, plus Linux's 8 MiB stack.
+    std::vector<std::string> linkArgs = {
+        linkerPath, "-m", "i386pep", "--subsystem", "console",
+        "--stack", "8388608", "-o", outputPath
+    };
+    linkArgs.insert(linkArgs.end(), inputs.Startup.begin(), inputs.Startup.end());
+    linkArgs.push_back(objPath);
+    if (!gcObject.empty())
+        linkArgs.push_back(gcObject);
+    linkArgs.insert(linkArgs.end(), inputs.Libraries.begin(), inputs.Libraries.end());
+
+    try {
+        runProgram(linkerPath, linkArgs, "Failure in the final Windows linkage: ");
+    } catch (...) {
+        removeMingwInputs(inputs);
+        throw;
+    }
+    removeMingwInputs(inputs);
+}
+#endif // KRIOL_ENABLE_WINDOWS_TARGET
 
 // Returns true if the block can be reached from its function's entry block.
 static bool isReachableFromEntry(llvm::BasicBlock* target) {
@@ -444,85 +603,17 @@ static bool isReachableFromEntry(llvm::BasicBlock* target) {
     return false;
 }
 
-static kriol::Type promotedNumericType(const kriol::Type& lhs, const kriol::Type& rhs) {
-    if (!lhs.valid()) return rhs;
-    if (!rhs.valid()) return lhs;
-    if (lhs.isFloat() || rhs.isFloat()) {
-        unsigned bits = std::max(lhs.isFloat() ? lhs.bitWidth() : 0,
-                                 rhs.isFloat() ? rhs.bitWidth() : 0);
-        return kriol::Type::Float(bits == 32 ? 32 : 64);
-    }
-    if (lhs.isInteger() && rhs.isInteger()) {
-        unsigned bits = std::max(lhs.bitWidth(), rhs.bitWidth());
-        bool isSigned = lhs.isSigned() || rhs.isSigned();
-        if (lhs.isSigned() != rhs.isSigned())
-            bits = std::max(bits, std::min(64u, bits * 2));
-        return isSigned ? kriol::Type::SignedInteger(bits) : kriol::Type::UnsignedInteger(bits);
-    }
-    return lhs.valid() ? lhs : rhs;
+// User functions get a "kriol." prefix and internal linkage, so no Kriol name
+// (exit, free, main, ...) can clash with a C library or runtime symbol. Only
+// inisiu is exported, as the C entry point.
+static std::string llvmFunctionName(const std::string& kriolName) {
+    return kriolName == "inisiu" ? "main" : "kriol." + kriolName;
 }
 
-static const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
-    if (!expr) return nullptr;
-    if (auto* par = dynamic_cast<const ParExpr*>(expr))
-        return integerLiteralExpr(par->Content.get(), negative);
-    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
-        if (unary->Op != "-") return nullptr;
-        negative = !negative;
-        return integerLiteralExpr(unary->Operand.get(), negative);
-    }
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    return lit && lit->Type.isInteger() ? lit : nullptr;
-}
-
-static bool integerLiteralFitsType(const Expr* expr, const kriol::Type& to) {
-    if (!to.isInteger()) return false;
-
-    bool negative = false;
-    auto* lit = integerLiteralExpr(expr, negative);
-    if (!lit) return false;
-
-    long long value = 0;
-    try {
-        value = std::stoll(lit->Value);
-    } catch (...) {
-        return false;
-    }
-    if (negative) value = -value;
-
-    const unsigned bits = to.bitWidth();
-    if (bits == 0 || bits > 64) return false;
-
-    if (to.isSigned()) {
-        if (bits == 64) return true;
-        const long long min = -(1LL << (bits - 1));
-        const long long max = (1LL << (bits - 1)) - 1;
-        return value >= min && value <= max;
-    }
-
-    if (value < 0) return false;
-    if (bits == 64) return true;
-    const unsigned long long max = (1ULL << bits) - 1;
-    return static_cast<unsigned long long>(value) <= max;
-}
-
-static kriol::Type promotedNumericTypeForExpr(const Expr* lhsExpr,
-                                              const Expr* rhsExpr,
-                                              const kriol::Type& lhs,
-                                              const kriol::Type& rhs) {
-    if (lhs.isInteger() && rhs.isInteger()) {
-        bool ignored = false;
-        const bool lhsLiteral = integerLiteralExpr(lhsExpr, ignored) != nullptr;
-        ignored = false;
-        const bool rhsLiteral = integerLiteralExpr(rhsExpr, ignored) != nullptr;
-
-        if (lhsLiteral && !rhsLiteral && integerLiteralFitsType(lhsExpr, rhs))
-            return rhs;
-        if (rhsLiteral && !lhsLiteral && integerLiteralFitsType(rhsExpr, lhs))
-            return lhs;
-    }
-
-    return promotedNumericType(lhs, rhs);
+static llvm::GlobalValue::LinkageTypes functionLinkage(const std::string& kriolName) {
+    return kriolName == "inisiu"
+        ? llvm::GlobalValue::ExternalLinkage
+        : llvm::GlobalValue::InternalLinkage;
 }
 
 }
@@ -591,15 +682,6 @@ llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {
 llvm::GlobalVariable* CodeGenVisitor::lookupGlobal(const std::string& name) {
     auto it = GlobalVars.find(name);
     return it != GlobalVars.end() ? it->second : nullptr;
-}
-
-llvm::Function* CodeGenVisitor::getOrDeclarePrintf() {
-    if (auto* fn = Mod->getFunction("printf")) return fn;
-    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
-    auto* ftype  = llvm::FunctionType::get(
-        llvm::Type::getInt32Ty(Context), {ptrTy}, /*isVarArg=*/true);
-    return llvm::Function::Create(
-        ftype, llvm::Function::ExternalLinkage, "printf", *Mod);
 }
 
 llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
@@ -686,10 +768,6 @@ std::string CodeGenVisitor::emitIR() {
     return buf;
 }
 
-void CodeGenVisitor::emitNative(const std::string& outputPath) {
-    emit(outputPath, {});
-}
-
 std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& options) {
     llvm::SmallString<128> outputPath;
     std::error_code ec = llvm::sys::fs::createTemporaryFile(
@@ -719,44 +797,54 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
 }
 
 void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& options) {
-    std::string objPath = outputPath + ".o";
     TargetResources resources = selectTargetResources(options.Target);
 
-    linkRuntimeBitcode(*Mod, Context, resources.Runtime);
-    emitObjectFile(*Mod, resources.Triple, objPath);
-    std::string tempLibGc = writeGcArchive(options.Target, resources.GcArchive);
-#if KRIOL_ENABLE_WASM
-    WasiInputs wasiInputs;
-    if (options.Target == CodegenTarget::Wasm32Wasi)
-        wasiInputs = writeWasiInputs();
-#endif
+    std::vector<std::string> tempFiles;
+    auto removeTempFiles = [&tempFiles] {
+        for (const auto& path : tempFiles)
+            llvm::sys::fs::remove(path);
+    };
 
     try {
+        llvm::SmallString<128> objPathBuf;
+        std::error_code ec = llvm::sys::fs::createTemporaryFile(
+            "kriol_object", isWindowsTriple(resources.Triple) ? "obj" : "o", objPathBuf);
+        if (ec)
+            throw std::runtime_error("Failed to allocate temporary object file: " + ec.message());
+        const std::string objPath(objPathBuf.str());
+        tempFiles.push_back(objPath);
+
+        linkRuntimeBitcode(*Mod, Context, resources.Runtime);
+        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel);
+
+        std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
+        if (!tempLibGc.empty())
+            tempFiles.push_back(tempLibGc);
+
         if (options.Target == CodegenTarget::Wasm32Wasi) {
 #if KRIOL_ENABLE_WASM
+            WasiInputs wasiInputs = writeWasiInputs();
+            tempFiles.insert(tempFiles.end(), {
+                wasiInputs.Crt1Command, wasiInputs.Libc, wasiInputs.Libm, wasiInputs.Builtins
+            });
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
             throw std::runtime_error("kriol was built without wasm32-wasi support.");
 #endif
+        } else if (options.Target == CodegenTarget::X86_64Windows) {
+#if KRIOL_ENABLE_WINDOWS_TARGET
+            linkMingwExecutable(objPath, tempLibGc, outputPath);
+#else
+            throw std::runtime_error("kriol was built without x86_64-windows support.");
+#endif
         } else {
-            linkNativeExecutable(objPath, tempLibGc, outputPath);
+            linkNativeExecutable(objPath, tempLibGc, outputPath, resources.Triple);
         }
     } catch (...) {
-        std::remove(objPath.c_str());
-        if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
-#if KRIOL_ENABLE_WASM
-        if (options.Target == CodegenTarget::Wasm32Wasi)
-            removeWasiInputs(wasiInputs);
-#endif
+        removeTempFiles();
         throw;
     }
-
-    std::remove(objPath.c_str());
-    if (!tempLibGc.empty()) llvm::sys::fs::remove(tempLibGc);
-#if KRIOL_ENABLE_WASM
-    if (options.Target == CodegenTarget::Wasm32Wasi)
-        removeWasiInputs(wasiInputs);
-#endif
+    removeTempFiles();
 }
 
 void CodeGenVisitor::visit(VarDeclSttmt& node) {
@@ -791,44 +879,78 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
 
-    if (node.IsArray) {
-        if (node.Value) {
-            auto* arrTy = llvm::dyn_cast<llvm::ArrayType>(ty);
-            if (!arrTy) throw std::runtime_error("internal error: array variable '" + node.Name + "' has non-array LLVM type");
-            auto* elemTy = arrTy->getArrayElementType();
+    // Sema does not prove that every path assigns a 'dipoz' variable before use.
+    if (!node.Value) {
+        if (ty->isAggregateType())
+            Builder->CreateMemSet(alloca, Builder->getInt8(0),
+                                  llvm::ConstantExpr::getSizeOf(ty), alloca->getAlign());
+        else
+            Builder->CreateStore(llvm::Constant::getNullValue(ty), alloca);
+        LastValue = nullptr;
+        return;
+    }
 
-            if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get())) {
-                for (size_t i = 0; i < initLit->Elements.size(); ++i) {
-                    initLit->Elements[i]->accept(*this);
-                    if (!LastValue) continue;
-                    llvm::Value* value = LastValue;
-                    Type elemKriolTy = node.Type.elementType();
-                    if (value->getType() != elemTy)
-                        value = coerceToType(value, initLit->Elements[i]->ResolvedType, elemKriolTy);
-                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
-                    Builder->CreateStore(value, elemPtr);
-                }
-            } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
-                initRep->Fill->accept(*this);
-                llvm::Value* fillVal = LastValue
-                    ? coerceToType(LastValue, initRep->Fill->ResolvedType, node.Type.elementType())
-                    : llvm::Constant::getNullValue(elemTy);
-                for (size_t i = 0; i < initRep->Count; ++i) {
-                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
-                    Builder->CreateStore(fillVal, elemPtr);
-                }
-            } else {
-                throw std::runtime_error("array variable '" + node.Name + "' requires array literal or repeat initializer");
-            }
-        }
-    } else if (node.Value) {
+    if (node.IsArray) {
+        emitArrayInitializer(alloca, node.Type, node.Value.get());
+    } else {
         node.Value->accept(*this);
         if (LastValue) {
             LastValue = coerceToType(LastValue, node.Value->ResolvedType, node.Type);
             Builder->CreateStore(LastValue, alloca);
         }
+    }
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::emitArrayFill(llvm::Value* storage,
+                                   llvm::ArrayType* arrayTy,
+                                   llvm::Value* fill) {
+    // Sema rejects size 0, so the body can run before the bound check.
+    auto* i64Ty = llvm::Type::getInt64Ty(Context);
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* entryBB = Builder->GetInsertBlock();
+    auto* loopBB = llvm::BasicBlock::Create(Context, "fill.loop", fn);
+    auto* doneBB = llvm::BasicBlock::Create(Context, "fill.done", fn);
+    Builder->CreateBr(loopBB);
+
+    Builder->SetInsertPoint(loopBB);
+    auto* index = Builder->CreatePHI(i64Ty, 2, "fill.index");
+    index->addIncoming(llvm::ConstantInt::get(i64Ty, 0), entryBB);
+    Builder->CreateStore(fill, createArrayElementPtr(storage, arrayTy, index));
+    auto* next = Builder->CreateAdd(index, llvm::ConstantInt::get(i64Ty, 1), "fill.next");
+    index->addIncoming(next, loopBB);
+    auto* more = Builder->CreateICmpULT(
+        next, llvm::ConstantInt::get(i64Ty, arrayTy->getNumElements()), "fill.more");
+    Builder->CreateCondBr(more, loopBB, doneBB);
+
+    Builder->SetInsertPoint(doneBB);
+}
+
+void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
+                                          const Type& arrayType,
+                                          ast::Expr* init) {
+    auto* arrayTy = llvm::cast<llvm::ArrayType>(mapType(arrayType));
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    const Type& elemType = arrayType.elementType();
+
+    if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(init)) {
+        for (size_t i = 0; i < initLit->Elements.size(); ++i) {
+            initLit->Elements[i]->accept(*this);
+            if (!LastValue) continue;
+            llvm::Value* value = LastValue;
+            if (value->getType() != elemTy)
+                value = coerceToType(value, initLit->Elements[i]->ResolvedType, elemType);
+            auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+            Builder->CreateStore(value, createArrayElementPtr(storage, arrayTy, index));
+        }
+    } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(init)) {
+        initRep->Fill->accept(*this);
+        llvm::Value* fill = LastValue
+            ? coerceToType(LastValue, initRep->Fill->ResolvedType, elemType)
+            : llvm::Constant::getNullValue(elemTy);
+        emitArrayFill(storage, arrayTy, fill);
+    } else {
+        throw std::runtime_error("internal error: array requires an array literal or repeat initializer");
     }
     LastValue = nullptr;
 }
@@ -915,11 +1037,15 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
         LValue base = resolveLValue(arr->Base.get());
         if (!base.Ptr || !base.Type || !base.Type->isArrayTy()) return {};
 
-        if (arr->Index) arr->Index->accept(*this);
+        if (!arr->Index) return {};
+        arr->Index->accept(*this);
         if (!LastValue) return {};
 
+        // An u8 holding 200 must stay 200.
         auto* i64Ty = llvm::Type::getInt64Ty(Context);
-        llvm::Value* idx = LastValue->getType() == i64Ty ? LastValue : coerce(LastValue, i64Ty);
+        const Type& indexType = arr->Index->ResolvedType;
+        llvm::Value* idx = coerceToType(LastValue, indexType,
+            indexType.isUnsignedInteger() ? Type::UnsignedInteger(64) : Type::SignedInteger(64));
 
         auto* sizeConst = llvm::ConstantInt::get(i64Ty, base.Type->getArrayNumElements());
         auto* lineConst = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), arr->LineNum);
@@ -1049,6 +1175,12 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
     if (fill->getType() != elemTy)
         fill = coerceToType(fill, node.Fill->ResolvedType, node.ResolvedType.elementType());
 
+    if (auto* constantFill = llvm::dyn_cast<llvm::Constant>(fill)) {
+        std::vector<llvm::Constant*> elements(arrayTy->getNumElements(), constantFill);
+        LastValue = llvm::ConstantArray::get(arrayTy, elements);
+        return;
+    }
+
     llvm::Value* array = llvm::UndefValue::get(arrayTy);
     for (uint64_t i = 0; i < arrayTy->getNumElements(); ++i) {
         array = Builder->CreateInsertValue(
@@ -1122,7 +1254,7 @@ void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
 
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    std::string name = llvmFunctionName(node.Name);
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
@@ -1146,7 +1278,7 @@ void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
         : mapType(node.Type);
 
     auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-    llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
 }
 
 void CodeGenVisitor::visit(BlockSttmt& node) {
@@ -1222,7 +1354,7 @@ static llvm::Function* emitWasiMainWrapper(
 
 void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
-    std::string name = isMain ? "main" : node.Name;
+    std::string name = llvmFunctionName(node.Name);
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
@@ -1247,7 +1379,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 
     if (!fn) {
         auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-        fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+        fn = llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
     }
 
     if (node.Args) {
@@ -1282,6 +1414,12 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     // Emit deferred global initializers at the top of inisiu (main)
     if (isMain && !DeferredGlobalInits.empty()) {
         for (auto& di : DeferredGlobalInits) {
+            if (di.TargetType.isArray()
+                    && (dynamic_cast<ArrayLiteralExpr*>(di.InitExpr)
+                        || dynamic_cast<ArrayRepeatExpr*>(di.InitExpr))) {
+                emitArrayInitializer(di.Var, di.TargetType, di.InitExpr);
+                continue;
+            }
             di.InitExpr->accept(*this);
             if (LastValue) {
                 LastValue = coerceToType(LastValue, di.InitExpr->ResolvedType, di.TargetType);
@@ -1339,10 +1477,11 @@ void CodeGenVisitor::visit(IfSttmt& node) {
 
     auto* fn      = Builder->GetInsertBlock()->getParent();
     auto* thenBB  = llvm::BasicBlock::Create(Context, "then",   fn);
-    auto* elseBB  = llvm::BasicBlock::Create(Context, "else");
+    // A block never inserted into a function has no owner and would leak.
+    auto* elseBB  = node.Else ? llvm::BasicBlock::Create(Context, "else") : nullptr;
     auto* mergeBB = llvm::BasicBlock::Create(Context, "ifcont");
 
-    Builder->CreateCondBr(cond, thenBB, node.Else ? elseBB : mergeBB);
+    Builder->CreateCondBr(cond, thenBB, elseBB ? elseBB : mergeBB);
 
     // then
     Builder->SetInsertPoint(thenBB);
@@ -1430,9 +1569,10 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     if (!callee) { LastValue = nullptr; return; }
     if (emitPreludeCall(node, callee->Name)) return;
 
-    auto* fn = Mod->getFunction(callee->Name);
+    const std::string name = llvmFunctionName(callee->Name);
+    auto* fn = Mod->getFunction(name);
     if (!fn) { LastValue = nullptr; return; }
-    auto sigIt = FunctionSigs.find(callee->Name);
+    auto sigIt = FunctionSigs.find(name);
 
     std::vector<llvm::Value*> callArgs;
     if (node.Args) {

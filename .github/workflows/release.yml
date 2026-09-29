@@ -5,61 +5,55 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  linux:
+    uses: ./.github/workflows/linux.yml
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+
+  release:
+    needs: [linux, windows]
     runs-on: ubuntu-26.04
     permissions:
       contents: write
 
+    env:
+      LINUX: kriol-${{ github.ref_name }}-linux-x86_64
+      WINDOWS: kriol-${{ github.ref_name }}-windows-x86_64
+
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
+        with:
+          name: kriol-linux-x86_64
+          path: ${{ env.LINUX }}
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends flex bison \
-            clang-20 llvm-20 llvm-20-dev llvm-20-tools lld-20 cmake xxd \
-            zlib1g-dev libzstd-dev wasi-libc libclang-rt-20-dev-wasm32
-
-      - name: Add LLVM 20 to PATH
-        run: echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
-
-      - name: Clone submodules
-        run: git submodule update --init
-
-      - name: Build release
-        run: |
-          cmake -B build/release \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DKRIOL_STATIC=ON \
-            -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20
-
-          cmake --build build/release --target check
-
-      - name: Stage artifacts
-        run: |
-          STAGEDIR="kriol-${{ github.ref_name }}-linux-x86_64"
-          mkdir -p "$STAGEDIR"
-          cp build/release/kriol "$STAGEDIR/"
-          cp LICENSE "$STAGEDIR/"
-          cp README.md "$STAGEDIR/"
+      - uses: actions/download-artifact@v7
+        with:
+          name: kriol-windows-x86_64
+          path: ${{ env.WINDOWS }}
 
       - name: Pack archives
         run: |
-          STAGEDIR="kriol-${{ github.ref_name }}-linux-x86_64"
-          tar -czf "${STAGEDIR}.tar.gz" "$STAGEDIR"
-          tar -cJf "${STAGEDIR}.tar.xz" "$STAGEDIR"
+          # Artifacts do not keep the executable bit.
+          chmod +x "$LINUX/kriol"
+          tar -czf "$LINUX.tar.gz" "$LINUX"
+          tar -cJf "$LINUX.tar.xz" "$LINUX"
+          zip -r -9 "$WINDOWS.zip" "$WINDOWS"
 
       - name: Generate checksums
         run: |
-          sha256sum *.tar.gz *.tar.xz > SHA256SUMS.txt
+          sha256sum *.tar.gz *.tar.xz *.zip > SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
           files: |
-            kriol-${{ github.ref_name }}-linux-x86_64.tar.gz
-            kriol-${{ github.ref_name }}-linux-x86_64.tar.xz
+            ${{ env.LINUX }}.tar.gz
+            ${{ env.LINUX }}.tar.xz
+            ${{ env.WINDOWS }}.zip
             SHA256SUMS.txt

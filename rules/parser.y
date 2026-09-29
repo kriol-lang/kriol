@@ -8,31 +8,46 @@
     #include <iostream>
     #include <memory>
 
-    extern int yylex();
-    extern int yylineno;
-    void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
-
-    // Parses an array size / repeat count literal with proper range
-    // diagnostics instead of letting std::stoul throw out of yyparse.
-    static std::size_t kriol_parse_array_size(const std::string& text) {
-        unsigned long long value = 0;
-        try {
-            value = std::stoull(text);
-        } catch (...) {
-            kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
-                "array size literal '" + text + "' is out of range", 1);
-        }
-        if (value > KR_MAX_ARRAY_SIZE)
-            kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
-                "array size " + text + " exceeds the maximum supported size of "
-                + std::to_string(KR_MAX_ARRAY_SIZE), 1);
-        return static_cast<std::size_t>(value);
-    }
-
     using namespace kriol;
 %}
 
 %parse-param { kriol::ast::BlockSttmt** Program }
+%locations
+
+%code {
+    extern int yylex();
+    void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
+
+    // YYERROR does not reclaim the failing action's own values: free them first.
+
+    // Parses an array size / repeat count literal; false after reporting.
+    static bool kriol_parse_array_size(const std::string& text, int line, std::size_t& size) {
+        unsigned long long value = 0;
+        try {
+            value = std::stoull(text);
+        } catch (...) {
+            kriol::cli::ReportParseError(line, "array size literal '" + text + "' is out of range");
+            return false;
+        }
+        if (value > KR_MAX_ARRAY_SIZE) {
+            kriol::cli::ReportParseError(line, "array size " + text
+                + " exceeds the maximum supported size of " + std::to_string(KR_MAX_ARRAY_SIZE));
+            return false;
+        }
+        size = static_cast<std::size_t>(value);
+        return true;
+    }
+
+    #define KRIOL_CHECK_DEPTH(node, line)                                           \
+        do {                                                                       \
+            if ((node)->Depth > KR_MAX_EXPR_DEPTH) {                               \
+                kriol::cli::ReportParseError(line, "expression is nested too deeply (limit is " \
+                    + std::to_string(KR_MAX_EXPR_DEPTH) + " levels)");             \
+                delete (node);                                                     \
+                YYERROR;                                                           \
+            }                                                                      \
+        } while (0)
+}
 
 %union {
     int token;
@@ -58,7 +73,7 @@
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/" MOD "%"
 %token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/=" MOD_ASSIGN "%="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
-%token<string> TYPE_NUM TYPE_BOOL TYPE_VOID TYPE_NTER TYPE_TEXTU TYPE_PRIMITIVE
+%token<string> TYPE_NUM TYPE_BOOL TYPE_NTER TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
@@ -97,7 +112,6 @@ program : statements { *Program = $1; }
         ;
 
 type_specifier : TYPE_NUM { $$ = $1; }
-               | TYPE_VOID { $$ = $1; }
                | TYPE_BOOL { $$ = $1; }
                | TYPE_NTER { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
@@ -105,10 +119,10 @@ type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_IDENT { $$ = $1; }
                ;
 
-constant : INT_LIT   { auto lit = new ast::LiteralExpr(Type::Integer(), *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | FLOAT_LIT { auto lit = new ast::LiteralExpr(Type::Number(),  *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | BOOL_LIT  { auto lit = new ast::LiteralExpr(Type::Bool(),    *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
-         | STR_LIT   { auto lit = new ast::LiteralExpr(Type::Text(),    *$1); lit->LineNum = yylineno; $$ = lit; delete $1; }
+constant : INT_LIT   { auto lit = new ast::LiteralExpr(Type::Integer(), *$1); lit->LineNum = @$.first_line; $$ = lit; delete $1; }
+         | FLOAT_LIT { auto lit = new ast::LiteralExpr(Type::Number(),  *$1); lit->LineNum = @$.first_line; $$ = lit; delete $1; }
+         | BOOL_LIT  { auto lit = new ast::LiteralExpr(Type::Bool(),    *$1); lit->LineNum = @$.first_line; $$ = lit; delete $1; }
+         | STR_LIT   { auto lit = new ast::LiteralExpr(Type::Text(),    *$1); lit->LineNum = @$.first_line; $$ = lit; delete $1; }
          | fstring   { $$ = $1; }
          ;
 
@@ -116,9 +130,9 @@ fstring : FSTR_START fstring_parts FSTR_END { $$ = $2; }
         ;
 
 fstring_parts
-    : %empty { auto fs = new ast::FStringExpr(); fs->LineNum = yylineno; $$ = fs; }
+    : %empty { auto fs = new ast::FStringExpr(); fs->LineNum = @$.first_line; $$ = fs; }
     | fstring_parts FSTR_TEXT { static_cast<ast::FStringExpr*>($1)->addText(*$2); delete $2; $$ = $1; }
-    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); KRIOL_CHECK_DEPTH($1, @$.first_line); $$ = $1; }
     ;
 
 identifier : IDENT { $$ = $1; }
@@ -128,37 +142,49 @@ declarator : identifier { $$ = $1; }
            ;
 
 declaration : control_initializer SEMIC { $$ = $1; }
-            | DIPOZ type_specifier declarator SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$2), *$3, nullptr); d->LineNum = yylineno; $$ = d; delete $2; delete $3; }
-            | DIPOZ type_specifier array_declarator SEMIC { $3->SetType(Type::FixedArray(Type::FromName(*$2), $3->ArraySize)); $3->LineNum = yylineno; $$ = $3; delete $2; }
+            | DIPOZ type_specifier declarator SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$2), *$3, nullptr); d->LineNum = @$.first_line; $$ = d; delete $2; delete $3; }
+            | DIPOZ type_specifier array_declarator SEMIC { $3->SetType(Type::FixedArray(Type::FromName(*$2), $3->ArraySize)); $3->LineNum = @$.first_line; $$ = $3; delete $2; }
             ;
 
-control_initializer : type_specifier declarator ASSIGN initializer { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = yylineno; $$ = d; delete $1; delete $2; }
-                    | type_specifier array_declarator ASSIGN initializer { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = yylineno; $$ = $2; delete $1; }
+control_initializer : type_specifier declarator ASSIGN initializer { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
+                    | type_specifier array_declarator ASSIGN initializer { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = @$.first_line; $$ = $2; delete $1; }
                     ;
 
-control_initializer_statement : expression { auto n = new ast::ExprSttmt(std::unique_ptr<ast::Expr>($1)); n->LineNum = yylineno; $$ = n; }
+control_initializer_statement : expression { auto n = new ast::ExprSttmt(std::unique_ptr<ast::Expr>($1)); n->LineNum = @$.first_line; $$ = n; }
                               | control_initializer { $$ = $1; }
                               ;
 
-array_declarator : LBRAC INT_LIT RBRAC declarator { $$ = new ast::VarDeclSttmt(Type::Invalid(), *$4, nullptr); $$->IsArray = true; $$->ArraySize = kriol_parse_array_size(*$2); delete $2; delete $4; }
+array_declarator : LBRAC INT_LIT RBRAC declarator {
+                       std::size_t size = 0;
+                       const bool ok = kriol_parse_array_size(*$2, @2.first_line, size);
+                       delete $2;
+                       if (!ok) { delete $4; YYERROR; }
+                       $$ = new ast::VarDeclSttmt(Type::Invalid(), *$4, nullptr);
+                       $$->IsArray = true;
+                       $$->ArraySize = size;
+                       delete $4;
+                   }
                  ;
 
 initializer : expression { $$ = $1; }
             | array_initializer { $$ = $1; }
-            | array_initializer MUL INT_LIT {
-                  auto* lit = static_cast<ast::ArrayLiteralExpr*>($1);
-                  if (lit->Elements.size() != 1) {
-                      delete lit; delete $3;
-                      kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
-                          "repeat initializer '[value] * N' requires exactly one fill element", 1);
-                  }
-                  std::size_t count = kriol_parse_array_size(*$3);
-                  auto fill = std::move(lit->Elements[0]);
-                  delete lit;
-                  auto n = new ast::ArrayRepeatExpr(std::move(fill), count);
-                  n->LineNum = yylineno;
+            | LBRAC value_expression SEMIC INT_LIT RBRAC {
+                  std::size_t count = 0;
+                  const bool ok = kriol_parse_array_size(*$4, @4.first_line, count);
+                  delete $4;
+                  if (!ok) { delete $2; YYERROR; }
+                  auto n = new ast::ArrayRepeatExpr(std::unique_ptr<ast::Expr>($2), count);
+                  n->LineNum = @$.first_line;
                   $$ = n;
+              }
+            // Only to point `[value] * N` to `[value; N]`.
+            | array_initializer MUL INT_LIT {
+                  kriol::cli::ReportParseError(@2.first_line,
+                      "a repeated array is written [value; count], for example [0; " + *$3 + "]");
+                  delete $1;
                   delete $3;
+                  $$ = nullptr;
+                  YYERROR;
               }
             ;
 
@@ -168,8 +194,8 @@ value_expression : constant_expression { $$ = $1; }
 array_initializer : LBRAC array_initializer_elements RBRAC { $$ = $2; }
                   ;
 
-array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; n->addElement(std::unique_ptr<ast::Expr>($1)); $$ = n; }
-                           | array_initializer_elements COMMA value_expression { static_cast<ast::ArrayLiteralExpr*>($1)->addElement(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = @$.first_line; n->addElement(std::unique_ptr<ast::Expr>($1)); KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                           | array_initializer_elements COMMA value_expression { static_cast<ast::ArrayLiteralExpr*>($1)->addElement(std::unique_ptr<ast::Expr>($3)); KRIOL_CHECK_DEPTH($1, @$.first_line); $$ = $1; }
                            ;
 
 expression : assignment_expression { $$ = $1; }
@@ -179,62 +205,61 @@ constant_expression : logical_or_expressions { $$ = $1; }
                     ;
 
 logical_or_expressions : logical_and_expressions { $$ = $1; }
-                       | logical_or_expressions OR logical_and_expressions { auto n = new ast::BinExpr("||", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                       | logical_or_expressions OR logical_and_expressions { auto n = new ast::BinExpr("||", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                        ;
 
 logical_and_expressions : equality_expression { $$ = $1; }
-                        | logical_and_expressions AND equality_expression { auto n = new ast::BinExpr("&&", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                        | logical_and_expressions AND equality_expression { auto n = new ast::BinExpr("&&", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                         ;
 
 equality_expression : relational_expression { $$ = $1; }
-                    | equality_expression EQ relational_expression { auto n = new ast::BinExpr("==", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                    | equality_expression NE relational_expression { auto n = new ast::BinExpr("!=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                    | equality_expression EQ relational_expression { auto n = new ast::BinExpr("==", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                    | equality_expression NE relational_expression { auto n = new ast::BinExpr("!=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                     ;
 
 relational_expression : additive_expression { $$ = $1; }
-                      | relational_expression LT additive_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression GT additive_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression LE additive_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression GE additive_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                      | relational_expression LT additive_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression GT additive_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression LE additive_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression GE additive_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
 
 additive_expression : multiplicative_expression { $$ = $1; }
-                    | additive_expression PLUS multiplicative_expression { auto n = new ast::BinExpr("+", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                    | additive_expression MINUS multiplicative_expression { auto n = new ast::BinExpr("-", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                    | additive_expression PLUS multiplicative_expression { auto n = new ast::BinExpr("+", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                    | additive_expression MINUS multiplicative_expression { auto n = new ast::BinExpr("-", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                     ;
 
 multiplicative_expression : unary_expression { $$ = $1; }
-                          | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                          | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                          | multiplicative_expression MOD unary_expression { auto n = new ast::BinExpr("%", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                          | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                          | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                          | multiplicative_expression MOD unary_expression { auto n = new ast::BinExpr("%", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                           ;
 
 unary_expression : primary_expression                          { $$ = $1; }
-                 | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
-                 | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+                 | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                 | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  ;
 
 primary_expression : postfix_expression { $$ = $1; }
                    ;
 
 postfix_expression : primary_atom { $$ = $1; }
-                   | postfix_expression LPAR argument_list RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression LPAR RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), nullptr); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression LBRAC expression RBRAC { auto n = new ast::ArrayAccessExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression DOT IDENT { auto n = new ast::MemberAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = n; delete $3; }
-                   | postfix_expression COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = n; delete $3; }
+                   | postfix_expression LPAR argument_list RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   | postfix_expression LPAR RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), nullptr); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   | postfix_expression LBRAC expression RBRAC { auto n = new ast::ArrayAccessExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   | postfix_expression DOT IDENT { auto n = new ast::MemberAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = @$.first_line; delete $3; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   | postfix_expression COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = @$.first_line; delete $3; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                    ;
 
 primary_atom : record_literal { $$ = $1; }
              | typed_array_initializer { $$ = $1; }
-             | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+             | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
              | constant { $$ = $1; }
-             | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+             | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
              ;
-                   ;
 
 assignment_expression : constant_expression { $$ = $1; }
-                      | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $2; }
+                      | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
 
 assignment_operator : ASSIGN { $$ = new std::string("="); }
@@ -245,22 +270,22 @@ assignment_operator : ASSIGN { $$ = new std::string("="); }
                     | MOD_ASSIGN { $$ = new std::string("%="); }
                     ;
 
-function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = yylineno; $$ = n; delete $6; delete $2; }
-                     | FN declarator LPAR parameter_optional_list RPAR compound_statement { auto n = new ast::FuncDeclSttmt(Type::Void(), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = yylineno; $$ = n; delete $2; }
+function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; delete $6; delete $2; }
+                     | FN declarator LPAR parameter_optional_list RPAR compound_statement { auto n = new ast::FuncDeclSttmt(Type::Void(), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; delete $2; }
                      ;
 
-molda_declaration : MOLDA TYPE_IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
-                  | MOLDA TYPE_IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
-                  | MOLDA IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = yylineno; $$ = $4; delete $2; }
-                  | MOLDA IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
+molda_declaration : MOLDA TYPE_IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = @$.first_line; $$ = $4; delete $2; }
+                  | MOLDA TYPE_IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = @$.first_line; $$ = n; delete $2; }
+                  | MOLDA IDENT LCURLY molda_field_declarations RCURLY { $4->Name = *$2; $4->LineNum = @$.first_line; $$ = $4; delete $2; }
+                  | MOLDA IDENT LCURLY RCURLY { auto n = new ast::MoldaDeclSttmt(*$2); n->LineNum = @$.first_line; $$ = n; delete $2; }
                   ;
 
 molda_field_declarations : molda_field_declaration { auto n = new ast::MoldaDeclSttmt(""); n->AddField(std::unique_ptr<ast::VarDeclSttmt>($1)); $$ = n; }
                          | molda_field_declarations molda_field_declaration { $1->AddField(std::unique_ptr<ast::VarDeclSttmt>($2)); $$ = $1; }
                          ;
 
-molda_field_declaration : type_specifier declarator SEMIC { $$ = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, nullptr); $$->LineNum = yylineno; delete $1; delete $2; }
-                        | type_specifier array_declarator SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->LineNum = yylineno; $$ = $2; delete $1; }
+molda_field_declaration : type_specifier declarator SEMIC { $$ = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, nullptr); $$->LineNum = @$.first_line; delete $1; delete $2; }
+                        | type_specifier array_declarator SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->LineNum = @$.first_line; $$ = $2; delete $1; }
                         ;
 
 parameter_optional_list : parameter_list { $$ = $1; }
@@ -271,7 +296,7 @@ parameter_list : parameter_declaration { $$ = new ast::FuncArgs(); $$->AddArg(st
                | parameter_list COMMA parameter_declaration { $1->AddArg(std::unique_ptr<ast::VarDeclSttmt>($3)); $$ = $1; }
                ;
 
-parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, nullptr); $$->IsParam = true; $$->LineNum = yylineno; delete $1; delete $2; }
+parameter_declaration : type_specifier declarator { $$ = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, nullptr); $$->IsParam = true; $$->LineNum = @$.first_line; delete $1; delete $2; }
                       ;
 
 argument_list : argument_list COMMA expression { $1->AddArg(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
@@ -294,31 +319,30 @@ statement : expression_statement { $$ = $1; }
           | error SEMIC { $$ = nullptr; }
           ;
 
-import_statement : IMPRISTAN single_import { auto n = new ast::ImportSttmt(*$2); n->LineNum = yylineno; $$ = n; delete $2; }
+import_statement : IMPRISTAN single_import { auto n = new ast::ImportSttmt(*$2); n->LineNum = @$.first_line; $$ = n; delete $2; }
                  ;
 
 single_import : STR_LIT { $$ = $1; }
               ;
 
-expression_statement : expression SEMIC { $$ = new ast::ExprSttmt(std::unique_ptr<ast::Expr>($1)); }
-                     | SEMIC { $$ = new ast::ExprSttmt(nullptr); }
+expression_statement : expression SEMIC { $$ = new ast::ExprSttmt(std::unique_ptr<ast::Expr>($1)); $$->LineNum = @$.first_line; }
+                     | SEMIC { $$ = new ast::ExprSttmt(nullptr); $$->LineNum = @$.first_line; }
                      ;
 
 compound_statement : LCURLY statements RCURLY { $$ = $2; $$->UseBrackets(); }
                    | LCURLY RCURLY { $$ = new ast::BlockSttmt(); $$->UseBrackets(); }
                    ;
 
-selection_statement : SI if_initializer expression compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = yylineno; $$ = n; }
-                    | SI if_initializer expression compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = yylineno; $$ = n; }
+selection_statement : SI if_initializer expression compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = @$.first_line; $$ = n; }
+                    | SI if_initializer expression compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
-if_initializer : if_initializer_type_specifier declarator ASSIGN initializer SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = yylineno; $$ = d; delete $1; delete $2; }
-               | if_initializer_type_specifier array_declarator ASSIGN initializer SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = yylineno; $$ = $2; delete $1; }
+if_initializer : if_initializer_type_specifier declarator ASSIGN initializer SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
+               | if_initializer_type_specifier array_declarator ASSIGN initializer SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = @$.first_line; $$ = $2; delete $1; }
                | %empty { $$ = nullptr; }
                ;
 
 if_initializer_type_specifier : TYPE_NUM { $$ = $1; }
-                              | TYPE_VOID { $$ = $1; }
                               | TYPE_BOOL { $$ = $1; }
                               | TYPE_NTER { $$ = $1; }
                               | TYPE_TEXTU { $$ = $1; }
@@ -329,28 +353,32 @@ else_then : compound_statement { $$ = $1; }
           | selection_statement { $$ = new ast::BlockSttmt(); $$->AddSttmt(std::unique_ptr<ast::Sttmt>($1)); }
           ;
 
-iteration_statement : NKUANTU expression compound_statement { auto n = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); n->LineNum = yylineno; $$ = n; }
-                    | PA control_initializer_statement SEMIC expression SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = yylineno; $$ = n; }
+iteration_statement : NKUANTU expression compound_statement { auto n = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); n->LineNum = @$.first_line; $$ = n; }
+                    | PA control_initializer_statement SEMIC expression SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
-jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = yylineno; $$ = n; }
-               | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = yylineno; $$ = n; }
-               | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
-               | DIVOLVI SEMIC { auto n = new ast::ReturnSttmt(nullptr); n->LineNum = yylineno; $$ = n; }
+jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = @$.first_line; $$ = n; }
+               | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = @$.first_line; $$ = n; }
+               | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; $$ = n; }
+               | DIVOLVI SEMIC { auto n = new ast::ReturnSttmt(nullptr); n->LineNum = @$.first_line; $$ = n; }
                ;
 
-record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY { auto* n = static_cast<ast::RecordLiteralExpr*>($4); n->TypeName = *$1; n->LineNum = yylineno; $$ = n; delete $1; }
-               | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
+record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY { auto* n = static_cast<ast::RecordLiteralExpr*>($4); n->TypeName = *$1; n->LineNum = @$.first_line; $$ = n; delete $1; }
+               | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
                ;
 
-typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = yylineno; $$ = lit; delete $2; }
+typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
                         ;
 
-record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
-                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = $1; delete $3; }
+record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $1; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); delete $3; KRIOL_CHECK_DEPTH($1, @$.first_line); $$ = $1; }
                           ;
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, err, 1);
+    // Bison's message for a full parser stack.
+    const std::string message = std::string(err) == "memory exhausted"
+        ? "code is nested too deeply for the parser"
+        : err;
+    kriol::cli::ReportParseError(yylloc.first_line, message);
 }

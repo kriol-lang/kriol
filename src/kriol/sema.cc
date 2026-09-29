@@ -1,4 +1,5 @@
 #include "../../include/kriol/sema.hh"
+#include "../../include/kriol/type_rules.hh"
 #include "../../include/kriol/type_utils.hh"
 #include "../../include/kriol/prelude.hh"
 
@@ -16,102 +17,10 @@ namespace {
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::firstArrayDim;
 using kriol::typeutils::isArrayType;
+using namespace kriol::typerules;
 
 static bool startsWithUppercaseAscii(const std::string& name) {
     return !name.empty() && std::isupper(static_cast<unsigned char>(name[0]));
-}
-
-static Type promotedNumericType(const Type& lhs, const Type& rhs) {
-    if (!lhs.valid()) return rhs;
-    if (!rhs.valid()) return lhs;
-    if (lhs.isFloat() || rhs.isFloat()) {
-        unsigned bits = std::max(lhs.isFloat() ? lhs.bitWidth() : 0,
-                                 rhs.isFloat() ? rhs.bitWidth() : 0);
-        return Type::Float(bits == 32 ? 32 : 64);
-    }
-    if (lhs.isInteger() && rhs.isInteger()) {
-        unsigned bits = std::max(lhs.bitWidth(), rhs.bitWidth());
-        bool isSigned = lhs.isSigned() || rhs.isSigned();
-        if (lhs.isSigned() != rhs.isSigned())
-            bits = std::max(bits, std::min(64u, bits * 2));
-        return isSigned ? Type::SignedInteger(bits) : Type::UnsignedInteger(bits);
-    }
-    return lhs.valid() ? lhs : rhs;
-}
-
-static const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
-    if (!expr) return nullptr;
-    if (auto* par = dynamic_cast<const ParExpr*>(expr))
-        return integerLiteralExpr(par->Content.get(), negative);
-    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
-        if (unary->Op != "-") return nullptr;
-        negative = !negative;
-        return integerLiteralExpr(unary->Operand.get(), negative);
-    }
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    return lit && lit->Type.isInteger() ? lit : nullptr;
-}
-
-static const LiteralExpr* underlyingNumericLiteral(const Expr* expr) {
-    if (!expr) return nullptr;
-    if (auto* par = dynamic_cast<const ParExpr*>(expr))
-        return underlyingNumericLiteral(par->Content.get());
-    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
-        if (unary->Op != "-") return nullptr;
-        return underlyingNumericLiteral(unary->Operand.get());
-    }
-    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    return lit && lit->Type.isNumeric() ? lit : nullptr;
-}
-
-static bool integerLiteralFitsType(const Expr* expr, const Type& to) {
-    if (!to.isInteger()) return false;
-
-    bool negative = false;
-    auto* lit = integerLiteralExpr(expr, negative);
-    if (!lit) return false;
-
-    long long value = 0;
-    try {
-        value = std::stoll(lit->Value);
-    } catch (...) {
-        return false;
-    }
-    if (negative) value = -value;
-
-    const unsigned bits = to.bitWidth();
-    if (bits == 0 || bits > 64) return false;
-
-    if (to.isSigned()) {
-        if (bits == 64) return true;
-        const long long min = -(1LL << (bits - 1));
-        const long long max = (1LL << (bits - 1)) - 1;
-        return value >= min && value <= max;
-    }
-
-    if (value < 0) return false;
-    if (bits == 64) return true;
-    const unsigned long long max = (1ULL << bits) - 1;
-    return static_cast<unsigned long long>(value) <= max;
-}
-
-static Type promotedNumericTypeForExpr(const Expr* lhsExpr,
-                                       const Expr* rhsExpr,
-                                       const Type& lhs,
-                                       const Type& rhs) {
-    if (lhs.isInteger() && rhs.isInteger()) {
-        bool ignored = false;
-        const bool lhsLiteral = integerLiteralExpr(lhsExpr, ignored) != nullptr;
-        ignored = false;
-        const bool rhsLiteral = integerLiteralExpr(rhsExpr, ignored) != nullptr;
-
-        if (lhsLiteral && !rhsLiteral && integerLiteralFitsType(lhsExpr, rhs))
-            return rhs;
-        if (rhsLiteral && !lhsLiteral && integerLiteralFitsType(rhsExpr, lhs))
-            return lhs;
-    }
-
-    return promotedNumericType(lhs, rhs);
 }
 
 }
@@ -284,6 +193,35 @@ bool SemanticAnalyzer::validateTypeKnown(const Type& type,
     return false;
 }
 
+std::size_t SemanticAnalyzer::storageBytes(const Type& type) const {
+    constexpr std::size_t saturated = static_cast<std::size_t>(-1);
+
+    if (type.isArray()) {
+        const std::size_t element = storageBytes(type.elementType());
+        if (element != 0 && type.arraySize() > saturated / element)
+            return saturated;
+        return element * type.arraySize();
+    }
+    if (type.isInteger() || type.isFloat())
+        return std::max<std::size_t>(1, type.bitWidth() / 8);
+    if (type == Type::Bool())
+        return 1;
+    if (type.isNamed()) {
+        auto recordIt = RecordTable.find(type.name());
+        if (recordIt == RecordTable.end())
+            return 0;
+        std::size_t total = 0;
+        for (const auto* field : recordIt->second.fields) {
+            const std::size_t bytes = storageBytes(field->Type);
+            if (bytes > saturated - total)
+                return saturated;
+            total += bytes;
+        }
+        return total;
+    }
+    return 8; // textu: a pointer, counted at its 64-bit size on every target
+}
+
 bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
                                                 ast::Expr* init,
                                                 int lineNum,
@@ -304,8 +242,8 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
         initRep->accept(*this);
         if (initRep->Count != expectedSize) {
             addError(errLoc(lineNum) + context + " has size "
-                     + std::to_string(expectedSize) + " but repeat initializer [value] * "
-                     + std::to_string(initRep->Count) + " has a different count");
+                     + std::to_string(expectedSize) + " but repeat initializer [value; "
+                     + std::to_string(initRep->Count) + "] has a different count");
             return false;
         }
 
@@ -432,11 +370,22 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (!validateTypeKnown(node.Type, node.LineNum, kind + " '" + node.Name + "'"))
         canDeclare = false;
 
+    if (canDeclare && FunctionDepth > 0) {
+        const std::size_t bytes = storageBytes(node.Type);
+        if (bytes > KR_MAX_LOCAL_BYTES) {
+            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' needs "
+                     + std::to_string(bytes) + " bytes of stack, over the limit of "
+                     + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes"
+                     + (node.IsParam ? "" : "; declare it at the top level instead"));
+            canDeclare = false;
+        }
+    }
+
     if (node.IsArray && node.Value) {
         auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
         auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get());
         if (!initLit && !initRep) {
-            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value] * N");
+            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value; N]");
             canDeclare = false;
         } else {
             initState.elementInitialized.assign(node.ArraySize, false);

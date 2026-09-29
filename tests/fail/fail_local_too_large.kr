@@ -1,4 +1,4 @@
 fn inisiu() {
-    nter [6]a = [1, 2; 3];
+    nter[200000] a = [0; 200000];
     mostran(a[0]);
 }

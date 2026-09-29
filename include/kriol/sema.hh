@@ -132,6 +132,10 @@ namespace sema {
         void registerRecord(ast::MoldaDeclSttmt& node);
         bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
 
+        // Approximate storage size of a value of `type` (ignores padding),
+        // saturating instead of overflowing for huge arrays.
+        std::size_t storageBytes(const Type& type) const;
+
         // Validates that a condition expression has a type usable in a branch
         // (bool or numeric). Anything else cannot be lowered to a truth value.
         void checkConditionType(const ast::Expr* cond, int lineNum);

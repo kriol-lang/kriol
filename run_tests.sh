@@ -73,6 +73,31 @@ else
 fi
 rm -f "$tmpbin"
 
+# ---- optimization levels -----------------------------------------------------
+for level in 0 3; do
+    printf "  %-44s" "optimization level $level"
+    tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
+    if "$KRIOL" --opt-lvl "$level" --text 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
+       [ "$(timeout 5 "$tmpbin")" = "3" ]; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "optimization level $level"
+    fi
+    rm -f "$tmpbin"
+done
+
+# ---- intermediate files stay out of the output directory --------------------
+printf "  %-44s" "output directory left untouched"
+tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)
+echo precious > "$tmpdir/program.o"
+if "$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpdir/program" 2>/dev/null && \
+   [ "$(cat "$tmpdir/program.o" 2>/dev/null)" = "precious" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "output directory left untouched"
+fi
+rm -rf "$tmpdir"
+
 
 # ---- tests/fail/*.kr -------------------------------------------------------
 if [ -d "$ROOT/tests/fail" ]; then
@@ -92,7 +117,7 @@ if [ -d "$ROOT/tests/fail" ]; then
 fi
 
 # ---- wasm32-wasi compile checks --------------------------------------------
-if "$KRIOL" --help 2>&1 | grep -Fq "wasm32-wasi"; then
+if "$KRIOL" --target wasm32-wasi --text 'fn inisiu() {}' --emit-ir >/dev/null 2>&1; then
     printf "  %-44s" "wasm32-wasi hello_world"
     tmpwasm=$(mktemp /tmp/kriol_wasm_XXXX.wasm)
     if "$KRIOL" "$ROOT/examples/hello_world.kriol" --target wasm32-wasi -o "$tmpwasm" 2>/dev/null; then

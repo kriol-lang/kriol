@@ -1,0 +1,12 @@
+nter[1048576] grandi = [3; 1048576];
+
+fn inisiu() {
+    konfirma(grandi[0] == 3 && grandi[1048575] == 3);
+
+    nter[100000] lokal = [7; 100000];
+    lokal[99999] = 9;
+    konfirma(lokal[0] == 7 && lokal[99999] == 9);
+
+    textu tekstu = f"{lokal}";
+    mostran(lokal[50000]);
+}
