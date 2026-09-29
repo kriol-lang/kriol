@@ -91,8 +91,8 @@ jobs:
             -DCMAKE_CXX_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
             -DCLANG_PROGRAM="$env:LLVM_ROOT\bin\clang.exe" `
             -DKRIOL_MINGW_SYSROOT="$env:MINGW_ROOT" `
-            -DCMAKE_INSTALL_BINDIR=. `
-            -DCMAKE_INSTALL_DOCDIR=.
+            "-DCMAKE_INSTALL_BINDIR=." `
+            "-DCMAKE_INSTALL_DOCDIR=."
 
       - name: Build
         run: cmake --build build --target kriol
