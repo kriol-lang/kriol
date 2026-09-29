@@ -14,6 +14,9 @@ concurrency:
 env:
   LLVM_VERSION: 20.1.8
   LLVM_ROOT: C:\llvm\clang+llvm-20.1.8-x86_64-pc-windows-msvc
+  MINGW_VERSION: '20260922'
+  MINGW_ROOT: C:\llvm-mingw\llvm-mingw-20260922-msvcrt-x86_64
+  STAGE: kriol-windows-x86_64
 
 jobs:
   build:
@@ -45,6 +48,22 @@ jobs:
           7z x llvm.tar.xz -so | 7z x -si -ttar -oC:\llvm -y | Out-Null
           Remove-Item llvm.tar.xz
 
+      - name: Cache llvm-mingw
+        id: cache-mingw
+        uses: actions/cache@v4
+        with:
+          path: C:\llvm-mingw
+          key: llvm-mingw-${{ env.MINGW_VERSION }}-msvcrt-x86_64
+
+      - name: Download llvm-mingw
+        if: steps.cache-mingw.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $archive = "llvm-mingw-$env:MINGW_VERSION-msvcrt-x86_64.zip"
+          curl.exe -fsSL -o mingw.zip "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:MINGW_VERSION/$archive"
+          7z x mingw.zip -oC:\llvm-mingw -y | Out-Null
+          Remove-Item mingw.zip
+
       - name: Install build tools
         shell: pwsh
         run: |
@@ -59,7 +78,8 @@ jobs:
             -DLLVM_DIR="$env:LLVM_ROOT\lib\cmake\llvm" `
             -DCMAKE_C_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
             -DCMAKE_CXX_COMPILER="$env:LLVM_ROOT\bin\clang-cl.exe" `
-            -DCLANG_PROGRAM="$env:LLVM_ROOT\bin\clang.exe"
+            -DCLANG_PROGRAM="$env:LLVM_ROOT\bin\clang.exe" `
+            -DKRIOL_MINGW_SYSROOT="$env:MINGW_ROOT"
 
       - name: Build
         run: cmake --build build --target kriol
@@ -83,26 +103,31 @@ jobs:
           Copy-Item examples\hello_world.kriol $utf8Path
           build\kriol.exe $utf8Path --emit-ir | Select-Object -First 3
 
-      # Native .exe output still goes through the host clang and MSVC linker;
-      # it is expected to need more work, so it does not fail the job yet.
-      - name: Native output (experimental)
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-
-          build\kriol.exe examples\hello_world.kriol -o hello
-          .\hello.exe
-
       - name: Stage artifact
         shell: pwsh
         run: |
-          $stage = "kriol-windows-x86_64"
-          New-Item -ItemType Directory $stage | Out-Null
-          Copy-Item build\kriol.exe, LICENSE, README.md $stage
+          New-Item -ItemType Directory $env:STAGE, "$env:STAGE\licenses" | Out-Null
+          Copy-Item build\kriol.exe, LICENSE, README.md $env:STAGE
+          # kriol links Windows programs with the ld.lld that sits next to it.
+          Copy-Item "$env:LLVM_ROOT\bin\ld.lld.exe" $env:STAGE
+          Copy-Item "$env:MINGW_ROOT\LICENSE.TXT" "$env:STAGE\licenses\LLVM.txt"
+          Copy-Item "$env:MINGW_ROOT\x86_64-w64-mingw32\share\mingw32\COPYING.MinGW-w64-runtime.txt" "$env:STAGE\licenses\MinGW-w64-runtime.txt"
+          Copy-Item include\external\bdwgc\README.QUICK "$env:STAGE\licenses\bdwgc.txt"
+          dumpbin /nologo /dependents "$env:STAGE\ld.lld.exe"
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'llvm' }) -join ';'
+          if (Get-Command ld.lld -ErrorAction SilentlyContinue) { throw 'ld.lld is still on PATH' }
+
+          .\run_tests.ps1 "$env:STAGE\kriol.exe" .
+
+          & "$env:STAGE\kriol.exe" examples\hello_world.kriol -o hello
+          dumpbin /nologo /dependents hello.exe
+          .\hello.exe
 
       - uses: actions/upload-artifact@v4
         with:
           name: kriol-windows-x86_64
-          path: kriol-windows-x86_64
+          path: ${{ env.STAGE }}

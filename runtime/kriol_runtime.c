@@ -9,6 +9,11 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #ifndef KRIOL_RUNTIME_NO_GC
 #define KRIOL_RUNTIME_NO_GC 0
 #endif
@@ -45,7 +50,23 @@ static void* __kriol_gc_out_of_memory(size_t requested_bytes) {
 }
 #endif
 
+#ifdef _WIN32
+static UINT __kriol_saved_console_cp;
+
+static void __kriol_restore_console_cp(void) {
+    SetConsoleOutputCP(__kriol_saved_console_cp);
+}
+#endif
+
 void __kriol_gc_init(void) {
+#ifdef _WIN32
+    // Kriol text is UTF-8, while consoles default to a legacy code page. The
+    // user's code page is restored on exit because the console outlives us.
+    __kriol_saved_console_cp = GetConsoleOutputCP();
+    if (__kriol_saved_console_cp != 0 && __kriol_saved_console_cp != CP_UTF8 &&
+        SetConsoleOutputCP(CP_UTF8))
+        atexit(__kriol_restore_console_cp);
+#endif
 #if !KRIOL_RUNTIME_NO_GC
     GC_set_oom_fn(__kriol_gc_out_of_memory);
     GC_INIT();

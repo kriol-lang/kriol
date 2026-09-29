@@ -21,7 +21,8 @@ namespace ast {
 
     enum class CodegenTarget {
         Native,
-        Wasm32Wasi
+        Wasm32Wasi,
+        X86_64Windows
     };
 
     struct EmitOptions {

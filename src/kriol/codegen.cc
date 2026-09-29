@@ -57,7 +57,22 @@ using namespace kriol::ast;
 
 #endif // KRIOL_ENABLE_WASM
 
+#if KRIOL_ENABLE_WINDOWS_TARGET
+
+struct KriolEmbeddedFile {
+    const char* Name;
+    const unsigned char* Data;
+    unsigned int Len;
+};
+
+#include "kriol_runtime_x86_64_windows.bc.h"
+#include "libgc_x86_64_windows.o.h"
+#include "mingw_link_inputs.h"
+
+#endif // KRIOL_ENABLE_WINDOWS_TARGET
+
 #define __WASI_MAIN "__main_argc_argv"
+#define KRIOL_MINGW_TRIPLE "x86_64-w64-windows-gnu"
 
 
 // Interpret backslash escapes in a raw string (without surrounding quotes).
@@ -348,6 +363,16 @@ static TargetResources selectTargetResources(CodegenTarget target) {
 #else
             throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
 #endif
+        case CodegenTarget::X86_64Windows:
+#if KRIOL_ENABLE_WINDOWS_TARGET
+            return TargetResources{
+                KRIOL_MINGW_TRIPLE,
+                EmbeddedBlob{kriol_runtime_x86_64_windows_bc, kriol_runtime_x86_64_windows_bc_len},
+                EmbeddedBlob{libgc_x86_64_windows_o, libgc_x86_64_windows_o_len}
+            };
+#else
+            throw std::runtime_error("This build of the compiler was built without 'x86_64-windows' support.");
+#endif
     }
 
     throw std::runtime_error("Unsupported codegen target.");
@@ -412,6 +437,9 @@ static std::string writeGcArchive(CodegenTarget target,
     if (!gcBlob.Data || gcBlob.Len == 0)
         return {};
 
+    if (target == CodegenTarget::X86_64Windows)
+        return writeTempBlob("embedded_libgc_x86_64_windows", "o", gcBlob);
+
     const char* stem = target == CodegenTarget::Wasm32Wasi
         ? "embedded_libgc_wasm32_wasi"
         : "embedded_libgc_native";
@@ -436,6 +464,86 @@ static void linkNativeExecutable(const std::string& objPath,
         linkArgs.push_back("-lm");
     runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
 }
+
+#if KRIOL_ENABLE_WINDOWS_TARGET
+struct MingwInputs {
+    std::vector<std::string> Startup;
+    std::vector<std::string> Libraries;
+};
+
+static void removeMingwInputs(const MingwInputs& inputs) {
+    for (const auto& path : inputs.Startup) llvm::sys::fs::remove(path);
+    for (const auto& path : inputs.Libraries) llvm::sys::fs::remove(path);
+}
+
+template <size_t N>
+static void writeMingwGroup(const KriolEmbeddedFile (&files)[N],
+                            std::vector<std::string>& paths) {
+    for (const auto& file : files) {
+        std::string stem = "kriol_mingw_" + llvm::sys::path::stem(file.Name).str();
+        std::string suffix = llvm::sys::path::extension(file.Name).drop_front().str();
+        paths.push_back(writeTempBlob(stem.c_str(), suffix.c_str(), EmbeddedBlob{file.Data, file.Len}));
+    }
+}
+
+static MingwInputs writeMingwInputs() {
+    MingwInputs inputs;
+    try {
+        writeMingwGroup(kriol_mingw_startup_inputs, inputs.Startup);
+        writeMingwGroup(kriol_mingw_library_inputs, inputs.Libraries);
+    } catch (...) {
+        removeMingwInputs(inputs);
+        throw;
+    }
+    return inputs;
+}
+
+static std::string findMingwLinker() {
+    // Release archives ship ld.lld next to kriol, so that copy wins over PATH.
+    std::string self = llvm::sys::fs::getMainExecutable(
+        nullptr, reinterpret_cast<void*>(&findMingwLinker));
+    if (!self.empty()) {
+        llvm::SmallString<256> bundled(llvm::sys::path::parent_path(self));
+#ifdef _WIN32
+        llvm::sys::path::append(bundled, "ld.lld.exe");
+#else
+        llvm::sys::path::append(bundled, "ld.lld");
+#endif
+        if (llvm::sys::fs::can_execute(bundled))
+            return std::string(bundled.str());
+    }
+
+    return findProgram(
+        {"ld.lld-20", "ld.lld-19", "ld.lld"},
+        "linker 'ld.lld' (place it next to kriol or on PATH)"
+    );
+}
+
+static void linkMingwExecutable(const std::string& objPath,
+                                const std::string& gcObject,
+                                const std::string& outputPath) {
+    std::string linkerPath = findMingwLinker();
+    MingwInputs inputs = writeMingwInputs();
+
+    // Mirrors what the MinGW clang driver passes to ld.lld for a C program.
+    std::vector<std::string> linkArgs = {
+        linkerPath, "-m", "i386pep", "--subsystem", "console", "-o", outputPath
+    };
+    linkArgs.insert(linkArgs.end(), inputs.Startup.begin(), inputs.Startup.end());
+    linkArgs.push_back(objPath);
+    if (!gcObject.empty())
+        linkArgs.push_back(gcObject);
+    linkArgs.insert(linkArgs.end(), inputs.Libraries.begin(), inputs.Libraries.end());
+
+    try {
+        runProgram(linkerPath, linkArgs, "Failure in the final Windows linkage: ");
+    } catch (...) {
+        removeMingwInputs(inputs);
+        throw;
+    }
+    removeMingwInputs(inputs);
+}
+#endif // KRIOL_ENABLE_WINDOWS_TARGET
 
 // Returns true if the block can be reached from its function's entry block.
 static bool isReachableFromEntry(llvm::BasicBlock* target) {
@@ -746,6 +854,12 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
             throw std::runtime_error("kriol was built without wasm32-wasi support.");
+#endif
+        } else if (options.Target == CodegenTarget::X86_64Windows) {
+#if KRIOL_ENABLE_WINDOWS_TARGET
+            linkMingwExecutable(objPath, tempLibGc, outputPath);
+#else
+            throw std::runtime_error("kriol was built without x86_64-windows support.");
 #endif
         } else {
             linkNativeExecutable(objPath, tempLibGc, outputPath, resources.Triple);

@@ -48,6 +48,14 @@ option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OF
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF)
 
+set(KRIOL_MINGW_SYSROOT "" CACHE PATH
+    "Root of an llvm-mingw (msvcrt) toolchain; enables x86_64-windows output")
+if(KRIOL_MINGW_SYSROOT)
+    set(KRIOL_ENABLE_WINDOWS_TARGET ON)
+else()
+    set(KRIOL_ENABLE_WINDOWS_TARGET OFF)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -380,6 +388,7 @@ function(kriol_configure_target TARGET_NAME)
         KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
         KRIOL_WASI_ENABLE_GC=$<BOOL:${KRIOL_WASI_ENABLE_GC}>
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
+        KRIOL_ENABLE_WINDOWS_TARGET=$<BOOL:${KRIOL_ENABLE_WINDOWS_TARGET}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
         KRIOL_WASI_SYSROOT="${KRIOL_WASI_SYSROOT}"
     )

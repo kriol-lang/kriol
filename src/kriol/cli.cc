@@ -44,6 +44,26 @@ static fs::path PathFromUtf8(const std::string& path)
     return fs::u8path(path);
 }
 
+static bool IsKnownTarget(const std::string& target)
+{
+    return target == "native" || target == "wasm32-wasi" || target == "x86_64-windows";
+}
+
+static ast::CodegenTarget ResolveTarget(const std::string& target)
+{
+    if (target == "wasm32-wasi")
+        return ast::CodegenTarget::Wasm32Wasi;
+    if (target == "x86_64-windows")
+        return ast::CodegenTarget::X86_64Windows;
+#if defined(_WIN32) && KRIOL_ENABLE_WINDOWS_TARGET
+    // The bundled MinGW runtime needs no Visual Studio install, unlike the
+    // host's default MSVC target.
+    return ast::CodegenTarget::X86_64Windows;
+#else
+    return ast::CodegenTarget::Native;
+#endif
+}
+
 static FILE* OpenFileForRead(const std::string& filename)
 {
 #ifdef _WIN32
@@ -89,6 +109,7 @@ void cli::Compiler::DefineArgs()
         "Outputs:\n"
         "  Native builds write ./" KR_DEFAULT_OUT_FILE " by default.\n"
         "  wasm32-wasi builds write ./" KR_DEFAULT_WASM_OUT_FILE " by default.\n"
+        "  x86_64-windows builds write ./" KR_DEFAULT_WINDOWS_OUT_FILE " by default.\n"
         "  --emit-ir prints LLVM IR to stdout unless -o is provided.\n\n"
         "Examples:\n"
         "  kriol hello.kriol\n"
@@ -123,7 +144,7 @@ void cli::Compiler::DefineArgs()
         .metavar("TARGET")
         .default_value(std::string("native"))
         .nargs(1)
-        .choices("native", "wasm32-wasi");
+        .choices("native", "wasm32-wasi", "x86_64-windows");
 
     Parser->add_argument("--ignore-extension")
         .help("Accept file inputs without a ." +
@@ -266,7 +287,7 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 {
     if (options.input.empty())
         throw std::invalid_argument("Compilation input cannot be empty.");
-    if (options.target != "native" && options.target != "wasm32-wasi")
+    if (!IsKnownTarget(options.target))
         throw std::invalid_argument("Unknown compilation target '" + options.target + "'.");
     if (options.emitIR && options.outputToMemory)
         throw std::invalid_argument("emitIR and outputToMemory cannot be used together.");
@@ -299,9 +320,7 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         }
     }
 
-    ast::CodegenTarget Target = options.target == "wasm32-wasi"
-        ? ast::CodegenTarget::Wasm32Wasi
-        : ast::CodegenTarget::Native;
+    ast::CodegenTarget Target = ResolveTarget(options.target);
 
     ast::CodeGenVisitor codegenVisitor(sourceName);
     codegenVisitor.CurrentTarget = Target;
@@ -318,16 +337,19 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
         return result;
     }
 
+    bool windowsExecutable = Target == ast::CodegenTarget::X86_64Windows;
+#ifdef _WIN32
+    windowsExecutable = windowsExecutable || Target == ast::CodegenTarget::Native;
+#endif
+
     std::string defaultOutfile = Target == ast::CodegenTarget::Wasm32Wasi
         ? KR_DEFAULT_WASM_OUT_FILE
-        : KR_DEFAULT_OUT_FILE;
+        : windowsExecutable ? KR_DEFAULT_WINDOWS_OUT_FILE : KR_DEFAULT_OUT_FILE;
 
     std::string outfile = options.outfile != "" ? options.outfile : defaultOutfile;
-#ifdef _WIN32
     // Windows only runs programs that carry an .exe extension.
-    if (Target == ast::CodegenTarget::Native && !PathFromUtf8(outfile).has_extension())
+    if (windowsExecutable && !PathFromUtf8(outfile).has_extension())
         outfile += ".exe";
-#endif
 
     ast::EmitOptions emitOptions = {.Target = Target};
 

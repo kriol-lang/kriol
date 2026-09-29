@@ -16,8 +16,9 @@
 #define KR_XSTR(x) KR_STR(x)
 #define KR_STR(x) #x
 
+#define KR_DEFAULT_WINDOWS_OUT_FILE "a.exe"
 #ifdef _WIN32
-#define KR_DEFAULT_OUT_FILE "a.exe"
+#define KR_DEFAULT_OUT_FILE KR_DEFAULT_WINDOWS_OUT_FILE
 #else
 #define KR_DEFAULT_OUT_FILE "a.out"
 #endif
