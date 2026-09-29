@@ -29,6 +29,16 @@
         return static_cast<std::size_t>(value);
     }
 
+    // Rejects an expression tree as soon as it grows past KR_MAX_EXPR_DEPTH,
+    // before any recursive pass has to walk it.
+    static kriol::ast::Expr* kriol_check_depth(kriol::ast::Expr* expr) {
+        if (expr->Depth > KR_MAX_EXPR_DEPTH)
+            kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno,
+                "expression is nested too deeply (limit is "
+                + std::to_string(KR_MAX_EXPR_DEPTH) + " levels)", 1);
+        return expr;
+    }
+
     using namespace kriol;
 %}
 
@@ -118,7 +128,7 @@ fstring : FSTR_START fstring_parts FSTR_END { $$ = $2; }
 fstring_parts
     : %empty { auto fs = new ast::FStringExpr(); fs->LineNum = yylineno; $$ = fs; }
     | fstring_parts FSTR_TEXT { static_cast<ast::FStringExpr*>($1)->addText(*$2); delete $2; $$ = $1; }
-    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+    | fstring_parts FSTR_LBRACE constant_expression FSTR_RBRACE { static_cast<ast::FStringExpr*>($1)->addExpr(std::unique_ptr<ast::Expr>($3)); $$ = kriol_check_depth($1); }
     ;
 
 identifier : IDENT { $$ = $1; }
@@ -168,8 +178,8 @@ value_expression : constant_expression { $$ = $1; }
 array_initializer : LBRAC array_initializer_elements RBRAC { $$ = $2; }
                   ;
 
-array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; n->addElement(std::unique_ptr<ast::Expr>($1)); $$ = n; }
-                           | array_initializer_elements COMMA value_expression { static_cast<ast::ArrayLiteralExpr*>($1)->addElement(std::unique_ptr<ast::Expr>($3)); $$ = $1; }
+array_initializer_elements : value_expression { auto n = new ast::ArrayLiteralExpr(); n->LineNum = yylineno; n->addElement(std::unique_ptr<ast::Expr>($1)); $$ = kriol_check_depth(n); }
+                           | array_initializer_elements COMMA value_expression { static_cast<ast::ArrayLiteralExpr*>($1)->addElement(std::unique_ptr<ast::Expr>($3)); $$ = kriol_check_depth($1); }
                            ;
 
 expression : assignment_expression { $$ = $1; }
@@ -179,62 +189,62 @@ constant_expression : logical_or_expressions { $$ = $1; }
                     ;
 
 logical_or_expressions : logical_and_expressions { $$ = $1; }
-                       | logical_or_expressions OR logical_and_expressions { auto n = new ast::BinExpr("||", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                       | logical_or_expressions OR logical_and_expressions { auto n = new ast::BinExpr("||", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                        ;
 
 logical_and_expressions : equality_expression { $$ = $1; }
-                        | logical_and_expressions AND equality_expression { auto n = new ast::BinExpr("&&", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                        | logical_and_expressions AND equality_expression { auto n = new ast::BinExpr("&&", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                         ;
 
 equality_expression : relational_expression { $$ = $1; }
-                    | equality_expression EQ relational_expression { auto n = new ast::BinExpr("==", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                    | equality_expression NE relational_expression { auto n = new ast::BinExpr("!=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                    | equality_expression EQ relational_expression { auto n = new ast::BinExpr("==", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                    | equality_expression NE relational_expression { auto n = new ast::BinExpr("!=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                     ;
 
 relational_expression : additive_expression { $$ = $1; }
-                      | relational_expression LT additive_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression GT additive_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression LE additive_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                      | relational_expression GE additive_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                      | relational_expression LT additive_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                      | relational_expression GT additive_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                      | relational_expression LE additive_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                      | relational_expression GE additive_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                       ;
 
 additive_expression : multiplicative_expression { $$ = $1; }
-                    | additive_expression PLUS multiplicative_expression { auto n = new ast::BinExpr("+", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                    | additive_expression MINUS multiplicative_expression { auto n = new ast::BinExpr("-", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                    | additive_expression PLUS multiplicative_expression { auto n = new ast::BinExpr("+", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                    | additive_expression MINUS multiplicative_expression { auto n = new ast::BinExpr("-", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                     ;
 
 multiplicative_expression : unary_expression { $$ = $1; }
-                          | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                          | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                          | multiplicative_expression MOD unary_expression { auto n = new ast::BinExpr("%", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
+                          | multiplicative_expression MUL unary_expression { auto n = new ast::BinExpr("*", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                          | multiplicative_expression DIV unary_expression { auto n = new ast::BinExpr("/", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                          | multiplicative_expression MOD unary_expression { auto n = new ast::BinExpr("%", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                           ;
 
 unary_expression : primary_expression                          { $$ = $1; }
-                 | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
-                 | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+                 | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                 | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
                  ;
 
 primary_expression : postfix_expression { $$ = $1; }
                    ;
 
 postfix_expression : primary_atom { $$ = $1; }
-                   | postfix_expression LPAR argument_list RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression LPAR RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), nullptr); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression LBRAC expression RBRAC { auto n = new ast::ArrayAccessExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; }
-                   | postfix_expression DOT IDENT { auto n = new ast::MemberAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = n; delete $3; }
-                   | postfix_expression COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = n; delete $3; }
+                   | postfix_expression LPAR argument_list RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::FuncCallArgs>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                   | postfix_expression LPAR RPAR { auto n = new ast::FunCallExpr(std::unique_ptr<ast::Expr>($1), nullptr); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                   | postfix_expression LBRAC expression RBRAC { auto n = new ast::ArrayAccessExpr(std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
+                   | postfix_expression DOT IDENT { auto n = new ast::MemberAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = kriol_check_depth(n); delete $3; }
+                   | postfix_expression COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::unique_ptr<ast::Expr>($1), *$3); n->LineNum = yylineno; $$ = kriol_check_depth(n); delete $3; }
                    ;
 
 primary_atom : record_literal { $$ = $1; }
              | typed_array_initializer { $$ = $1; }
              | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = yylineno; $$ = n; delete $1; }
              | constant { $$ = $1; }
-             | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = n; }
+             | LPAR expression RPAR { auto n = new ast::ParExpr(std::unique_ptr<ast::Expr>($2)); n->LineNum = yylineno; $$ = kriol_check_depth(n); }
              ;
                    ;
 
 assignment_expression : constant_expression { $$ = $1; }
-                      | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $2; }
+                      | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); delete $2; }
                       ;
 
 assignment_operator : ASSIGN { $$ = new std::string("="); }
@@ -346,11 +356,16 @@ record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY {
 typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = yylineno; $$ = lit; delete $2; }
                         ;
 
-record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = n; delete $1; }
-                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = $1; delete $3; }
+record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = yylineno; $$ = kriol_check_depth(n); delete $1; }
+                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); $$ = kriol_check_depth($1); delete $3; }
                           ;
 %%
 
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, err, 1);
+    // Bison reports a full parser stack this way; for Kriol that means blocks
+    // or brackets nested thousands of levels deep.
+    const std::string message = std::string(err) == "memory exhausted"
+        ? "code is nested too deeply for the parser"
+        : err;
+    kriol::cli::PrintErr(kriol::cli::GetSourceFile(), yylineno, message, 1);
 }

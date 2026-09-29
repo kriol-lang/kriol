@@ -382,6 +382,16 @@ function(kriol_configure_target TARGET_NAME)
         )
     endif()
 
+    # The compiler recurses over the syntax tree; give it the 8 MiB stack it
+    # gets on Linux instead of the 1 MiB Windows default.
+    if(WIN32)
+        if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+            target_link_options(${TARGET_NAME} PRIVATE /STACK:8388608)
+        else()
+            target_link_options(${TARGET_NAME} PRIVATE -Wl,--stack,8388608)
+        endif()
+    endif()
+
     target_compile_definitions(
         ${TARGET_NAME}
         PRIVATE

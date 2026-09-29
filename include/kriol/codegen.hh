@@ -138,13 +138,18 @@ namespace ast {
         static const char* formatSpec(const Type& kriolType);
         static Type        llvmTypeToKriol(llvm::Type* ty);
 
-        // Recursively appends format specifiers and argument values for an array
-        // to outFmt and outArgs, for use with __kriol_format.
-        void appendArrayFormatParts(llvm::Value* storage,
-                                    llvm::ArrayType* arrayTy,
-                                    const Type& arrayKriolType,
-                                    std::string& outFmt,
-                                    std::vector<llvm::Value*>& outArgs);
+        // Formats the array stored at `storage` as "[a, b, c]" text through a
+        // single runtime call, whatever the array's length.
+        llvm::Value* emitArrayToText(llvm::Value* storage, const Type& arrayType);
+
+        // Stores `fill` into every element of the array at `storage` with a
+        // loop, so repeat initializers cost the same for any length.
+        void emitArrayFill(llvm::Value* storage, llvm::ArrayType* arrayTy, llvm::Value* fill);
+
+        // Stores an array literal or repeat initializer into `storage`.
+        void emitArrayInitializer(llvm::Value* storage,
+                                  const Type& arrayType,
+                                  ast::Expr* init);
         bool emitPreludeCall(ast::FunCallExpr& node, const std::string& name);
         void emitPrintBuiltin(ast::FuncCallArgs* args, bool addNewline);
 

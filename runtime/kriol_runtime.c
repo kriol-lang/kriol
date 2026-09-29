@@ -360,6 +360,115 @@ char* __kriol_format(const char* fmt, ...) {
     return buf;
 }
 
+/*
+ * Array formatting. Codegen passes the array's storage and describes its
+ * element type, so printing or interpolating an array is one call instead of
+ * code unrolled per element. The kinds must match codegen's ArrayElementKind.
+ */
+enum {
+    KRIOL_ELEMENT_SIGNED = 0,
+    KRIOL_ELEMENT_UNSIGNED = 1,
+    KRIOL_ELEMENT_FLOAT = 2,
+    KRIOL_ELEMENT_BOOL = 3,
+    KRIOL_ELEMENT_TEXT = 4
+};
+
+typedef struct {
+    char* Data;
+    size_t Len;
+    size_t Cap;
+} KriolTextBuilder;
+
+static void __kriol_builder_append(KriolTextBuilder* builder, const char* text, size_t len) {
+    if (builder->Len + len + 1 > builder->Cap) {
+        size_t cap = builder->Cap;
+        while (builder->Len + len + 1 > cap) {
+            if (cap > ((size_t)-1) / 2)
+                __kriol_panic("text is too large");
+            cap *= 2;
+        }
+        builder->Data = __kriol_resize_text(builder->Data, cap);
+        builder->Cap = cap;
+    }
+    memcpy(builder->Data + builder->Len, text, len);
+    builder->Len += len;
+}
+
+static void __kriol_builder_append_text(KriolTextBuilder* builder, const char* text) {
+    __kriol_builder_append(builder, text, strlen(text));
+}
+
+static long long __kriol_read_signed(const unsigned char* element, int32_t bits) {
+    switch (bits) {
+        case 8:  { int8_t v;  memcpy(&v, element, sizeof v); return v; }
+        case 16: { int16_t v; memcpy(&v, element, sizeof v); return v; }
+        case 32: { int32_t v; memcpy(&v, element, sizeof v); return v; }
+        default: { int64_t v; memcpy(&v, element, sizeof v); return v; }
+    }
+}
+
+static unsigned long long __kriol_read_unsigned(const unsigned char* element, int32_t bits) {
+    switch (bits) {
+        case 8:  { uint8_t v;  memcpy(&v, element, sizeof v); return v; }
+        case 16: { uint16_t v; memcpy(&v, element, sizeof v); return v; }
+        case 32: { uint32_t v; memcpy(&v, element, sizeof v); return v; }
+        default: { uint64_t v; memcpy(&v, element, sizeof v); return v; }
+    }
+}
+
+char* __kriol_array_to_text(const void* data, int64_t count, int32_t kind, int32_t bits) {
+    size_t stride = kind == KRIOL_ELEMENT_TEXT ? sizeof(const char*)
+                  : kind == KRIOL_ELEMENT_BOOL ? 1
+                  : (size_t)bits / 8;
+    KriolTextBuilder builder = { __kriol_alloc_text(64), 0, 64 };
+    char number[64];
+
+    __kriol_builder_append(&builder, "[", 1);
+    for (int64_t i = 0; i < count; ++i) {
+        const unsigned char* element = (const unsigned char*)data + (size_t)i * stride;
+        if (i > 0)
+            __kriol_builder_append(&builder, ", ", 2);
+
+        switch (kind) {
+            case KRIOL_ELEMENT_SIGNED:
+                snprintf(number, sizeof number, "%lld", __kriol_read_signed(element, bits));
+                __kriol_builder_append_text(&builder, number);
+                break;
+            case KRIOL_ELEMENT_UNSIGNED:
+                snprintf(number, sizeof number, "%llu", __kriol_read_unsigned(element, bits));
+                __kriol_builder_append_text(&builder, number);
+                break;
+            case KRIOL_ELEMENT_FLOAT: {
+                double v;
+                if (bits == 32) {
+                    float f;
+                    memcpy(&f, element, sizeof f);
+                    v = f;
+                } else {
+                    memcpy(&v, element, sizeof v);
+                }
+                snprintf(number, sizeof number, "%g", v);
+                __kriol_builder_append_text(&builder, number);
+                break;
+            }
+            case KRIOL_ELEMENT_BOOL:
+                __kriol_builder_append_text(&builder, __kriol_bool_to_string(*element != 0));
+                break;
+            default: {
+                const char* text;
+                memcpy(&text, element, sizeof text);
+                if (text)
+                    __kriol_builder_append_text(&builder, text);
+                break;
+            }
+        }
+    }
+    __kriol_builder_append(&builder, "]", 1);
+
+    builder.Data[builder.Len] = '\0';
+    return builder.Data;
+}
+
 void __kriol_assert_message(int cond, int line, const char* message) {
     if (!cond)
         __kriol_panic_at(message && message[0] != '\0' ? message : "assertion failed", line);

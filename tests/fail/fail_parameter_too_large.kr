@@ -1,0 +1,10 @@
+// Parameters are copied onto the stack too, including arrays inside molda.
+molda Grandi {
+    nter[200000] xs;
+}
+
+fn usa(Grandi g) {
+}
+
+fn inisiu() {
+}

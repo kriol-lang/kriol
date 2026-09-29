@@ -240,6 +240,12 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
         linkerArg0,
         "-m",
         "wasm32",
+        // Same 8 MiB stack as the native targets (wasm-ld defaults to 64 KiB),
+        // placed first in memory so an overflow traps instead of silently
+        // overwriting static data.
+        "-z",
+        "stack-size=8388608",
+        "--stack-first",
         "--export=" __WASI_MAIN,
         wasiInputs.Crt1Command,
         objPath,
@@ -518,9 +524,11 @@ static void linkMingwExecutable(const std::string& objPath,
     std::string linkerPath = findMingwLinker();
     MingwInputs inputs = writeMingwInputs();
 
-    // Mirrors what the MinGW clang driver passes to ld.lld for a C program.
+    // Mirrors what the MinGW clang driver passes to ld.lld for a C program,
+    // plus the 8 MiB stack Linux gives programs (Windows defaults to 1 MiB).
     std::vector<std::string> linkArgs = {
-        linkerPath, "-m", "i386pep", "--subsystem", "console", "-o", outputPath
+        linkerPath, "-m", "i386pep", "--subsystem", "console",
+        "--stack", "8388608", "-o", outputPath
     };
     linkArgs.insert(linkArgs.end(), inputs.Startup.begin(), inputs.Startup.end());
     linkArgs.push_back(objPath);
@@ -939,43 +947,67 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     }
 
     if (node.IsArray) {
-        if (node.Value) {
-            auto* arrTy = llvm::dyn_cast<llvm::ArrayType>(ty);
-            if (!arrTy) throw std::runtime_error("internal error: array variable '" + node.Name + "' has non-array LLVM type");
-            auto* elemTy = arrTy->getArrayElementType();
-
-            if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get())) {
-                for (size_t i = 0; i < initLit->Elements.size(); ++i) {
-                    initLit->Elements[i]->accept(*this);
-                    if (!LastValue) continue;
-                    llvm::Value* value = LastValue;
-                    Type elemKriolTy = node.Type.elementType();
-                    if (value->getType() != elemTy)
-                        value = coerceToType(value, initLit->Elements[i]->ResolvedType, elemKriolTy);
-                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
-                    Builder->CreateStore(value, elemPtr);
-                }
-            } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
-                initRep->Fill->accept(*this);
-                llvm::Value* fillVal = LastValue
-                    ? coerceToType(LastValue, initRep->Fill->ResolvedType, node.Type.elementType())
-                    : llvm::Constant::getNullValue(elemTy);
-                for (size_t i = 0; i < initRep->Count; ++i) {
-                    auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
-                    llvm::Value* elemPtr = createArrayElementPtr(alloca, ty, index);
-                    Builder->CreateStore(fillVal, elemPtr);
-                }
-            } else {
-                throw std::runtime_error("array variable '" + node.Name + "' requires array literal or repeat initializer");
-            }
-        }
-    } else if (node.Value) {
+        emitArrayInitializer(alloca, node.Type, node.Value.get());
+    } else {
         node.Value->accept(*this);
         if (LastValue) {
             LastValue = coerceToType(LastValue, node.Value->ResolvedType, node.Type);
             Builder->CreateStore(LastValue, alloca);
         }
+    }
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::emitArrayFill(llvm::Value* storage,
+                                   llvm::ArrayType* arrayTy,
+                                   llvm::Value* fill) {
+    // Arrays always have at least one element (sema rejects size 0), so the
+    // loop body runs before the first bound check.
+    auto* i64Ty = llvm::Type::getInt64Ty(Context);
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* entryBB = Builder->GetInsertBlock();
+    auto* loopBB = llvm::BasicBlock::Create(Context, "fill.loop", fn);
+    auto* doneBB = llvm::BasicBlock::Create(Context, "fill.done", fn);
+    Builder->CreateBr(loopBB);
+
+    Builder->SetInsertPoint(loopBB);
+    auto* index = Builder->CreatePHI(i64Ty, 2, "fill.index");
+    index->addIncoming(llvm::ConstantInt::get(i64Ty, 0), entryBB);
+    Builder->CreateStore(fill, createArrayElementPtr(storage, arrayTy, index));
+    auto* next = Builder->CreateAdd(index, llvm::ConstantInt::get(i64Ty, 1), "fill.next");
+    index->addIncoming(next, loopBB);
+    auto* more = Builder->CreateICmpULT(
+        next, llvm::ConstantInt::get(i64Ty, arrayTy->getNumElements()), "fill.more");
+    Builder->CreateCondBr(more, loopBB, doneBB);
+
+    Builder->SetInsertPoint(doneBB);
+}
+
+void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
+                                          const Type& arrayType,
+                                          ast::Expr* init) {
+    auto* arrayTy = llvm::cast<llvm::ArrayType>(mapType(arrayType));
+    llvm::Type* elemTy = arrayTy->getArrayElementType();
+    const Type& elemType = arrayType.elementType();
+
+    if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(init)) {
+        for (size_t i = 0; i < initLit->Elements.size(); ++i) {
+            initLit->Elements[i]->accept(*this);
+            if (!LastValue) continue;
+            llvm::Value* value = LastValue;
+            if (value->getType() != elemTy)
+                value = coerceToType(value, initLit->Elements[i]->ResolvedType, elemType);
+            auto* index = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), i);
+            Builder->CreateStore(value, createArrayElementPtr(storage, arrayTy, index));
+        }
+    } else if (auto* initRep = dynamic_cast<ArrayRepeatExpr*>(init)) {
+        initRep->Fill->accept(*this);
+        llvm::Value* fill = LastValue
+            ? coerceToType(LastValue, initRep->Fill->ResolvedType, elemType)
+            : llvm::Constant::getNullValue(elemTy);
+        emitArrayFill(storage, arrayTy, fill);
+    } else {
+        throw std::runtime_error("internal error: array requires an array literal or repeat initializer");
     }
     LastValue = nullptr;
 }
@@ -1199,6 +1231,13 @@ void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
     llvm::Value* fill = LastValue ? LastValue : llvm::Constant::getNullValue(elemTy);
     if (fill->getType() != elemTy)
         fill = coerceToType(fill, node.Fill->ResolvedType, node.ResolvedType.elementType());
+
+    // A constant fill needs no per-element code at all.
+    if (auto* constantFill = llvm::dyn_cast<llvm::Constant>(fill)) {
+        std::vector<llvm::Constant*> elements(arrayTy->getNumElements(), constantFill);
+        LastValue = llvm::ConstantArray::get(arrayTy, elements);
+        return;
+    }
 
     llvm::Value* array = llvm::UndefValue::get(arrayTy);
     for (uint64_t i = 0; i < arrayTy->getNumElements(); ++i) {
@@ -1433,6 +1472,12 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     // Emit deferred global initializers at the top of inisiu (main)
     if (isMain && !DeferredGlobalInits.empty()) {
         for (auto& di : DeferredGlobalInits) {
+            if (di.TargetType.isArray()
+                    && (dynamic_cast<ArrayLiteralExpr*>(di.InitExpr)
+                        || dynamic_cast<ArrayRepeatExpr*>(di.InitExpr))) {
+                emitArrayInitializer(di.Var, di.TargetType, di.InitExpr);
+                continue;
+            }
             di.InitExpr->accept(*this);
             if (LastValue) {
                 LastValue = coerceToType(LastValue, di.InitExpr->ResolvedType, di.TargetType);

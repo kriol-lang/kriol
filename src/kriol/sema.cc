@@ -284,6 +284,35 @@ bool SemanticAnalyzer::validateTypeKnown(const Type& type,
     return false;
 }
 
+std::size_t SemanticAnalyzer::storageBytes(const Type& type) const {
+    constexpr std::size_t saturated = static_cast<std::size_t>(-1);
+
+    if (type.isArray()) {
+        const std::size_t element = storageBytes(type.elementType());
+        if (element != 0 && type.arraySize() > saturated / element)
+            return saturated;
+        return element * type.arraySize();
+    }
+    if (type.isInteger() || type.isFloat())
+        return std::max<std::size_t>(1, type.bitWidth() / 8);
+    if (type == Type::Bool())
+        return 1;
+    if (type.isNamed()) {
+        auto recordIt = RecordTable.find(type.name());
+        if (recordIt == RecordTable.end())
+            return 0;
+        std::size_t total = 0;
+        for (const auto* field : recordIt->second.fields) {
+            const std::size_t bytes = storageBytes(field->Type);
+            if (bytes > saturated - total)
+                return saturated;
+            total += bytes;
+        }
+        return total;
+    }
+    return 8; // textu: a pointer, counted at its 64-bit size on every target
+}
+
 bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
                                                 ast::Expr* init,
                                                 int lineNum,
@@ -431,6 +460,19 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
 
     if (!validateTypeKnown(node.Type, node.LineNum, kind + " '" + node.Name + "'"))
         canDeclare = false;
+
+    // Locals live on the stack, so an oversized one would overflow it at run
+    // time instead of failing here.
+    if (canDeclare && FunctionDepth > 0) {
+        const std::size_t bytes = storageBytes(node.Type);
+        if (bytes > KR_MAX_LOCAL_BYTES) {
+            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' needs "
+                     + std::to_string(bytes) + " bytes of stack, over the limit of "
+                     + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes"
+                     + (node.IsParam ? "" : "; declare it at the top level instead"));
+            canDeclare = false;
+        }
+    }
 
     if (node.IsArray && node.Value) {
         auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
