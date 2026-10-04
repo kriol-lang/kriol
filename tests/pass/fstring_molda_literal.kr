@@ -1,0 +1,15 @@
+// A molda literal inside an f-string interpolation keeps its own braces.
+molda Pontu {
+    int x;
+}
+
+molda Linha {
+    Pontu a;
+}
+
+fn inisiu() {
+    int n = 3;
+    textu t = f"{Pontu{x = 7}.x} {Linha{a = Pontu{x = n}}.a.x} {f"{n}"}";
+
+    mostran(t);
+}

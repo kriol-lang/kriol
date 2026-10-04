@@ -9,6 +9,7 @@
     #include <cstdio>
     #include <iostream>
     #include <cstring>
+    #include <vector>
     #include "parser.hh"
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
@@ -26,7 +27,9 @@
 
     #define SCAN_ERROR(message) kriol::cli::ReportParseError(yylloc.first_line, message)
 
-    static int g_fstr_depth = 0;
+    // One entry per open f-string interpolation: how many `{` inside it are
+    // still open, so the `}` of a molda literal does not end the interpolation.
+    static std::vector<int> g_fstr_braces;
 %}
 
 INT [0-9]+
@@ -90,8 +93,14 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 ":"             return TOKENIZE(COLON);
 ","             return TOKENIZE(COMMA);
 ";"             return TOKENIZE(SEMIC);
-"{"             return TOKENIZE(LCURLY);
-"}"             { if (g_fstr_depth > 0) { --g_fstr_depth; yy_pop_state(); return TOKENIZE(FSTR_RBRACE); } return TOKENIZE(RCURLY); }
+"{"             { if (!g_fstr_braces.empty()) ++g_fstr_braces.back(); return TOKENIZE(LCURLY); }
+"}"             {
+                    if (!g_fstr_braces.empty()) {
+                        if (g_fstr_braces.back() == 0) { g_fstr_braces.pop_back(); yy_pop_state(); return TOKENIZE(FSTR_RBRACE); }
+                        --g_fstr_braces.back();
+                    }
+                    return TOKENIZE(RCURLY);
+                }
 "["             return TOKENIZE(LBRAC);
 "]"             return TOKENIZE(RBRAC);
 "="             return TOKENIZE(ASSIGN);
@@ -127,7 +136,7 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 
 <FSTRING_DQ>{
     "\""                  { yy_pop_state(); return TOKENIZE(FSTR_END); }
-    "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
+    "{"                   { g_fstr_braces.push_back(0); yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
     <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
     \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
@@ -136,7 +145,7 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 
 <FSTRING_SQ>{
     "'"                   { yy_pop_state(); return TOKENIZE(FSTR_END); }
-    "{"                   { ++g_fstr_depth; yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
+    "{"                   { g_fstr_braces.push_back(0); yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
     <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
     \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
@@ -150,7 +159,7 @@ f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 
 void kriol_scanner_reset_state(void)
 {
-    g_fstr_depth = 0;
+    g_fstr_braces.clear();
     yy_start_stack_ptr = 0;
     BEGIN(INITIAL);
 }
