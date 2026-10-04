@@ -1,4 +1,4 @@
-nter g = h + 1;
+int g = h + 1;
 
 fn inisiu() {
     mostran(g);

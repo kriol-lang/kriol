@@ -1,9 +1,9 @@
 molda Pessoa {
     textu nomi;
-    nter idadi;
+    int idadi;
 }
 
-fn envelhece(Pessoa pessoa) nter {
+fn envelhece(Pessoa pessoa) int {
     divolvi pessoa.idadi + 1;
 }
 

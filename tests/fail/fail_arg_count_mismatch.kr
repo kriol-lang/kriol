@@ -1,4 +1,4 @@
-fn soma(nter a, nter b) nter {
+fn soma(int a, int b) int {
     divolvi a + b;
 }
 

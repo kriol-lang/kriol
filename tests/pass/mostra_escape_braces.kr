@@ -2,6 +2,6 @@
 // as interpolation placeholders.
 // Expected output: "42 and {}"
 fn inisiu() {
-    nter n = 42;
+    int n = 42;
     mostran(f"{n} and \{\}");
 }

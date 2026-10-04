@@ -1,9 +1,9 @@
-fn par(nter n) bool {
+fn par(int n) bool {
     si n == 0 { divolvi sin; }
     divolvi impar(n - 1);
 }
 
-fn impar(nter n) bool {
+fn impar(int n) bool {
     si n == 0 { divolvi nau; }
     divolvi par(n - 1);
 }

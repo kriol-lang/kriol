@@ -77,7 +77,7 @@ rm -f "$tmpbin"
 for level in 0 3; do
     printf "  %-44s" "optimization level $level"
     tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
-    if "$KRIOL" --opt-lvl "$level" --text 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
+    if "$KRIOL" --opt-lvl "$level" --text 'fn inisiu() { int[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
        [ "$(timeout 5 "$tmpbin")" = "3" ]; then
         echo " PASS"; pass=$((pass+1))
     else

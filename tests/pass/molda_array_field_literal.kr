@@ -1,6 +1,6 @@
 molda Pessoa {
     textu nomi;
-    nter[2] flags;
+    int[2] flags;
 }
 
 fn inisiu() {

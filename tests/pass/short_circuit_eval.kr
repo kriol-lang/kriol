@@ -1,4 +1,4 @@
-nter calls = 0;
+int calls = 0;
 
 fn bump() bool {
     calls += 1;

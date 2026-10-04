@@ -1,0 +1,27 @@
+fn inisiu() {
+    konfirma((12 & 10) == 8);
+    konfirma((12 | 10) == 14);
+    konfirma((12 ^ 10) == 6);
+    konfirma(~0 == -1);
+
+    // Bitwise operators bind tighter than comparisons.
+    int flags = 5;
+    konfirma(flags & 1 == 1);
+    konfirma(flags & 2 == 0);
+
+    // & binds tighter than ^, which binds tighter than |.
+    konfirma((1 | 6 & 3 ^ 1) == 3);
+
+    u8 mask = 15;
+    u8 low = mask & 3;
+    konfirma(low == 3);
+    konfirma(~mask == 240);
+
+    int v = 6;
+    v &= 3;
+    konfirma(v == 2);
+    v |= 5;
+    konfirma(v == 7);
+    v ^= 2;
+    konfirma(v == 5);
+}

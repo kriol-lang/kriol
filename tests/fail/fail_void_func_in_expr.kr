@@ -3,5 +3,5 @@ fn printHello() {
 }
 
 fn inisiu() {
-    nter x = 1 + printHello();
+    int x = 1 + printHello();
 }

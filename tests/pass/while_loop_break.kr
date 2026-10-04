@@ -1,6 +1,6 @@
 // While loop with break and continue.
 fn inisiu() {
-    nter i = 0;
+    int i = 0;
     nkuantu i < 10 {
         i += 1;
         si i == 3 {

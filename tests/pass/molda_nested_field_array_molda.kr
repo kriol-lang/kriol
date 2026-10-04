@@ -1,12 +1,12 @@
 molda Enderesu {
     textu rua;
-    nter numero;
+    int numero;
 }
 
 molda Pessoa {
     textu nomi;
     Enderesu[2] enderesu;
-    nter[2] flags;
+    int[2] flags;
 }
 
 fn inisiu() {

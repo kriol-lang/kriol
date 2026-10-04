@@ -26,6 +26,11 @@ Type promotedNumericType(const Type& lhs, const Type& rhs) {
     return lhs.valid() ? lhs : rhs;
 }
 
+Type divisionResultType(const Type& lhs, const Type& rhs) {
+    if (lhs.isInteger() && rhs.isInteger()) return Type::Float(64);
+    return promotedNumericType(lhs, rhs);
+}
+
 const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
     if (!expr) return nullptr;
     if (auto* par = dynamic_cast<const ParExpr*>(expr))

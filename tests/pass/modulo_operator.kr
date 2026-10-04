@@ -2,7 +2,7 @@ fn inisiu() {
     konfirma(10 % 3 == 1);
     konfirma(9 % 3 == 0);
 
-    nter x = 17;
+    int x = 17;
     x %= 5;
     konfirma(x == 2);
 

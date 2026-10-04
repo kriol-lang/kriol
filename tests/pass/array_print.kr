@@ -1,5 +1,5 @@
 fn inisiu() {
-    nter[3] nums = [1, 2, 3];
+    int[3] nums = [1, 2, 3];
     num[2] vals = [1.5, 2.5];
     bool[2] flags = [sin, nau];
     textu[2] names = ["kriol", "lang"];

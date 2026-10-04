@@ -19,7 +19,7 @@ fn inisiu() {
     novu_pessoa('Clara', 'Sanchez', '71')
   ];
 
-  pa nter i = 0 ; i < 3 ; i += 1 {
+  pa int i = 0 ; i < 3 ; i += 1 {
     mostra_pessoa(pessoas[i]);
   }
 

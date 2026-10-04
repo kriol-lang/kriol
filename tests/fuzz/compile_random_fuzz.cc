@@ -55,7 +55,7 @@ namespace
     std::string typeName(std::mt19937_64& rng)
     {
         static const std::vector<std::string> types = {
-            "nter", "num", "bool", "textu", "i8", "i16", "i32", "i64",
+            "int", "num", "bool", "textu", "i8", "i16", "i32", "i64",
             "u8", "u16", "u32", "u64", "f32", "f64", "isize", "usize"
         };
         return pick(rng, types);
@@ -121,7 +121,7 @@ namespace
             case 0:
                 return typeName(rng) + " " + ident(rng) + " = " + expr(rng, depth) + ";";
             case 1:
-                return "dipoz " + typeName(rng) + " " + ident(rng) + ";";
+                return ident(rng) + " += " + expr(rng, depth) + ";";
             case 2:
                 return "[" + std::to_string(randomInt(rng, 0, 64)) + "] " + ident(rng) +
                        " = [ " + expr(rng, 1) + " ];";
@@ -194,8 +194,8 @@ namespace
     std::string tokenSoup(std::mt19937_64& rng, std::size_t maxBytes)
     {
         static const std::vector<std::string> tokens = {
-            "fn", "molda", "mostran", "mostra", "dipoz", "si", "sinon", "nkuantu",
-            "para", "divolvi", "sai", "kontinua", "konfirma", "nter", "num",
+            "fn", "molda", "mostran", "mostra", "si", "sinon", "nkuantu",
+            "para", "divolvi", "sai", "kontinua", "konfirma", "int", "num",
             "bool", "textu", "sin", "nau", "(", ")", "{", "}", "[", "]", ";",
             ",", ".", "::", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-",
             "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'"

@@ -1,6 +1,6 @@
 // ERROR: non-void function that never returns.
 fn sen_retornu() num {
-    nter x = 42;
+    int x = 42;
 }
 
 fn inisiu() {

@@ -72,17 +72,18 @@
 %token<string> BOOL_LIT "boolean literal"
 %token<token>  PLUS "+" MINUS "-" MUL "*" DIV "/" MOD "%"
 %token<token>  EQ "=="  NE "!="  LT "<" LE "<=" GT ">" GE ">=" PLUS_ASSIGN "+=" MINUS_ASSIGN "-=" MUL_ASSIGN "*=" DIV_ASSIGN "/=" MOD_ASSIGN "%="
+%token<token>  BIT_AND "&" BIT_OR "|" BIT_XOR "^" BIT_NOT "~" AND_ASSIGN "&=" OR_ASSIGN "|=" XOR_ASSIGN "^="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
-%token<string> TYPE_NUM TYPE_BOOL TYPE_NTER TYPE_TEXTU TYPE_PRIMITIVE
+%token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
-%token<token> FN "fn" MOLDA "molda" NOT "!" DIPOZ "dipoz"
+%token<token> FN "fn" MOLDA "molda" NOT "!"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
 %type<expr> expression assignment_expression primary_expression postfix_expression primary_atom unary_expression initializer
             constant_expression constant logical_or_expressions logical_and_expressions
-            equality_expression relational_expression additive_expression multiplicative_expression
+            equality_expression relational_expression bit_or_expression bit_xor_expression bit_and_expression additive_expression multiplicative_expression
             fstring fstring_parts array_initializer array_initializer_elements value_expression
             typed_array_initializer record_literal record_field_initializers
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
@@ -113,7 +114,7 @@ program : statements { *Program = $1; }
 
 type_specifier : TYPE_NUM { $$ = $1; }
                | TYPE_BOOL { $$ = $1; }
-               | TYPE_NTER { $$ = $1; }
+               | TYPE_INT { $$ = $1; }
                | TYPE_TEXTU { $$ = $1; }
                | TYPE_PRIMITIVE { $$ = $1; }
                | TYPE_IDENT { $$ = $1; }
@@ -142,8 +143,6 @@ declarator : identifier { $$ = $1; }
            ;
 
 declaration : control_initializer SEMIC { $$ = $1; }
-            | DIPOZ type_specifier declarator SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$2), *$3, nullptr); d->LineNum = @$.first_line; $$ = d; delete $2; delete $3; }
-            | DIPOZ type_specifier array_declarator SEMIC { $3->SetType(Type::FixedArray(Type::FromName(*$2), $3->ArraySize)); $3->LineNum = @$.first_line; $$ = $3; delete $2; }
             ;
 
 control_initializer : type_specifier declarator ASSIGN initializer { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
@@ -217,12 +216,24 @@ equality_expression : relational_expression { $$ = $1; }
                     | equality_expression NE relational_expression { auto n = new ast::BinExpr("!=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                     ;
 
-relational_expression : additive_expression { $$ = $1; }
-                      | relational_expression LT additive_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                      | relational_expression GT additive_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                      | relational_expression LE additive_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                      | relational_expression GE additive_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+relational_expression : bit_or_expression { $$ = $1; }
+                      | relational_expression LT bit_or_expression { auto n = new ast::BinExpr("<", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression GT bit_or_expression { auto n = new ast::BinExpr(">", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression LE bit_or_expression { auto n = new ast::BinExpr("<=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | relational_expression GE bit_or_expression { auto n = new ast::BinExpr(">=", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
+
+bit_or_expression : bit_xor_expression { $$ = $1; }
+                  | bit_or_expression BIT_OR bit_xor_expression { auto n = new ast::BinExpr("|", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                  ;
+
+bit_xor_expression : bit_and_expression { $$ = $1; }
+                   | bit_xor_expression BIT_XOR bit_and_expression { auto n = new ast::BinExpr("^", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   ;
+
+bit_and_expression : additive_expression { $$ = $1; }
+                   | bit_and_expression BIT_AND additive_expression { auto n = new ast::BinExpr("&", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                   ;
 
 additive_expression : multiplicative_expression { $$ = $1; }
                     | additive_expression PLUS multiplicative_expression { auto n = new ast::BinExpr("+", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
@@ -237,6 +248,7 @@ multiplicative_expression : unary_expression { $$ = $1; }
 
 unary_expression : primary_expression                          { $$ = $1; }
                  | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                 | BIT_NOT unary_expression                     { auto n = new ast::UnaryExpr("~", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  ;
 
@@ -268,6 +280,9 @@ assignment_operator : ASSIGN { $$ = new std::string("="); }
                     | MUL_ASSIGN { $$ = new std::string("*="); }
                     | DIV_ASSIGN { $$ = new std::string("/="); }
                     | MOD_ASSIGN { $$ = new std::string("%="); }
+                    | AND_ASSIGN { $$ = new std::string("&="); }
+                    | OR_ASSIGN { $$ = new std::string("|="); }
+                    | XOR_ASSIGN { $$ = new std::string("^="); }
                     ;
 
 function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; delete $6; delete $2; }
@@ -344,7 +359,7 @@ if_initializer : if_initializer_type_specifier declarator ASSIGN initializer SEM
 
 if_initializer_type_specifier : TYPE_NUM { $$ = $1; }
                               | TYPE_BOOL { $$ = $1; }
-                              | TYPE_NTER { $$ = $1; }
+                              | TYPE_INT { $$ = $1; }
                               | TYPE_TEXTU { $$ = $1; }
                               | TYPE_PRIMITIVE { $$ = $1; }
                               ;

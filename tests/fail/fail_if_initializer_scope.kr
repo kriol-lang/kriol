@@ -1,6 +1,6 @@
 // ERROR: if initializer variable must not escape the if/else chain.
 fn inisiu() {
-  si nter res = 1; res == 1 {
+  si int res = 1; res == 1 {
     mostra(res);
   } sinon {
     mostra(res);

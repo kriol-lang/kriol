@@ -1,8 +1,8 @@
 // Statements that follow break/continue/return in the same block are dead
 // code, but must still compile to valid IR.
-fn count() nter {
-    nter total = 0;
-    pa nter i = 0; i < 10; i += 1 {
+fn count() int {
+    int total = 0;
+    pa int i = 0; i < 10; i += 1 {
         si i == 3 {
             para;
             total += 100; // dead

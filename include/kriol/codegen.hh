@@ -122,8 +122,8 @@ namespace ast {
         void registerRecord(ast::MoldaDeclSttmt& node);
 
         // Central scalar coercion table: convert v to targetTy.
-        // Supported pairs: nter->num (SIToFP), bool->nter (ZExt),
-        // bool->num (UIToFP), num->nter (FPToSI). Identity is a no-op.
+        // Supported pairs: int->num (SIToFP), bool->int (ZExt),
+        // bool->num (UIToFP), num->int (FPToSI). Identity is a no-op.
         // Throws for unsupported or pointer conversions.
         llvm::Value* coerce(llvm::Value* v, llvm::Type* targetTy);
         llvm::Value* coerceToType(llvm::Value* v,

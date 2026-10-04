@@ -1,6 +1,6 @@
 molda Pessoa {
     textu nomi;
-    nter idadi;
+    int idadi;
 }
 
 fn muda_copia(Pessoa pessoa) {

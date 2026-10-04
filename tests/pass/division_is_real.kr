@@ -1,0 +1,20 @@
+fn inisiu() {
+    num a = 7 / 2;
+    konfirma(a == 3.5);
+
+    int x = 7;
+    int y = 2;
+    num b = x / y;
+    konfirma(b == 3.5);
+
+    num c = 8 / 2;
+    konfirma(c == 4.0);
+
+    num d = 1.0;
+    d /= 4;
+    konfirma(d == 0.25);
+
+    f32 e = 1.0;
+    f32 g = e / 4;
+    konfirma(g == 0.25);
+}

@@ -1,6 +1,6 @@
 molda Pessoa {
     textu nomi;
-    nter idadi;
+    int idadi;
 }
 
 fn novu_pessoa() Pessoa {
@@ -11,7 +11,7 @@ fn identidade(Pessoa pessoa) Pessoa {
     divolvi pessoa;
 }
 
-fn proxima_idadi(Pessoa pessoa) nter {
+fn proxima_idadi(Pessoa pessoa) int {
     divolvi pessoa.idadi + 1;
 }
 

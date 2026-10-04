@@ -17,7 +17,7 @@ static fs::path writeSource(const std::string& name, const std::string& source) 
 static int checkFileCompileAfterSyntaxError() {
     fs::path bad = writeSource("kriol_api_bad.kriol",
         "fn inisiu() {\n"
-        "    nter x = ;\n"
+        "    int x = ;\n"
         "    mostran(\"text left in the scanner buffer\");\n"
         "}\n");
     fs::path good = writeSource("kriol_api_good.kriol",

@@ -92,7 +92,7 @@ Write-Result 'inline source text' ($output -eq 'Kuale, Mundu!')
 
 foreach ($level in '0', '3') {
     $exe = Join-Path $Work 'optimized.exe'
-    $ok = Invoke-Kriol @('--opt-lvl', $level, '--text', 'fn inisiu() { nter[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
+    $ok = Invoke-Kriol @('--opt-lvl', $level, '--text', 'fn inisiu() { int[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
     $output = if ($ok) { & $exe } else { $null }
     Write-Result "optimization level $level" ($output -eq '3')
 }

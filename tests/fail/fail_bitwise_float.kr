@@ -1,0 +1,4 @@
+fn inisiu() {
+    num a = 1.5;
+    num b = a & 1;
+}

@@ -11,6 +11,10 @@ namespace typerules {
 // The type both operands of a binary operator are converted to.
 Type promotedNumericType(const Type& lhs, const Type& rhs);
 
+// The type of `lhs / rhs`: division never truncates, so two integers divide
+// as f64; otherwise the promoted floating-point type.
+Type divisionResultType(const Type& lhs, const Type& rhs);
+
 // Like promotedNumericType, but an integer literal operand adopts the other
 // operand's type when it fits (so `u8 x; x + 1` stays u8).
 Type promotedNumericTypeForExpr(const ast::Expr* lhsExpr,

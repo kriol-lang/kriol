@@ -1,15 +1,15 @@
-fn exit(nter code) nter {
+fn exit(int code) int {
     divolvi code + 1;
 }
 
-fn main() nter {
+fn main() int {
     divolvi 41;
 }
 
 fn free() {
 }
 
-fn malloc(nter bytes) nter {
+fn malloc(int bytes) int {
     divolvi bytes;
 }
 

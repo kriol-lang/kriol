@@ -1,8 +1,8 @@
-fn double(nter n) nter {
+fn double(int n) int {
     divolvi n * 2;
 }
 
-fn isPositive(nter n) bool {
+fn isPositive(int n) bool {
     divolvi n > 0;
 }
 

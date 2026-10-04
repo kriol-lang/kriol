@@ -1,4 +1,4 @@
-fn tonum(nter x) num {
+fn tonum(int x) num {
     divolvi x;
 }
 

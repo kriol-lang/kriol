@@ -1,4 +1,4 @@
-fn num_par(nter n) bool {
+fn num_par(int n) bool {
   divolvi (n % 2) == 0;
 }
 

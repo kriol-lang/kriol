@@ -1,7 +1,7 @@
 // Operators must tokenize correctly with no whitespace around them;
 // previously the '-' was swallowed by the integer literal.
 fn inisiu() {
-    nter x = 10;
+    int x = 10;
     konfirma(5-3 == 2);
     konfirma(x-1 == 9);
     konfirma(x--1 == 11);

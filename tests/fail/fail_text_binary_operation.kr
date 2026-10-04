@@ -1,4 +1,3 @@
-fn inisiu(u64 _tmp3, u64 y0, nter _tmp1) {
+fn inisiu(u64 _tmp3, u64 y0, int _tmp1) {
     mostran('linha\n773' + sin);
-    dipoz f64 a5;
 }

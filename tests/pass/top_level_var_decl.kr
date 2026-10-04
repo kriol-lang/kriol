@@ -1,4 +1,4 @@
-nter dez = 10;
+int dez = 10;
 
 fn inisiu() {
     mostra(dez);

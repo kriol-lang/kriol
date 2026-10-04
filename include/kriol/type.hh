@@ -78,7 +78,7 @@ public:
         if (name.empty()) return Invalid();
         if (name == "vaziu" || name == "void") return Void();
         if (name == "bool") return Bool();
-        if (name == "nter" || name == "i64") return SignedInteger(64);
+        if (name == "int" || name == "i64") return SignedInteger(64);
         if (name == "i8") return SignedInteger(8);
         if (name == "i16") return SignedInteger(16);
         if (name == "i32") return SignedInteger(32);
@@ -123,7 +123,7 @@ public:
             case TypeKind::Void: return "vaziu";
             case TypeKind::Bool: return "bool";
             case TypeKind::Integer:
-                if (Signed && Bits == 64) return "nter";
+                if (Signed && Bits == 64) return "int";
                 return std::string(Signed ? "i" : "u") + std::to_string(Bits);
             case TypeKind::Float:
                 return Bits == 64 ? "num" : "f" + std::to_string(Bits);

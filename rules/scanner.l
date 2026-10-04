@@ -50,14 +50,13 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "fn"            return TOKENIZE(FN);
 "molda"         return TOKENIZE(MOLDA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
-"dipoz"         return TOKENIZE(DIPOZ);
 "si"            return TOKENIZE(SI);
 "sinon"         return TOKENIZE(SINON);
 "divolvi"       return TOKENIZE(DIVOLVI);
 "pa"            return TOKENIZE(PA);
 "nkuantu"       return TOKENIZE(NKUANTU);
 "num"           SAVE_TOKEN;   return TYPE_NUM;
-"nter"          SAVE_TOKEN;   return TYPE_NTER;
+"int"           SAVE_TOKEN;   return TYPE_INT;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;
 "textu"         SAVE_TOKEN;   return TYPE_TEXTU;
 "i8"            SAVE_TOKEN;   return TYPE_PRIMITIVE;
@@ -107,6 +106,13 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "-="            return TOKENIZE(MINUS_ASSIGN);
 "*="            return TOKENIZE(MUL_ASSIGN);
 "/="            return TOKENIZE(DIV_ASSIGN);
+"&"             return TOKENIZE(BIT_AND);
+"|"             return TOKENIZE(BIT_OR);
+"^"             return TOKENIZE(BIT_XOR);
+"~"             return TOKENIZE(BIT_NOT);
+"&="            return TOKENIZE(AND_ASSIGN);
+"|="            return TOKENIZE(OR_ASSIGN);
+"^="            return TOKENIZE(XOR_ASSIGN);
 
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;

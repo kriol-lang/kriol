@@ -1,4 +1,4 @@
-fn identidade(nter valor) nter {
+fn identidade(int valor) int {
     divolvi valor;
 }
 

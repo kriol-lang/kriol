@@ -1,6 +1,6 @@
 // mostra with f-string interpolation.
 fn inisiu() {
-    nter  n = 10;
+    int  n = 10;
     num   x = 2.5;
     bool  b = sin;
     mostran(f"n = {n}");

@@ -692,16 +692,16 @@ llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
     auto* i64Ty    = llvm::Type::getInt64Ty(Context);
     auto* i1Ty     = llvm::Type::getInt1Ty(Context);
 
-    // nter (i64) -> num (double)
+    // int (i64) -> num (double)
     if (srcTy == i64Ty && targetTy == doubleTy)
         return Builder->CreateSIToFP(v, doubleTy, "conv");
-    // bool (i1) -> nter (i64)
+    // bool (i1) -> int (i64)
     if (srcTy == i1Ty && targetTy == i64Ty)
         return Builder->CreateZExt(v, i64Ty, "conv");
     // bool (i1) -> num (double)
     if (srcTy == i1Ty && targetTy == doubleTy)
         return Builder->CreateUIToFP(v, doubleTy, "conv");
-    // num (double) -> nter (i64)
+    // num (double) -> int (i64)
     if (srcTy == doubleTy && targetTy == i64Ty)
         return Builder->CreateFPToSI(v, i64Ty, "conv");
     // any integer widening (e.g. i1 -> i64 via general int path)
@@ -878,17 +878,6 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     // Function scope
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
-
-    // Sema does not prove that every path assigns a 'dipoz' variable before use.
-    if (!node.Value) {
-        if (ty->isAggregateType())
-            Builder->CreateMemSet(alloca, Builder->getInt8(0),
-                                  llvm::ConstantExpr::getSizeOf(ty), alloca->getAlign());
-        else
-            Builder->CreateStore(llvm::Constant::getNullValue(ty), alloca);
-        LastValue = nullptr;
-        return;
-    }
 
     if (node.IsArray) {
         emitArrayInitializer(alloca, node.Type, node.Value.get());
@@ -1543,7 +1532,7 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
-        // Coerce to the function's declared return type (e.g. nter -> num widening)
+        // Coerce to the function's declared return type (e.g. int -> num widening)
         if (LastValue && LastValue->getType() != retTy)
             LastValue = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
         Builder->CreateRet(LastValue);
@@ -1645,9 +1634,11 @@ void CodeGenVisitor::visit(BinExpr& node) {
     llvm::Value* rhs = LastValue;
     if (!lhs || !rhs) { LastValue = nullptr; return; }
 
-    Type operandType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(),
-                                                  node.LHS->ResolvedType,
-                                                  node.RHS->ResolvedType);
+    Type operandType = op == "/"
+        ? divisionResultType(node.LHS->ResolvedType, node.RHS->ResolvedType)
+        : promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(),
+                                     node.LHS->ResolvedType,
+                                     node.RHS->ResolvedType);
     llvm::Type* operandLlvmTy = mapType(operandType);
     bool isFloat = operandType.isFloat();
     bool isUnsigned = operandType.isUnsignedInteger();
@@ -1656,13 +1647,16 @@ void CodeGenVisitor::visit(BinExpr& node) {
     if (rhs->getType() != operandLlvmTy)
         rhs = coerceToType(rhs, node.RHS->ResolvedType, operandType);
 
-    if ((op == "/" || op == "%") && !isFloat)
+    if (op == "%" && !isFloat)
         emitIntDivGuard(lhs, rhs, operandType, node.LineNum);
 
     if      (op == "+")  LastValue = isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
     else if (op == "-")  LastValue = isFloat ? Builder->CreateFSub(lhs, rhs) : Builder->CreateSub(lhs, rhs);
     else if (op == "*")  LastValue = isFloat ? Builder->CreateFMul(lhs, rhs) : Builder->CreateMul(lhs, rhs);
-    else if (op == "/")  LastValue = isFloat ? Builder->CreateFDiv(lhs, rhs) : (isUnsigned ? Builder->CreateUDiv(lhs, rhs) : Builder->CreateSDiv(lhs, rhs));
+    else if (op == "/")  LastValue = Builder->CreateFDiv(lhs, rhs); // operands are always floating-point here
+    else if (op == "&")  LastValue = Builder->CreateAnd(lhs, rhs);
+    else if (op == "|")  LastValue = Builder->CreateOr(lhs, rhs);
+    else if (op == "^")  LastValue = Builder->CreateXor(lhs, rhs);
     else if (op == "%")  LastValue = isFloat ? Builder->CreateFRem(lhs, rhs) : (isUnsigned ? Builder->CreateURem(lhs, rhs) : Builder->CreateSRem(lhs, rhs));
     else if (op == "<")  LastValue = isFloat ? Builder->CreateFCmpOLT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULT(lhs, rhs) : Builder->CreateICmpSLT(lhs, rhs));
     else if (op == ">")  LastValue = isFloat ? Builder->CreateFCmpOGT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpUGT(lhs, rhs) : Builder->CreateICmpSGT(lhs, rhs));
@@ -1734,12 +1728,15 @@ void CodeGenVisitor::visit(AssignExpr& node) {
         llvm::Value* rhs = coerceToType(val, node.Assigned->ResolvedType, targetType);
         bool isFloat = targetType.isFloat();
         bool isUnsigned = targetType.isUnsignedInteger();
-        if ((node.AssignOp == "/=" || node.AssignOp == "%=") && !isFloat)
+        if (node.AssignOp == "%=" && !isFloat)
             emitIntDivGuard(cur, rhs, targetType, node.LineNum);
         if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
         else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
         else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
-        else if (node.AssignOp == "/=") val = isFloat ? Builder->CreateFDiv(cur, rhs) : (isUnsigned ? Builder->CreateUDiv(cur, rhs) : Builder->CreateSDiv(cur, rhs));
+        else if (node.AssignOp == "/=") val = Builder->CreateFDiv(cur, rhs); // sema: float targets only
+        else if (node.AssignOp == "&=") val = Builder->CreateAnd(cur, rhs);
+        else if (node.AssignOp == "|=") val = Builder->CreateOr(cur, rhs);
+        else if (node.AssignOp == "^=") val = Builder->CreateXor(cur, rhs);
         else if (node.AssignOp == "%=") val = isFloat ? Builder->CreateFRem(cur, rhs) : (isUnsigned ? Builder->CreateURem(cur, rhs) : Builder->CreateSRem(cur, rhs));
     } else {
         val = coerceToType(val, node.Assigned->ResolvedType, node.Assignee->ResolvedType);
@@ -1800,6 +1797,8 @@ void CodeGenVisitor::visit(UnaryExpr& node) {
 
     if (node.Op == "!") {
         LastValue = Builder->CreateNot(toBool(v), "nottmp");
+    } else if (node.Op == "~") {
+        LastValue = Builder->CreateNot(v, "bitnottmp");
     } else { // "-"
         if (v->getType()->isFloatingPointTy())
             LastValue = Builder->CreateFNeg(v, "negtmp");

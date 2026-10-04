@@ -1,4 +1,4 @@
 fn inisiu() {
-    nter value = 10;
+    int value = 10;
     u8 byte = value;
 }

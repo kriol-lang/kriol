@@ -1,5 +1,5 @@
 // ERROR: variable used before it is declared.
 fn inisiu() {
     mostra(x);
-    nter x = 10;
+    int x = 10;
 }

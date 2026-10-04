@@ -1,6 +1,6 @@
 // Counts arrays inside molda too.
 molda Grandi {
-    nter[200000] xs;
+    int[200000] xs;
 }
 
 fn usa(Grandi g) {

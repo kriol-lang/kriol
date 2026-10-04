@@ -1,5 +1,5 @@
-fn linha(nter tamanhu, bool kebra_linha) {
-    pa nter i = 0 ; i < tamanhu ; i += 1 {
+fn linha(int tamanhu, bool kebra_linha) {
+    pa int i = 0 ; i < tamanhu ; i += 1 {
         mostra("-");
     }
     si kebra_linha {
@@ -7,8 +7,8 @@ fn linha(nter tamanhu, bool kebra_linha) {
     }
 }
 
-fn mensage_special(textu mensage, nter tamanhu_maximu) {
-    nter i = 1;
+fn mensage_special(textu mensage, int tamanhu_maximu) {
+    int i = 1;
     nkuantu i < tamanhu_maximu {
         linha(i, sin);
         i += 1;

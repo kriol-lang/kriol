@@ -18,20 +18,10 @@ namespace sema {
         // Scoped symbol table: each entry is one scope level (name -> Kriol type)
         std::vector<std::unordered_map<std::string, Type>> SymbolScopes;
 
-        struct VarInitState {
-            bool isArray = false;
-            bool fullyInitialized = false;
-            std::vector<bool> elementInitialized;
-        };
-
         struct RecordInfo {
             std::vector<ast::VarDeclSttmt*> fields;
             std::unordered_map<std::string, std::size_t> fieldIndex;
         };
-
-        // Scoped initialization table: each entry is one scope level
-        // (name -> initialization state)
-        std::vector<std::unordered_map<std::string, VarInitState>> InitScopes;
 
         // Signature record for a user-defined function
         struct FuncInfo {
@@ -71,21 +61,14 @@ namespace sema {
         // --- scope helpers ---
         void pushScope() {
             SymbolScopes.push_back({});
-            InitScopes.push_back({});
         }
         void popScope()  {
             if (!SymbolScopes.empty()) SymbolScopes.pop_back();
-            if (!InitScopes.empty()) InitScopes.pop_back();
         }
 
         void declareVar(const std::string& name, const Type& type) {
             if (!SymbolScopes.empty())
                 SymbolScopes.back()[name] = type;
-        }
-
-        void declareInitState(const std::string& name, VarInitState state) {
-            if (!InitScopes.empty())
-                InitScopes.back()[name] = std::move(state);
         }
 
         // Returns the Kriol type of the variable if found in any scope, or empty string.
@@ -97,33 +80,20 @@ namespace sema {
             return std::nullopt;
         }
 
-        const VarInitState* lookupInitState(const std::string& name) const {
-            for (auto it = InitScopes.rbegin(); it != InitScopes.rend(); ++it) {
-                auto found = it->find(name);
-                if (found != it->end()) return &found->second;
-            }
-            return nullptr;
-        }
-
-        VarInitState* lookupInitStateMutable(const std::string& name) {
-            for (auto it = InitScopes.rbegin(); it != InitScopes.rend(); ++it) {
-                auto found = it->find(name);
-                if (found != it->end()) return &found->second;
-            }
-            return nullptr;
-        }
-
         // Returns true if every reachable code path in the block ends with a
         // return statement. Conservative: only if/else with both branches
         // returning is recognised as a definite return.
         bool blockDefinitelyReturns(ast::BlockSttmt* block) const;
 
         // Returns true if assigning/returning `from` where `to` is expected
-        // is a legal implicit widening (nter->num, bool->nter, bool->num).
+        // is a legal implicit widening (int->num, bool->int, bool->num).
         static bool isWideningCoercion(const Type& from, const Type& to);
         static bool integerLiteralFits(const ast::Expr* expr, const Type& to);
         static bool canCoerceExprTo(const ast::Expr* expr, const Type& to);
         static bool isPrintableType(const Type& type, bool allowArray);
+
+        // Whether `op` is a bitwise binary operator ("&", "|" or "^").
+        static bool isBitwiseOp(const std::string& op);
 
         // Pre-registers a function's full signature into FunctionTable without
         // visiting the body. Called in the first pass of Check().
@@ -158,7 +128,7 @@ namespace sema {
         bool checkDeclaredNameValid(const std::string& name, const std::string& kind, int lineNum);
 
         // If expr (after stripping ParExpr wrappers) is an array variable identifier,
-        // validates its init state, annotates ResolvedType on both the IdentExpr and expr,
+        // annotates ResolvedType on both the IdentExpr and expr,
         // and returns true so the caller can skip its normal accept() dispatch.
         // Returns false for non-array or non-identifier expressions.
         // Also returns true (and emits an error) for undefined identifiers to avoid

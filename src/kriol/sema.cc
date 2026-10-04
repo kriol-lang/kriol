@@ -37,10 +37,6 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 
     if (!isArrayType(*t)) return false;
 
-    auto* init = lookupInitState(ident->Name);
-    if (init && init->isArray && !init->fullyInitialized)
-        addError(errLoc(ident->LineNum) + "array '" + ident->Name + "' may contain uninitialized elements");
-
     ident->ResolvedType = *t;
     expr.ResolvedType = *t;
     return true;
@@ -49,10 +45,10 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "para", "kontinua", "dipoz",
+    "para", "kontinua",
 
     // Type names and literals.
-    "num", "nter", "bool", "textu", "sin", "nau",
+    "num", "int", "bool", "textu", "sin", "nau",
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64",
     "f32", "f64", "isize", "usize"
 };
@@ -359,8 +355,6 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     const std::string kind = node.IsParam ? "parameter" : "variable";
     bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
-    VarInitState initState;
-    initState.isArray = node.IsArray;
 
     if (node.IsArray && node.ArraySize == 0) {
         addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must have a positive size");
@@ -388,19 +382,11 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
             addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value; N]");
             canDeclare = false;
         } else {
-            initState.elementInitialized.assign(node.ArraySize, false);
             if (!validateArrayInitializer(node.Type, node.Value.get(), node.LineNum,
                                           "array variable '" + node.Name + "'")) {
                 canDeclare = false;
             }
-            std::fill(initState.elementInitialized.begin(), initState.elementInitialized.end(), true);
-            initState.fullyInitialized = canDeclare;
         }
-    } else if (node.IsArray) {
-        initState.elementInitialized.assign(node.ArraySize, false);
-        initState.fullyInitialized = false;
-    } else {
-        initState.fullyInitialized = node.IsParam || (node.Value != nullptr);
     }
 
     // Check for duplicate in the innermost scope only.
@@ -415,8 +401,6 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (canDeclare)
         declareVar(node.Name, node.Type);
 
-    if (canDeclare)
-        declareInitState(node.Name, initState);
 
     if (node.Value && !node.IsArray) {
         if (dynamic_cast<ArrayLiteralExpr*>(node.Value.get()) || dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
@@ -730,10 +714,26 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         return;
     }
 
-    if (equalityOps.count(node.Op) || relationalOps.count(node.Op))
+    if (equalityOps.count(node.Op) || relationalOps.count(node.Op)) {
         node.ResolvedType = Type::Bool();
-    else
+    } else if (node.Op == "/") {
+        node.ResolvedType = divisionResultType(lt, rt);
+    } else if (isBitwiseOp(node.Op)) {
+        if (!lt.isInteger() || !rt.isInteger()) {
+            addError(errLoc(node.LineNum) + "bitwise operator '" + node.Op
+                     + "' requires integer operands, got '" + lt.str()
+                     + "' and '" + rt.str() + "'");
+            node.ResolvedType = Type::Invalid();
+            return;
+        }
         node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
+    } else {
+        node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
+    }
+}
+
+bool SemanticAnalyzer::isBitwiseOp(const std::string& op) {
+    return op == "&" || op == "|" || op == "^";
 }
 
 void SemanticAnalyzer::validateLiteralRange(ast::LiteralExpr& node) {
@@ -778,10 +778,6 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
     node.ResolvedType = *t;
     if (isArrayType(*t))
         addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must be indexed");
-
-    auto* init = lookupInitState(node.Name);
-    if (init && !init->isArray && !init->fullyInitialized)
-        addError(errLoc(node.LineNum) + "use of uninitialized variable '" + node.Name + "'");
 }
 
 void SemanticAnalyzer::visit(ParExpr& node) {
@@ -825,33 +821,6 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     if (!firstDim || *firstDim == 0) {
         addError(errLoc(node.LineNum) + "array has invalid size metadata");
     }
-
-    if (!baseIdent) return;
-    auto* init = lookupInitState(baseIdent->Name);
-    if (!init || !init->isArray) return;
-    if (init->fullyInitialized) return;
-
-    auto* lit = dynamic_cast<LiteralExpr*>(node.Index.get());
-    if (!lit || !lit->Type.isInteger()) {
-        addError(errLoc(node.LineNum) + "array '" + baseIdent->Name + "' may contain uninitialized elements");
-        return;
-    }
-
-    long long idx = 0;
-    try {
-        idx = std::stoll(lit->Value);
-    } catch (...) {
-        addError(errLoc(node.LineNum) + "array index for '" + baseIdent->Name + "' must be an integer literal");
-        return;
-    }
-
-    if (idx < 0 || static_cast<std::size_t>(idx) >= init->elementInitialized.size()) {
-        // Bounds diagnostics are handled elsewhere.
-        return;
-    }
-
-    if (!init->elementInitialized[static_cast<std::size_t>(idx)])
-        addError(errLoc(node.LineNum) + "array element '" + baseIdent->Name + "[" + std::to_string(idx) + "]' is not initialized");
 }
 
 void SemanticAnalyzer::visit(MemberAccessExpr& node) {
@@ -1033,81 +1002,46 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
 
 void SemanticAnalyzer::visit(AssignExpr& node) {
     Type assigneeType = resolveAssignableType(node.Assignee.get(), node.LineNum);
-    bool canMarkInitialized = true;
 
-    if (!assigneeType.valid()) {
-        canMarkInitialized = false;
-    } else if (isArrayType(assigneeType) && !dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
+    if (assigneeType.valid() && isArrayType(assigneeType)
+            && !dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
         if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
             addError(errLoc(node.LineNum) + "cannot assign directly to array variable '"
                      + ident->Name + "'; assign to an index");
         } else {
             addError(errLoc(node.LineNum) + "cannot assign directly to array value; assign to an index");
         }
-            canMarkInitialized = false;
     }
 
-    if (node.Assigned) {
-        node.Assigned->accept(*this);
-        node.ResolvedType = node.Assigned->ResolvedType;
+    if (!node.Assigned) return;
 
-        if (node.AssignOp != "=" && assigneeType.valid()) {
-            // Compound assignments read the target before writing it.
-            if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
-                auto* init = lookupInitState(ident->Name);
-                if (init && !init->isArray && !init->fullyInitialized)
-                    addError(errLoc(node.LineNum) + "use of uninitialized variable '"
-                             + ident->Name + "' in compound assignment");
-            }
+    node.Assigned->accept(*this);
+    node.ResolvedType = node.Assigned->ResolvedType;
+    const Type& valueType = node.Assigned->ResolvedType;
 
-            if (!assigneeType.isNumeric()) {
-                addError(errLoc(node.LineNum) + "compound assignment operator '"
-                         + node.AssignOp + "' requires a numeric target, got '"
-                         + assigneeType.str() + "'");
-                canMarkInitialized = false;
-            }
+    if (node.AssignOp != "=" && assigneeType.valid()) {
+        const bool bitwise = isBitwiseOp(node.AssignOp.substr(0, node.AssignOp.size() - 1));
+        const char* required = bitwise ? "an integer" : "a numeric";
+        const bool targetOk = bitwise ? assigneeType.isInteger() : assigneeType.isNumeric();
+        const bool valueOk = bitwise ? valueType.isInteger() : valueType.isNumeric();
 
-            if (node.Assigned->ResolvedType.valid() && !node.Assigned->ResolvedType.isNumeric()) {
-                addError(errLoc(node.LineNum) + "compound assignment operator '"
-                         + node.AssignOp + "' requires a numeric value, got '"
-                         + node.Assigned->ResolvedType.str() + "'");
-                canMarkInitialized = false;
-            }
-        }
-
-        if (assigneeType.valid() && node.Assigned->ResolvedType.valid()
-                && !canCoerceExprTo(node.Assigned.get(), assigneeType)) {
-            addError(errLoc(node.LineNum) + "cannot assign value of type '" + node.Assigned->ResolvedType.str()
-                     + "' to target of type '" + assigneeType.str() + "'");
-            canMarkInitialized = false;
-        }
+        if (!targetOk)
+            addError(errLoc(node.LineNum) + "compound assignment operator '"
+                     + node.AssignOp + "' requires " + required + " target, got '"
+                     + assigneeType.str() + "'");
+        if (valueType.valid() && !valueOk)
+            addError(errLoc(node.LineNum) + "compound assignment operator '"
+                     + node.AssignOp + "' requires " + required + " value, got '"
+                     + valueType.str() + "'");
+        if (node.AssignOp == "/=" && assigneeType.isInteger())
+            addError(errLoc(node.LineNum) + "compound assignment operator '/=' always yields a real "
+                     "number and cannot be stored in a target of type '" + assigneeType.str() + "'");
     }
 
-    if (!canMarkInitialized) return;
-
-    if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
-        auto* init = lookupInitStateMutable(ident->Name);
-        if (init && !init->isArray) init->fullyInitialized = true;
-    } else if (auto* arr = dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
-        auto* baseIdent = unwrapIdentExpr(arr->Base.get());
-        auto* init = baseIdent ? lookupInitStateMutable(baseIdent->Name) : nullptr;
-        if (init && init->isArray && !init->fullyInitialized) {
-            auto* lit = dynamic_cast<LiteralExpr*>(arr->Index.get());
-            if (lit && lit->Type.isInteger()) {
-                try {
-                    long long idx = std::stoll(lit->Value);
-                    if (idx >= 0 && static_cast<std::size_t>(idx) < init->elementInitialized.size()) {
-                        init->elementInitialized[static_cast<std::size_t>(idx)] = true;
-                        init->fullyInitialized = std::all_of(init->elementInitialized.begin(),
-                                                             init->elementInitialized.end(),
-                                                             [](bool v) { return v; });
-                    }
-                } catch (...) {
-                    // NOTE: Non-integer literal is validated elsewhere.
-                }
-            }
-        }
-    }
+    if (assigneeType.valid() && valueType.valid()
+            && !canCoerceExprTo(node.Assigned.get(), assigneeType))
+        addError(errLoc(node.LineNum) + "cannot assign value of type '" + valueType.str()
+                 + "' to target of type '" + assigneeType.str() + "'");
 }
 
 void SemanticAnalyzer::visit(ForSttmt& node) {
@@ -1154,6 +1088,11 @@ void SemanticAnalyzer::visit(UnaryExpr& node) {
             addError(errLoc(node.LineNum) + "logical operator '!' requires a boolean operand, got '"
                      + opType.str() + "'");
         node.ResolvedType = Type::Bool();
+    } else if (node.Op == "~") {
+        if (opType.valid() && !opType.isInteger())
+            addError(errLoc(node.LineNum) + "bitwise operator '~' requires an integer operand, got '"
+                     + opType.str() + "'");
+        node.ResolvedType = opType.isInteger() ? opType : Type::Invalid();
     } else { // "-" (numeric negation) keeps operand type
         if (opType.valid() && !opType.isNumeric())
             addError(errLoc(node.LineNum) + "unary operator '-' requires a numeric operand, got '"

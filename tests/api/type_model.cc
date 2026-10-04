@@ -22,7 +22,7 @@ int main() {
     assert(row.arraySize() == 4);
     assert(row.elementType() == Type::Integer());
     assert(matrix.elementType() == row);
-    assert(matrix.str() == "nter[4][3]");
+    assert(matrix.str() == "int[4][3]");
     assert(Type::FixedArray(Type::UnsignedInteger(8), 2).str() == "u8[2]");
 
     Type reference = Type::Reference(Type::Named("Mesa"));
