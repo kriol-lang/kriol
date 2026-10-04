@@ -65,8 +65,8 @@ fi
 # ---- command-line source text ---------------------------------------------
 printf "  %-44s" "inline source text"
 tmpbin=$(mktemp /tmp/kriol_text_XXXX)
-if "$KRIOL" --text 'fn inisiu() { mostran("Kuale, Mundu!"); }' -o "$tmpbin" 2>/dev/null && \
-   [ "$(timeout 5 "$tmpbin")" = "Kuale, Mundu!" ]; then
+if "$KRIOL" --text 'fn inisiu() { mostran("Kualeh, Mundu!"); }' -o "$tmpbin" 2>/dev/null && \
+   [ "$(timeout 5 "$tmpbin")" = "Kualeh, Mundu!" ]; then
     echo " PASS"; pass=$((pass+1))
 else
     echo " FAIL"; record_failure "inline source text"

@@ -94,9 +94,9 @@ foreach ($source in Get-Sources (Join-Path $Root 'tests/pass') '.kr') {
 }
 
 $exe = Join-Path $Work 'text.exe'
-$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kuale, Mundu!"); }', '-o', $exe)
+$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kualeh, Mundu!"); }', '-o', $exe)
 $output = if ($ok) { & $exe } else { $null }
-Write-Result 'inline source text' ($output -eq 'Kuale, Mundu!')
+Write-Result 'inline source text' ($output -eq 'Kualeh, Mundu!')
 
 foreach ($level in '0', '3') {
     $exe = Join-Path $Work 'optimized.exe'
