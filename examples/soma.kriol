@@ -1,9 +1,7 @@
-int n = 10;
-
 fn soma(int n) int {
     int acc = 0;
 
-    pa int i = 1 ; i < n ; i += 1 {
+    pa int i = 1 ; i <= n ; i += 1 {
         acc = acc + i;
     }
 
@@ -11,5 +9,7 @@ fn soma(int n) int {
 }
 
 fn inisiu() {
-    mostran(f"Soma di 1 ti {n} é igual a {soma(n)}.");
+    textu entrada = toma('Screbi um númeru interu: ');
+    int numeru = int::konverti(entrada);
+    mostran(f"Soma di 1 ti {numeru} é igual a {soma(numeru)}.");
 }
