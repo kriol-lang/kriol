@@ -1,12 +1,3 @@
 fn inisiu() {
-    textu mensagem1 = "Kuale, Mundu 1!";
-    textu mensagem2 = "Kuale, Mundu 2!";
-
-    bool flip = nau;
-
-    si flip {
-        mostran(mensagem2);
-    } sinon {
-        mostran(mensagem1);
-    }
+    mostran("Kualeh Mundu!");
 }
