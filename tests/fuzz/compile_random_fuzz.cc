@@ -131,7 +131,7 @@ namespace
 
     std::string statement(std::mt19937_64& rng, int depth)
     {
-        switch (randomInt(rng, 0, 11))
+        switch (randomInt(rng, 0, 12))
         {
             case 0:
                 return typeName(rng) + " " + ident(rng) + " = " + expr(rng, depth) + ";";
@@ -149,14 +149,19 @@ namespace
             case 6:
                 return "nkuantu " + expr(rng, depth) + " { " + statement(rng, depth - 1) + " }";
             case 7:
-                return "para " + statement(rng, 1) + " " + expr(rng, 1) + "; " +
-                       ident(rng) + " += 1 { " + statement(rng, depth - 1) + " }";
+            {
+                const std::string step = chance(rng, 50) ? "; " + ident(rng) + " += 1" : "";
+                return "pa " + statement(rng, 1) + " " + expr(rng, 1) + step + " { " +
+                       statement(rng, depth - 1) + " }";
+            }
             case 8:
                 return "divolvi " + expr(rng, depth) + ";";
             case 9:
                 return "lansa Erru::{mensage: " + expr(rng, depth) + "};";
             case 10:
                 return "paniku(" + expr(rng, depth) + ");";
+            case 11:
+                return chance(rng, 50) ? "kebra;" : "kontinua;";
             default:
                 return expr(rng, depth) + ";";
         }
@@ -216,7 +221,7 @@ namespace
     {
         static const std::vector<std::string> tokens = {
             "fn", "molda", "mostran", "mostra", "si", "sinon", "nkuantu",
-            "para", "divolvi", "sai", "kontinua", "konfirma", "int", "num",
+            "pa", "kebra", "divolvi", "sai", "kontinua", "konfirma", "int", "num",
             "bool", "textu", "sin", "nau", "(", ")", "{", "}", "[", "]", ";",
             ",", ".", "::", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-",
             "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'",

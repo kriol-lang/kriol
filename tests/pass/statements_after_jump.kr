@@ -4,7 +4,7 @@ fn count() int {
     int total = 0;
     pa int i = 0; i < 10; i += 1 {
         si i == 3 {
-            para;
+            kebra;
             total += 100; // dead
         }
         si i == 1 {

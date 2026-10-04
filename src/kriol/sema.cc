@@ -63,7 +63,7 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "para", "kontinua", "tenta", "lansa",
+    "kebra", "kontinua", "tenta", "lansa",
 
     // Type names and literals.
     "num", "int", "bool", "textu", "sin", "nau",

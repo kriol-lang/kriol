@@ -1,5 +1,5 @@
 // expect: 'break' used outside a loop
-// ERROR: para (break) used outside any loop.
+// ERROR: kebra (break) used outside any loop.
 fn inisiu() {
-    para;
+    kebra;
 }

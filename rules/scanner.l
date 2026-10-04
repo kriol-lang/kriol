@@ -75,7 +75,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "usize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
 "sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
 "nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
-"para"          return TOKENIZE(PARA);
+"kebra"         return TOKENIZE(KEBRA);
 "kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
 "-"             return TOKENIZE(MINUS);

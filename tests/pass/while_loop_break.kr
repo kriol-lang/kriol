@@ -7,7 +7,7 @@ fn inisiu() {
             kontinua;
         }
         si i == 7 {
-            para;
+            kebra;
         }
         mostra(i);
     }

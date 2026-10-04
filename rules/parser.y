@@ -77,7 +77,7 @@
 %token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa" TENTA "tenta" LANSA "lansa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
-%token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
+%token<token> KEBRA "kebra" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
 %token<token> FN "fn" MOLDA "molda" NOT "!"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
 
@@ -378,9 +378,10 @@ else_then : compound_statement { $$ = $1; }
 
 iteration_statement : NKUANTU expression compound_statement { auto n = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); n->LineNum = @$.first_line; $$ = n; }
                     | PA control_initializer_statement SEMIC expression SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; }
+                    | PA control_initializer_statement SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), nullptr, std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
-jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = @$.first_line; $$ = n; }
+jump_statement : KEBRA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = @$.first_line; $$ = n; }
                | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = @$.first_line; $$ = n; }
                | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; $$ = n; }
                | LANSA expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->Throws = true; n->LineNum = @$.first_line; $$ = n; }

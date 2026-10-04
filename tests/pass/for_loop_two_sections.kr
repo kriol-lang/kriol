@@ -1,0 +1,23 @@
+// pa with only an initializer and a condition: the body updates the variable.
+fn inisiu() {
+    int soma = 0;
+    pa int i = 0; i < 5 {
+        soma += i;
+        i += 1;
+    }
+    konfirma(soma == 10);
+
+    int passus = 0;
+    pa int n = 27; n != 1 {
+        si n % 2 == 0 {
+            n /= 2;
+        } sinon {
+            n = 3 * n + 1;
+        }
+        passus += 1;
+        si passus > 1000 {
+            kebra;
+        }
+    }
+    konfirma(passus == 111);
+}
