@@ -143,6 +143,11 @@ namespace ast {
         std::string Name;
         std::unique_ptr<FuncArgs> Args;
         std::unique_ptr<BlockSttmt> Body;
+        // Name of the error type after ':' in the signature; empty when the
+        // function cannot fail.
+        std::string ErrorTypeName;
+
+        bool CanFail() const { return !ErrorTypeName.empty(); }
 
         FuncDeclSttmt(kriol::Type Type, std::string Name, std::unique_ptr<FuncArgs> Args, std::unique_ptr<BlockSttmt> Body)
             : Type(std::move(Type)), Name(std::move(Name)), Args(std::move(Args)), Body(std::move(Body)) {}
@@ -184,6 +189,9 @@ namespace ast {
     class ReturnSttmt : public JumpSttmt {
     public:
         std::unique_ptr<Expr> ReturnValue;
+        // True for 'lansa <error>;', which fails the enclosing function
+        // instead of returning a value.
+        bool Throws = false;
 
         ReturnSttmt(std::unique_ptr<Expr> ReturnValue)
             : JumpSttmt("return"), ReturnValue(std::move(ReturnValue)) {}
@@ -201,6 +209,9 @@ namespace ast {
     public:
         std::unique_ptr<Expr> Callee;
         std::unique_ptr<FuncCallArgs> Args;
+        // Set by sema when the callee declares an error type, so the call
+        // yields a value or an error that must be handled.
+        bool Fallible = false;
 
         FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
             : Callee(std::move(Callee)), Args(std::move(Args)) {

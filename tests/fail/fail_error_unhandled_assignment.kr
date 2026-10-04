@@ -1,0 +1,7 @@
+fn f() int : Erru {
+    divolvi 1;
+}
+
+fn inisiu() {
+    int x = f();
+}

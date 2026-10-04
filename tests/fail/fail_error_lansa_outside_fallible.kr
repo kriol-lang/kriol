@@ -1,0 +1,3 @@
+fn inisiu() {
+    lansa Erru::{mensage: "x"};
+}

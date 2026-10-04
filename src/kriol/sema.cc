@@ -45,7 +45,7 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "para", "kontinua",
+    "para", "kontinua", "tenta", "lansa",
 
     // Type names and literals.
     "num", "int", "bool", "textu", "sin", "nau",
@@ -124,6 +124,10 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
 
     FuncInfo info;
     info.retType = node.Type;
+    info.canFail = node.CanFail();
+    if (node.CanFail() && node.ErrorTypeName != "Erru")
+        addError(errLoc(node.LineNum) + "unknown error type '" + node.ErrorTypeName
+                 + "' in function '" + node.Name + "'; only 'Erru' can follow ':'");
     validateTypeKnown(node.Type, node.LineNum, "return type of function '" + node.Name + "'");
     if (node.Args)
         for (auto& arg : node.Args->Args) {
@@ -472,6 +476,8 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     std::string savedName    = CurrFuncName;
     CurrFuncRetType = node.Type;
     CurrFuncName    = node.Name;
+    const bool savedCanFail = CurrFuncCanFail;
+    CurrFuncCanFail = node.CanFail();
 
     pushScope();
 
@@ -493,6 +499,7 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     popScope();
     CurrFuncRetType = savedRetType;
     CurrFuncName    = savedName;
+    CurrFuncCanFail = savedCanFail;
     --FunctionDepth;
 }
 
@@ -540,6 +547,19 @@ void SemanticAnalyzer::visit(JumpSttmt& node) {
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
     const std::string loc = errLoc(node.LineNum);
 
+    if (node.Throws) {
+        if (!CurrFuncCanFail)
+            addError(loc + "'lansa' can only be used in a function that declares an error type, "
+                     "such as 'fn " + CurrFuncName + "(...) : Erru'");
+        if (node.ReturnValue) {
+            node.ReturnValue->accept(*this);
+            const Type& got = node.ReturnValue->ResolvedType;
+            if (got.valid() && got != Type::Named("Erru"))
+                addError(loc + "'lansa' expects a value of type 'Erru', got '" + got.str() + "'");
+        }
+        return;
+    }
+
     if (CurrFuncRetType.valid() && CurrFuncRetType.isVoid() && node.ReturnValue)
         addError(loc + "returning a value from void function '" + CurrFuncName + "'");
 
@@ -562,6 +582,7 @@ void SemanticAnalyzer::visit(FuncCallArgs& node) {
 }
 
 void SemanticAnalyzer::visit(FunCallExpr& node) {
+    const bool handled = (&node == HandledCall);
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) {
         if (node.Args)
@@ -681,6 +702,10 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
 
     const FuncInfo& info = it->second;
     node.ResolvedType = info.retType;
+    node.Fallible = info.canFail;
+    if (info.canFail && !handled)
+        addError(errLoc(node.LineNum) + "call to '" + callee->Name + "' can fail; handle the error with "
+                 "'tenta' or 'sinon'");
 
     size_t want = info.paramTypes.size();
 
@@ -701,7 +726,50 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     }
 }
 
+FunCallExpr* SemanticAnalyzer::unwrapCallExpr(Expr* expr) {
+    while (auto* par = dynamic_cast<ParExpr*>(expr))
+        expr = par->Content.get();
+    return dynamic_cast<FunCallExpr*>(expr);
+}
+
+bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& keyword, int lineNum) {
+    auto* call = unwrapCallExpr(operand);
+    if (!call) {
+        if (operand) operand->accept(*this);
+        addError(errLoc(lineNum) + "'" + keyword + "' expects a call to a function that can fail");
+        return false;
+    }
+
+    HandledCall = call;
+    operand->accept(*this);
+    if (!call->Fallible) {
+        addError(errLoc(lineNum) + "'" + keyword + "' applied to a call that cannot fail");
+        return false;
+    }
+    return true;
+}
+
 void SemanticAnalyzer::visit(BinExpr& node) {
+    if (node.Op == "sinon") {
+        const bool valid = visitFallibleOperand(node.LHS.get(), "sinon", node.LineNum);
+        if (node.RHS) node.RHS->accept(*this);
+        if (!valid) { node.ResolvedType = Type::Invalid(); return; }
+
+        const Type& valueType = node.LHS->ResolvedType;
+        if (valueType.isVoid()) {
+            addError(errLoc(node.LineNum) + "'sinon' needs a call that returns a value; "
+                     "this function returns nothing");
+            node.ResolvedType = Type::Invalid();
+            return;
+        }
+        if (node.RHS && node.RHS->ResolvedType.valid()
+                && !canCoerceExprTo(node.RHS.get(), valueType))
+            addError(errLoc(node.LineNum) + "the value after 'sinon' has type '"
+                     + node.RHS->ResolvedType.str() + "', expected '" + valueType.str() + "'");
+        node.ResolvedType = valueType;
+        return;
+    }
+
     if (node.LHS) node.LHS->accept(*this);
     if (node.RHS) node.RHS->accept(*this);
 
@@ -1113,6 +1181,15 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
 }
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {
+    if (node.Op == "tenta") {
+        if (!CurrFuncCanFail)
+            addError(errLoc(node.LineNum) + "'tenta' can only be used in a function that declares an "
+                     "error type, such as 'fn " + CurrFuncName + "(...) : Erru'");
+        const bool valid = visitFallibleOperand(node.Operand.get(), "tenta", node.LineNum);
+        node.ResolvedType = valid ? node.Operand->ResolvedType : Type::Invalid();
+        return;
+    }
+
     if (node.Operand) node.Operand->accept(*this);
     const Type opType = node.Operand ? node.Operand->ResolvedType : Type::Invalid();
 

@@ -1,0 +1,6 @@
+fn f() : Erru {
+}
+
+fn inisiu() {
+    f() sinon 1;
+}

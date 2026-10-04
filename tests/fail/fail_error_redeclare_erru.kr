@@ -1,0 +1,6 @@
+molda Erru {
+    int kodi;
+}
+
+fn inisiu() {
+}

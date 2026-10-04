@@ -27,6 +27,7 @@ namespace sema {
         struct FuncInfo {
             Type retType;
             std::vector<Type> paramTypes;
+            bool canFail = false;
         };
 
         // Known user-defined functions (name -> signature)
@@ -45,6 +46,13 @@ namespace sema {
         // How many function bodies deep we currently are (nested functions are
         // not supported and must be rejected).
         int FunctionDepth = 0;
+
+        // Whether the function being analysed declares an error type.
+        bool CurrFuncCanFail = false;
+
+        // The fallible call that the enclosing 'tenta' or 'sinon' handles;
+        // any other fallible call is an unhandled error.
+        const ast::FunCallExpr* HandledCall = nullptr;
 
         // Collected errors
         std::vector<std::string> Errors;
@@ -94,6 +102,13 @@ namespace sema {
 
         // Whether `op` is a bitwise binary operator ("&", "|" or "^").
         static bool isBitwiseOp(const std::string& op);
+
+        // The call under any parentheses, or null if `expr` is not a call.
+        static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);
+
+        // Visits the operand of 'tenta' or 'sinon' and checks it is a call to
+        // a function that can fail. Returns false after reporting an error.
+        bool visitFallibleOperand(ast::Expr* operand, const std::string& keyword, int lineNum);
 
         // Pre-registers a function's full signature into FunctionTable without
         // visiting the body. Called in the first pass of Check().

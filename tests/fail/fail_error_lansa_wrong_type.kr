@@ -1,0 +1,6 @@
+fn f() : Erru {
+    lansa "texto";
+}
+
+fn inisiu() {
+}

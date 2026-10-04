@@ -1,0 +1,6 @@
+fn f() int : Falha {
+    divolvi 1;
+}
+
+fn inisiu() {
+}

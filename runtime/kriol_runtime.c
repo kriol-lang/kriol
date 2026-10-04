@@ -155,6 +155,11 @@ _Noreturn void __kriol_panic(const char* message) {
     __kriol_fail("kriol: panic", message);
 }
 
+// An error that reached inisiu without being handled.
+_Noreturn void __kriol_unhandled_error(const char* message) {
+    __kriol_fail("kriol: err", message);
+}
+
 _Noreturn void __kriol_panic_at(const char* message, int line) {
     char prefix[64];
     snprintf(prefix, sizeof prefix, "kriol: panic at line %d", line);

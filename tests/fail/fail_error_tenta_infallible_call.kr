@@ -1,0 +1,10 @@
+fn f() int {
+    divolvi 1;
+}
+
+fn g() int : Erru {
+    divolvi tenta f();
+}
+
+fn inisiu() {
+}

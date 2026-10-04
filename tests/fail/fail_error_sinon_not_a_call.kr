@@ -1,0 +1,4 @@
+fn inisiu() {
+    int y = 1;
+    int x = y sinon 2;
+}

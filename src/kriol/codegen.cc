@@ -1241,12 +1241,101 @@ void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
     Records[node.Name] = std::move(info);
 }
 
+llvm::StructType* CodeGenVisitor::failableResultType(const Type& valueType) {
+    std::vector<llvm::Type*> elements{llvm::Type::getInt1Ty(Context)};
+    if (!valueType.isVoid())
+        elements.push_back(mapType(valueType));
+    elements.push_back(getOrCreateRecordType("Erru"));
+    return llvm::StructType::get(Context, elements);
+}
+
+llvm::Type* CodeGenVisitor::functionReturnType(const ast::FuncDeclSttmt& node) {
+    if (node.Name == "inisiu") return llvm::Type::getInt32Ty(Context);
+    if (node.CanFail()) return failableResultType(node.Type);
+    return mapType(node.Type);
+}
+
+static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMContext& Context) {
+    if (auto* fn = Mod.getFunction("__kriol_unhandled_error")) return fn;
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage,
+                                      "__kriol_unhandled_error", Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
+void CodeGenVisitor::emitFailure(llvm::Value* erruValue) {
+    if (CurrentIsMain) {
+        const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
+        llvm::Value* message = Builder->CreateExtractValue(erruValue, {messageIndex}, "error.message");
+        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context), {message});
+        Builder->CreateUnreachable();
+        return;
+    }
+
+    auto* resultTy = llvm::cast<llvm::StructType>(CurrentFunction->getReturnType());
+    llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
+    result = Builder->CreateInsertValue(result, llvm::ConstantInt::getTrue(Context), {0u});
+    result = Builder->CreateInsertValue(result, erruValue, {resultTy->getNumElements() - 1}, "failed");
+    Builder->CreateRet(result);
+}
+
+void CodeGenVisitor::emitTenta(UnaryExpr& node) {
+    node.Operand->accept(*this);
+    llvm::Value* result = LastValue;
+    if (!result) { LastValue = nullptr; return; }
+
+    auto* resultTy = llvm::cast<llvm::StructType>(result->getType());
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* failBB = llvm::BasicBlock::Create(Context, "tenta.fail", fn);
+    auto* okBB = llvm::BasicBlock::Create(Context, "tenta.ok", fn);
+    llvm::Value* failed = Builder->CreateExtractValue(result, {0u}, "failed");
+    Builder->CreateCondBr(failed, failBB, okBB);
+
+    Builder->SetInsertPoint(failBB);
+    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"));
+
+    Builder->SetInsertPoint(okBB);
+    LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
+}
+
+void CodeGenVisitor::emitSinon(BinExpr& node) {
+    node.LHS->accept(*this);
+    llvm::Value* result = LastValue;
+    if (!result) { LastValue = nullptr; return; }
+
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinon.fallback", fn);
+    auto* mergeBB = llvm::BasicBlock::Create(Context, "sinon.merge", fn);
+    llvm::Value* failed = Builder->CreateExtractValue(result, {0u}, "failed");
+    llvm::Value* value = Builder->CreateExtractValue(result, {1u}, "value");
+    llvm::BasicBlock* okEndBB = Builder->GetInsertBlock();
+    Builder->CreateCondBr(failed, fallbackBB, mergeBB);
+
+    // The fallback is only evaluated when the call failed.
+    Builder->SetInsertPoint(fallbackBB);
+    node.RHS->accept(*this);
+    if (!LastValue)
+        throw std::runtime_error("internal error: failed to generate the value after 'sinon'");
+    llvm::Value* fallback = coerceToType(LastValue, node.RHS->ResolvedType, node.ResolvedType);
+    llvm::BasicBlock* fallbackEndBB = Builder->GetInsertBlock();
+    Builder->CreateBr(mergeBB);
+
+    Builder->SetInsertPoint(mergeBB);
+    auto* phi = Builder->CreatePHI(value->getType(), 2, "sinon.value");
+    phi->addIncoming(value, okEndBB);
+    phi->addIncoming(fallback, fallbackEndBB);
+    LastValue = phi;
+}
+
 void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = llvmFunctionName(node.Name);
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
+    sig.canFail = node.CanFail();
     if (node.Args) {
         for (auto& arg : node.Args->Args)
             sig.paramTypes.push_back(arg->Type);
@@ -1262,11 +1351,7 @@ void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
             paramTypes.push_back(mapType(arg->Type));
     }
 
-    llvm::Type* retTy = isMain
-        ? llvm::Type::getInt32Ty(Context)
-        : mapType(node.Type);
-
-    auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
+    auto* ftype = llvm::FunctionType::get(functionReturnType(node), paramTypes, false);
     llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
 }
 
@@ -1347,6 +1432,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 
     FuncSig sig;
     sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
+    sig.canFail = node.CanFail();
     if (node.Args) {
         for (auto& arg : node.Args->Args)
             sig.paramTypes.push_back(arg->Type);
@@ -1359,9 +1445,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             paramTypes.push_back(mapType(arg->Type));
     }
 
-    llvm::Type* retTy = isMain
-        ? llvm::Type::getInt32Ty(Context)
-        : mapType(node.Type);
+    llvm::Type* retTy = functionReturnType(node);
 
     // Get the function if it was already forward-declared, otherwise create it now.
     auto* fn = Mod->getFunction(name);
@@ -1381,6 +1465,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     Builder->SetInsertPoint(entry);
     CurrentFunction = fn;
     CurrentReturnType = sig.retType;
+    CurrentCanFail = node.CanFail();
+    CurrentIsMain = isMain;
 
     pushScope();
     size_t nodeArgCount = (node.Args ? node.Args->Args.size() : 0);
@@ -1432,6 +1518,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             Builder->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), 0));
         else if (retTy->isVoidTy())
             Builder->CreateRetVoid();
+        else if (node.CanFail() && node.Type.isVoid())
+            Builder->CreateRet(llvm::ConstantAggregateZero::get(llvm::cast<llvm::StructType>(retTy)));
         else
             throw std::runtime_error("Non-void function '" + node.Name + "' has no return statement");
     }
@@ -1453,6 +1541,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
 
     CurrentFunction = nullptr;
     CurrentReturnType = Type::Invalid();
+    CurrentCanFail = false;
+    CurrentIsMain = false;
 }
 
 void CodeGenVisitor::visit(IfSttmt& node) {
@@ -1530,7 +1620,21 @@ void CodeGenVisitor::visit(JumpSttmt& node) {
 
 void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
-    if (node.ReturnValue) {
+    if (node.Throws) {
+        node.ReturnValue->accept(*this);
+        if (!LastValue)
+            throw std::runtime_error("internal error: failed to generate the error of 'lansa'");
+        emitFailure(LastValue);
+    } else if (CurrentCanFail && !CurrentIsMain) {
+        auto* resultTy = llvm::cast<llvm::StructType>(retTy);
+        llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
+        if (node.ReturnValue) {
+            node.ReturnValue->accept(*this);
+            llvm::Value* value = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
+            result = Builder->CreateInsertValue(result, value, {1u});
+        }
+        Builder->CreateRet(result);
+    } else if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         // Coerce to the function's declared return type (e.g. int -> num widening)
         if (LastValue && LastValue->getType() != retTy)
@@ -1627,6 +1731,7 @@ void CodeGenVisitor::emitShortCircuit(BinExpr& node) {
 void CodeGenVisitor::visit(BinExpr& node) {
     const auto& op = node.Op;
     if (op == "&&" || op == "||") { emitShortCircuit(node); return; }
+    if (op == "sinon") { emitSinon(node); return; }
 
     node.LHS->accept(*this);
     llvm::Value* lhs = LastValue;
@@ -1790,6 +1895,7 @@ void CodeGenVisitor::visit(ImportSttmt&) {
 
 void CodeGenVisitor::visit(UnaryExpr& node) {
     if (!node.Operand) { LastValue = nullptr; return; }
+    if (node.Op == "tenta") { emitTenta(node); return; }
     node.Operand->accept(*this);
 
     llvm::Value* v = LastValue;

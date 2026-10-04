@@ -42,6 +42,9 @@ namespace ast {
         // Currently-emitting function
         llvm::Function* CurrentFunction = nullptr;
         Type CurrentReturnType;
+        // The function being emitted declares an error type / is inisiu.
+        bool CurrentCanFail = false;
+        bool CurrentIsMain = false;
 
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
@@ -56,6 +59,7 @@ namespace ast {
         struct FuncSig {
             Type retType;
             std::vector<Type> paramTypes;
+            bool canFail = false;
         };
 
         std::unordered_map<std::string, FuncSig> FunctionSigs;
@@ -109,6 +113,20 @@ namespace ast {
 
         // Emits short-circuit evaluation for '&&' and '||'.
         void emitShortCircuit(ast::BinExpr& node);
+
+        // A function that can fail returns { i1 failed, <value>, Erru }, with
+        // the value omitted when the function returns nothing.
+        llvm::StructType* failableResultType(const Type& valueType);
+        llvm::Type* functionReturnType(const ast::FuncDeclSttmt& node);
+
+        // Fails the current function with the given Erru value: returns it to
+        // the caller, or reports it and exits when the function is inisiu.
+        // Ends the current block with a terminator.
+        void emitFailure(llvm::Value* erruValue);
+
+        // 'tenta call' and 'call sinon fallback'.
+        void emitTenta(ast::UnaryExpr& node);
+        void emitSinon(ast::BinExpr& node);
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }

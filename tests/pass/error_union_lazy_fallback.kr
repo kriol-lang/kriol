@@ -1,0 +1,24 @@
+int chamadas = 0;
+
+fn fallback() int {
+    chamadas += 1;
+    divolvi 7;
+}
+
+fn pode_falhar(bool falha) int : Erru {
+    si falha {
+        lansa Erru::{mensage: "falhou"};
+    }
+    divolvi 1;
+}
+
+fn inisiu() {
+    // The fallback is only evaluated when the call fails.
+    int a = pode_falhar(nau) sinon fallback();
+    konfirma(a == 1);
+    konfirma(chamadas == 0);
+
+    int b = pode_falhar(sin) sinon fallback();
+    konfirma(b == 7);
+    konfirma(chamadas == 1);
+}

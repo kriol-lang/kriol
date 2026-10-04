@@ -38,6 +38,13 @@
         return true;
     }
 
+    // The built-in error type, `molda Erru { textu mensage; }`, available to every program.
+    static std::unique_ptr<kriol::ast::Sttmt> kriol_make_erru_declaration() {
+        auto erru = std::make_unique<kriol::ast::MoldaDeclSttmt>("Erru");
+        erru->AddField(std::make_unique<kriol::ast::VarDeclSttmt>(kriol::Type::Text(), "mensage", nullptr));
+        return erru;
+    }
+
     #define KRIOL_CHECK_DEPTH(node, line)                                           \
         do {                                                                       \
             if ((node)->Depth > KR_MAX_EXPR_DEPTH) {                               \
@@ -75,7 +82,7 @@
 %token<token>  BIT_AND "&" BIT_OR "|" BIT_XOR "^" BIT_NOT "~" AND_ASSIGN "&=" OR_ASSIGN "|=" XOR_ASSIGN "^="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
-%token<token>  DIVOLVI "divolvi" PA "pa"
+%token<token>  DIVOLVI "divolvi" PA "pa" TENTA "tenta" LANSA "lansa"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> PARA "para" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
 %token<token> FN "fn" MOLDA "molda" NOT "!"
@@ -108,7 +115,7 @@
 
 %%
 
-program : statements { *Program = $1; }
+program : statements { $1->SttmtList.insert($1->SttmtList.begin(), kriol_make_erru_declaration()); *Program = $1; }
         | error { *Program = nullptr; }
         ;
 
@@ -248,6 +255,7 @@ multiplicative_expression : unary_expression { $$ = $1; }
 
 unary_expression : primary_expression                          { $$ = $1; }
                  | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                 | TENTA unary_expression                        { auto n = new ast::UnaryExpr("tenta", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | BIT_NOT unary_expression                     { auto n = new ast::UnaryExpr("~", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  ;
@@ -271,6 +279,7 @@ primary_atom : record_literal { $$ = $1; }
              ;
 
 assignment_expression : constant_expression { $$ = $1; }
+                      | constant_expression SINON constant_expression { auto n = new ast::BinExpr("sinon", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
 
@@ -286,6 +295,8 @@ assignment_operator : ASSIGN { $$ = new std::string("="); }
                     ;
 
 function_declaration : FN declarator LPAR parameter_optional_list RPAR type_specifier compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; delete $6; delete $2; }
+                     | FN declarator LPAR parameter_optional_list RPAR type_specifier COLON TYPE_IDENT compound_statement { auto n = new ast::FuncDeclSttmt(Type::FromName(*$6), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($9)); n->ErrorTypeName = *$8; n->LineNum = @$.first_line; $$ = n; delete $6; delete $2; delete $8; }
+                     | FN declarator LPAR parameter_optional_list RPAR COLON TYPE_IDENT compound_statement { auto n = new ast::FuncDeclSttmt(Type::Void(), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($8)); n->ErrorTypeName = *$7; n->LineNum = @$.first_line; $$ = n; delete $2; delete $7; }
                      | FN declarator LPAR parameter_optional_list RPAR compound_statement { auto n = new ast::FuncDeclSttmt(Type::Void(), *$2, std::unique_ptr<ast::FuncArgs>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; delete $2; }
                      ;
 
@@ -375,6 +386,7 @@ iteration_statement : NKUANTU expression compound_statement { auto n = new ast::
 jump_statement : PARA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = @$.first_line; $$ = n; }
                | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = @$.first_line; $$ = n; }
                | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; $$ = n; }
+               | LANSA expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->Throws = true; n->LineNum = @$.first_line; $$ = n; }
                | DIVOLVI SEMIC { auto n = new ast::ReturnSttmt(nullptr); n->LineNum = @$.first_line; $$ = n; }
                ;
 
