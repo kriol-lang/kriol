@@ -704,7 +704,7 @@ llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
         return Builder->CreateUIToFP(v, doubleTy, "conv");
     // num (double) -> int (i64)
     if (srcTy == doubleTy && targetTy == i64Ty)
-        return Builder->CreateFPToSI(v, i64Ty, "conv");
+        return Builder->CreateIntrinsic(llvm::Intrinsic::fptosi_sat, {i64Ty, doubleTy}, {v}, nullptr, "conv");
     // any integer widening (e.g. i1 -> i64 via general int path)
     if (srcTy->isIntegerTy() && targetTy->isIntegerTy())
         return Builder->CreateSExtOrTrunc(v, targetTy, "conv");
@@ -743,9 +743,10 @@ llvm::Value* CodeGenVisitor::coerceToType(llvm::Value* v,
     }
 
     if (sourceType.isFloat() && targetType.isInteger()) {
-        if (targetType.isSigned())
-            return Builder->CreateFPToSI(v, targetTy, "conv");
-        return Builder->CreateFPToUI(v, targetTy, "conv");
+        // Truncates toward zero like C, but saturating: NaN becomes 0 and
+        // out-of-range values clamp, so the result is always defined.
+        const auto intrinsic = targetType.isSigned() ? llvm::Intrinsic::fptosi_sat : llvm::Intrinsic::fptoui_sat;
+        return Builder->CreateIntrinsic(intrinsic, {targetTy, sourceTy}, {v}, nullptr, "conv");
     }
 
     return coerce(v, targetTy);
@@ -968,16 +969,31 @@ llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckDiv() {
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_check_div", *Mod);
 }
 
+llvm::Function* CodeGenVisitor::getOrDeclareKriolCheckFloatDiv() {
+    if (auto* fn = Mod->getFunction("__kriol_check_fdiv")) return fn;
+    auto* voidTy   = llvm::Type::getVoidTy(Context);
+    auto* doubleTy = llvm::Type::getDoubleTy(Context);
+    auto* i32Ty    = llvm::Type::getInt32Ty(Context);
+    auto* ftype    = llvm::FunctionType::get(voidTy, {doubleTy, i32Ty}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_check_fdiv", *Mod);
+}
+
 void CodeGenVisitor::startDeadBlock() {
     auto* fn = Builder->GetInsertBlock()->getParent();
     auto* dead = llvm::BasicBlock::Create(Context, "dead", fn);
     Builder->SetInsertPoint(dead);
 }
 
-void CodeGenVisitor::emitIntDivGuard(llvm::Value* lhs, llvm::Value* rhs,
-                                     const Type& operandType, int lineNum) {
+void CodeGenVisitor::emitDivGuard(llvm::Value* lhs, llvm::Value* rhs,
+                                  const Type& operandType, int lineNum) {
     auto* i64Ty = llvm::Type::getInt64Ty(Context);
     auto* i32Ty = llvm::Type::getInt32Ty(Context);
+
+    if (operandType.isFloat()) {
+        llvm::Value* divisor = Builder->CreateFPExt(rhs, llvm::Type::getDoubleTy(Context));
+        Builder->CreateCall(getOrDeclareKriolCheckFloatDiv(), {divisor, llvm::ConstantInt::get(i32Ty, lineNum)});
+        return;
+    }
 
     llvm::Value* lhs64 = operandType.isSigned()
         ? Builder->CreateSExtOrTrunc(lhs, i64Ty)
@@ -1833,11 +1849,9 @@ void CodeGenVisitor::visit(BinExpr& node) {
     llvm::Value* rhs = LastValue;
     if (!lhs || !rhs) { LastValue = nullptr; return; }
 
-    Type operandType = op == "/"
-        ? divisionResultType(node.LHS->ResolvedType, node.RHS->ResolvedType)
-        : promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(),
-                                     node.LHS->ResolvedType,
-                                     node.RHS->ResolvedType);
+    Type operandType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(),
+                                                  node.LHS->ResolvedType,
+                                                  node.RHS->ResolvedType);
     llvm::Type* operandLlvmTy = mapType(operandType);
     bool isFloat = operandType.isFloat();
     bool isUnsigned = operandType.isUnsignedInteger();
@@ -1846,24 +1860,31 @@ void CodeGenVisitor::visit(BinExpr& node) {
     if (rhs->getType() != operandLlvmTy)
         rhs = coerceToType(rhs, node.RHS->ResolvedType, operandType);
 
-    if (op == "%" && !isFloat)
-        emitIntDivGuard(lhs, rhs, operandType, node.LineNum);
-
-    if      (op == "+")  LastValue = isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
-    else if (op == "-")  LastValue = isFloat ? Builder->CreateFSub(lhs, rhs) : Builder->CreateSub(lhs, rhs);
-    else if (op == "*")  LastValue = isFloat ? Builder->CreateFMul(lhs, rhs) : Builder->CreateMul(lhs, rhs);
-    else if (op == "/")  LastValue = Builder->CreateFDiv(lhs, rhs); // operands are always floating-point here
-    else if (op == "&")  LastValue = Builder->CreateAnd(lhs, rhs);
-    else if (op == "|")  LastValue = Builder->CreateOr(lhs, rhs);
-    else if (op == "^")  LastValue = Builder->CreateXor(lhs, rhs);
-    else if (op == "%")  LastValue = isFloat ? Builder->CreateFRem(lhs, rhs) : (isUnsigned ? Builder->CreateURem(lhs, rhs) : Builder->CreateSRem(lhs, rhs));
-    else if (op == "<")  LastValue = isFloat ? Builder->CreateFCmpOLT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULT(lhs, rhs) : Builder->CreateICmpSLT(lhs, rhs));
+    if      (op == "<")  LastValue = isFloat ? Builder->CreateFCmpOLT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULT(lhs, rhs) : Builder->CreateICmpSLT(lhs, rhs));
     else if (op == ">")  LastValue = isFloat ? Builder->CreateFCmpOGT(lhs, rhs) : (isUnsigned ? Builder->CreateICmpUGT(lhs, rhs) : Builder->CreateICmpSGT(lhs, rhs));
     else if (op == "<=") LastValue = isFloat ? Builder->CreateFCmpOLE(lhs, rhs) : (isUnsigned ? Builder->CreateICmpULE(lhs, rhs) : Builder->CreateICmpSLE(lhs, rhs));
     else if (op == ">=") LastValue = isFloat ? Builder->CreateFCmpOGE(lhs, rhs) : (isUnsigned ? Builder->CreateICmpUGE(lhs, rhs) : Builder->CreateICmpSGE(lhs, rhs));
     else if (op == "==") LastValue = isFloat ? Builder->CreateFCmpOEQ(lhs, rhs) : Builder->CreateICmpEQ(lhs, rhs);
     else if (op == "!=") LastValue = isFloat ? Builder->CreateFCmpONE(lhs, rhs) : Builder->CreateICmpNE(lhs, rhs);
-    else LastValue = nullptr;
+    else LastValue = emitArithmetic(op, lhs, rhs, operandType, node.LineNum);
+}
+
+llvm::Value* CodeGenVisitor::emitArithmetic(const std::string& op, llvm::Value* lhs, llvm::Value* rhs,
+                                            const Type& operandType, int lineNum) {
+    const bool isFloat = operandType.isFloat();
+    const bool isUnsigned = operandType.isUnsignedInteger();
+    if (op == "/" || op == "%")
+        emitDivGuard(lhs, rhs, operandType, lineNum);
+
+    if (op == "+") return isFloat ? Builder->CreateFAdd(lhs, rhs) : Builder->CreateAdd(lhs, rhs);
+    if (op == "-") return isFloat ? Builder->CreateFSub(lhs, rhs) : Builder->CreateSub(lhs, rhs);
+    if (op == "*") return isFloat ? Builder->CreateFMul(lhs, rhs) : Builder->CreateMul(lhs, rhs);
+    if (op == "/") return isFloat ? Builder->CreateFDiv(lhs, rhs) : (isUnsigned ? Builder->CreateUDiv(lhs, rhs) : Builder->CreateSDiv(lhs, rhs));
+    if (op == "%") return isFloat ? Builder->CreateFRem(lhs, rhs) : (isUnsigned ? Builder->CreateURem(lhs, rhs) : Builder->CreateSRem(lhs, rhs));
+    if (op == "&") return Builder->CreateAnd(lhs, rhs);
+    if (op == "|") return Builder->CreateOr(lhs, rhs);
+    if (op == "^") return Builder->CreateXor(lhs, rhs);
+    throw std::runtime_error("internal error: unknown arithmetic operator '" + op + "'");
 }
 
 void CodeGenVisitor::visit(LiteralExpr& node) {
@@ -1922,21 +1943,16 @@ void CodeGenVisitor::visit(AssignExpr& node) {
     if (!dest.Ptr || !dest.Type) { LastValue = nullptr; return; }
 
     if (node.AssignOp != "=") {
-        llvm::Value* cur = Builder->CreateLoad(dest.Type, dest.Ptr);
-        Type targetType = node.Assignee->ResolvedType;
-        llvm::Value* rhs = coerceToType(val, node.Assigned->ResolvedType, targetType);
-        bool isFloat = targetType.isFloat();
-        bool isUnsigned = targetType.isUnsignedInteger();
-        if (node.AssignOp == "%=" && !isFloat)
-            emitIntDivGuard(cur, rhs, targetType, node.LineNum);
-        if      (node.AssignOp == "+=") val = isFloat ? Builder->CreateFAdd(cur, rhs) : Builder->CreateAdd(cur, rhs);
-        else if (node.AssignOp == "-=") val = isFloat ? Builder->CreateFSub(cur, rhs) : Builder->CreateSub(cur, rhs);
-        else if (node.AssignOp == "*=") val = isFloat ? Builder->CreateFMul(cur, rhs) : Builder->CreateMul(cur, rhs);
-        else if (node.AssignOp == "/=") val = Builder->CreateFDiv(cur, rhs); // sema: float targets only
-        else if (node.AssignOp == "&=") val = Builder->CreateAnd(cur, rhs);
-        else if (node.AssignOp == "|=") val = Builder->CreateOr(cur, rhs);
-        else if (node.AssignOp == "^=") val = Builder->CreateXor(cur, rhs);
-        else if (node.AssignOp == "%=") val = isFloat ? Builder->CreateFRem(cur, rhs) : (isUnsigned ? Builder->CreateURem(cur, rhs) : Builder->CreateSRem(cur, rhs));
+        // Like C, `x op= v` computes `x op v` in the promoted type of both
+        // operands and converts the result back to the type of x.
+        const Type& targetType = node.Assignee->ResolvedType;
+        const Type& valueType = node.Assigned->ResolvedType;
+        const Type operandType = promotedNumericTypeForExpr(node.Assignee.get(), node.Assigned.get(),
+                                                            targetType, valueType);
+        llvm::Value* cur = coerceToType(Builder->CreateLoad(dest.Type, dest.Ptr), targetType, operandType);
+        llvm::Value* rhs = coerceToType(val, valueType, operandType);
+        const std::string op = node.AssignOp.substr(0, node.AssignOp.size() - 1);
+        val = coerceToType(emitArithmetic(op, cur, rhs, operandType, node.LineNum), operandType, targetType);
     } else {
         val = coerceToType(val, node.Assigned->ResolvedType, node.Assignee->ResolvedType);
     }
@@ -1995,15 +2011,7 @@ void CodeGenVisitor::visit(CastExpr& node) {
     const Type& from = node.Operand->ResolvedType;
     const Type& to = node.Target;
 
-    if (to == Type::Bool()) {
-        LastValue = toBool(value);
-    } else if (from.isFloat() && to.isInteger()) {
-        // Saturating: NaN becomes 0 and out-of-range values clamp, so the result is always defined.
-        const auto intrinsic = to.isSigned() ? llvm::Intrinsic::fptosi_sat : llvm::Intrinsic::fptoui_sat;
-        LastValue = Builder->CreateIntrinsic(intrinsic, {mapType(to), value->getType()}, {value}, nullptr, "cast");
-    } else {
-        LastValue = coerceToType(value, from, to);
-    }
+    LastValue = to == Type::Bool() ? toBool(value) : coerceToType(value, from, to);
 }
 
 void CodeGenVisitor::visit(UnaryExpr& node) {

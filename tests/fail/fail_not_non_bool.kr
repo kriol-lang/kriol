@@ -1,4 +1,4 @@
-// expect: logical operator '!' requires a boolean operand, got 'int'
+// expect: logical operator '!' requires a boolean or numeric operand, got 'textu'
 fn inisiu() {
-    mostran(!5);
+    mostran(!"sin");
 }

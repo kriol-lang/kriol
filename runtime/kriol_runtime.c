@@ -638,6 +638,11 @@ void __kriol_check_bounds(int64_t index, int64_t size, int line) {
     }
 }
 
+void __kriol_check_fdiv(double divisor, int32_t line) {
+    if (divisor == 0.0)
+        __kriol_panic_at("division by zero", line);
+}
+
 void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line) {
     if (rhs == 0)
         __kriol_panic_at("division by zero", line);

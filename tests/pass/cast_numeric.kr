@@ -28,11 +28,12 @@ fn inisiu() {
     num enorme = 1000000.0 * 1000000.0 * 1000000.0 * 1000000.0;
     konfirma((int) enorme == 9223372036854775807);
     konfirma((int) -enorme == -9223372036854775807 - 1);
-    num nada = 0.0 / 0.0;
+    num infinitu = enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme * enorme;
+    num nada = infinitu - infinitu;
     konfirma((int) nada == 0);
     konfirma((u8) 1000.5 == 255);
 
-    // Explicit casts allow what implicit conversions reject.
+    // Explicit casts allow integer narrowing, which implicit conversions reject.
     int grandi = 70000;
     i16 curtu = (i16) grandi;
     konfirma(curtu == 4464);

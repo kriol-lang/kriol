@@ -1,0 +1,37 @@
+// Division follows C: two integers divide as integers, truncating toward zero.
+fn inisiu() {
+    konfirma(7 / 2 == 3);
+    konfirma(-7 / 2 == -3);
+    konfirma(7 % 3 == 1);
+
+    int x = 7;
+    int y = 2;
+    num b = x / y;
+    konfirma(b == 3.0);
+
+    // A real operand makes the division real.
+    konfirma(7 / 2.0 == 3.5);
+    konfirma((num) x / y == 3.5);
+    f32 e = 1.0;
+    f32 g = e / 4;
+    konfirma(g == 0.25);
+
+    // A real value stored in an integer is truncated, as in C.
+    int k = 7.0 / 2;
+    konfirma(k == 3);
+    int t = -3.9;
+    konfirma(t == -3);
+
+    // x op= v computes in the type of both operands, then converts back to x.
+    int n = 9;
+    n /= 2;
+    konfirma(n == 4);
+    n /= 2.5;
+    konfirma(n == 1);
+    u8 byte = 200;
+    byte /= 3;
+    konfirma(byte == 66);
+    num d = 1.0;
+    d /= 4;
+    konfirma(d == 0.25);
+}

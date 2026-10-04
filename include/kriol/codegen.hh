@@ -102,6 +102,7 @@ namespace ast {
         LValue               resolveLValue(ast::Expr* expr, bool allowTemporary = false);
         llvm::Function*      getOrDeclareKriolCheckBounds();
         llvm::Function*      getOrDeclareKriolCheckDiv();
+        llvm::Function*      getOrDeclareKriolCheckFloatDiv();
         llvm::Function*      getOrDeclarePanicAt();
 
         // After emitting a block terminator (break/continue/return/sai) moves
@@ -109,10 +110,15 @@ namespace ast {
         // statements in the source block still produce valid (dead) IR.
         void startDeadBlock();
 
-        // Emits a runtime divisor check (division by zero / signed overflow)
-        // before an integer division or remainder.
-        void emitIntDivGuard(llvm::Value* lhs, llvm::Value* rhs,
-                             const Type& operandType, int lineNum);
+        // Emits a runtime divisor check before a division or remainder: zero
+        // for every type, and MIN / -1 overflow for signed integers.
+        void emitDivGuard(llvm::Value* lhs, llvm::Value* rhs,
+                          const Type& operandType, int lineNum);
+
+        // `lhs op rhs` for an arithmetic or bitwise operator ("+", "/", "&", ...),
+        // with both operands already of `operandType`.
+        llvm::Value* emitArithmetic(const std::string& op, llvm::Value* lhs, llvm::Value* rhs,
+                                    const Type& operandType, int lineNum);
 
         // Emits short-circuit evaluation for '&&' and '||'.
         void emitShortCircuit(ast::BinExpr& node);
@@ -161,7 +167,7 @@ namespace ast {
 
         // Central scalar coercion table: convert v to targetTy.
         // Supported pairs: int->num (SIToFP), bool->int (ZExt),
-        // bool->num (UIToFP), num->int (FPToSI). Identity is a no-op.
+        // bool->num (UIToFP), num->int (saturating). Identity is a no-op.
         // Throws for unsupported or pointer conversions.
         llvm::Value* coerce(llvm::Value* v, llvm::Type* targetTy);
         llvm::Value* coerceToType(llvm::Value* v,

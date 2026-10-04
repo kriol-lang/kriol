@@ -113,6 +113,8 @@ bool SemanticAnalyzer::canCoerceExprTo(const ast::Expr* expr, const Type& to) {
     const Type& from = expr->ResolvedType;
     auto* lit = underlyingNumericLiteral(expr);
     if (lit && lit->Type.isFloat() && from.isFloat() && to.isFloat()) return true;
+    // A real value converts implicitly to an integer, truncating toward zero.
+    if (from.isFloat() && to.isInteger()) return true;
     return from == to || isWideningCoercion(from, to) || integerLiteralFits(expr, to);
 }
 
@@ -839,12 +841,11 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     };
 
     if (node.Op == "&&" || node.Op == "||") {
-        if (lt.valid() && lt != Type::Bool())
-            addError(errLoc(node.LineNum) + "logical operator '" + node.Op
-                     + "' requires boolean operands, got '" + lt.str() + "'");
-        if (rt.valid() && rt != Type::Bool())
-            addError(errLoc(node.LineNum) + "logical operator '" + node.Op
-                     + "' requires boolean operands, got '" + rt.str() + "'");
+        // As in a condition, a number is true when it is not zero.
+        for (const Type* operand : {&lt, &rt})
+            if (operand->valid() && *operand != Type::Bool() && !operand->isNumeric())
+                addError(errLoc(node.LineNum) + "logical operator '" + node.Op
+                         + "' requires boolean or numeric operands, got '" + operand->str() + "'");
         node.ResolvedType = Type::Bool();
         return;
     }
@@ -878,8 +879,6 @@ void SemanticAnalyzer::visit(BinExpr& node) {
 
     if (equalityOps.count(node.Op) || relationalOps.count(node.Op)) {
         node.ResolvedType = Type::Bool();
-    } else if (node.Op == "/") {
-        node.ResolvedType = divisionResultType(lt, rt);
     } else {
         node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
     }
@@ -1189,9 +1188,6 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
             addError(errLoc(node.LineNum) + "compound assignment operator '"
                      + node.AssignOp + "' requires " + required + " value, got '"
                      + valueType.str() + "'");
-        if (node.AssignOp == "/=" && assigneeType.isInteger())
-            addError(errLoc(node.LineNum) + "compound assignment operator '/=' always yields a real "
-                     "number and cannot be stored in a target of type '" + assigneeType.str() + "'");
     }
 
     if (assigneeType.valid() && valueType.valid()
@@ -1274,8 +1270,9 @@ void SemanticAnalyzer::visit(UnaryExpr& node) {
     const Type opType = node.Operand ? node.Operand->ResolvedType : Type::Invalid();
 
     if (node.Op == "!") {
-        if (opType.valid() && opType != Type::Bool())
-            addError(errLoc(node.LineNum) + "logical operator '!' requires a boolean operand, got '"
+        // As in a condition, a number is true when it is not zero.
+        if (opType.valid() && opType != Type::Bool() && !opType.isNumeric())
+            addError(errLoc(node.LineNum) + "logical operator '!' requires a boolean or numeric operand, got '"
                      + opType.str() + "'");
         node.ResolvedType = Type::Bool();
     } else if (node.Op == "~") {

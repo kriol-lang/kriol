@@ -28,11 +28,6 @@ Type promotedNumericType(const Type& lhs, const Type& rhs) {
     return lhs.valid() ? lhs : rhs;
 }
 
-Type divisionResultType(const Type& lhs, const Type& rhs) {
-    if (lhs.isInteger() && rhs.isInteger()) return Type::Float(64);
-    return promotedNumericType(lhs, rhs);
-}
-
 static const Expr* stripParens(const Expr* expr) {
     while (auto* par = dynamic_cast<const ParExpr*>(expr))
         expr = par->Content.get();

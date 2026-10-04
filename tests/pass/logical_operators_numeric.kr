@@ -1,0 +1,19 @@
+// As in a condition, a number is true when it is not zero, for !, && and ||.
+fn inisiu() {
+    int zero = 0;
+    konfirma(!zero);
+    konfirma(!(!5));
+    konfirma(!0.0);
+    konfirma(!(!-2.5));
+    u8 byte = 0;
+    si !byte {
+        konfirma(sin);
+    } sinon {
+        konfirma(nau);
+    }
+
+    konfirma(3 && 2.5);
+    konfirma(!(zero && sin));
+    konfirma(zero || 7);
+    konfirma(!(zero || 0.0));
+}

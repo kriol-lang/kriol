@@ -2,7 +2,7 @@ fn metadi(int a, int b) num : Erru {
     si b == 0 {
         lansa Erru::{mensage: "divizon pa zero"};
     }
-    divolvi a / b;
+    divolvi (num) a / b;
 }
 
 fn valida(int n) : Erru {

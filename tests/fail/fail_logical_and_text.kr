@@ -1,0 +1,4 @@
+// expect: logical operator '&&' requires boolean or numeric operands, got 'textu'
+fn inisiu() {
+    mostran(sin && "nau");
+}

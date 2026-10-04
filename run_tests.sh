@@ -123,6 +123,20 @@ else
 fi
 rm -f "$tmpbin"
 
+# ---- division by zero stops the program, for integers and reals --------------
+for divisor in '0' '0.0'; do
+    printf "  %-44s" "division by $divisor stops the program"
+    tmpbin=$(mktemp /tmp/kriol_div_XXXX)
+    div_status=0
+    div_out=$("$KRIOL" --text "fn inisiu() { num a = 7; mostran(a / $divisor); mostran(\"never\"); }" -o "$tmpbin" 2>&1 && timeout 5 "$tmpbin" 2>&1) || div_status=$?
+    if [ "$div_status" -ne 0 ] && echo "$div_out" | grep -Fq "division by zero" && ! echo "$div_out" | grep -Fq "never"; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "division by $divisor stops the program"
+    fi
+    rm -f "$tmpbin"
+done
+
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)

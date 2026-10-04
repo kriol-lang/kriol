@@ -1,5 +1,0 @@
-// expect: compound assignment operator '/=' always yields a real number and cannot be stored in a target of type 'int'
-fn inisiu() {
-    int n = 10;
-    n /= 2;
-}

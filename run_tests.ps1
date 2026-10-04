@@ -114,6 +114,13 @@ Write-Result 'unhandled error stops the program' ($ok -and $LASTEXITCODE -ne 0 -
 $strictRejected = -not (Invoke-Kriol @('--strict', '--text', $unhandled, '-o', (Join-Path $Work 'strict.exe')))
 Write-Result '--strict rejects warnings' $strictRejected
 
+foreach ($divisor in '0', '0.0') {
+    $exe = Join-Path $Work 'division.exe'
+    $ok = Invoke-Kriol @('--text', "fn inisiu() { num a = 7; mostran(a / $divisor); mostran(`"never`"); }", '-o', $exe)
+    $output = if ($ok) { (& $exe 2>&1) -join "`n" } else { '' }
+    Write-Result "division by $divisor stops the program" ($ok -and $LASTEXITCODE -ne 0 -and $output -match 'division by zero' -and $output -notmatch 'never')
+}
+
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }
