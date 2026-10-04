@@ -86,6 +86,43 @@ for level in 0 3; do
     rm -f "$tmpbin"
 done
 
+# ---- unhandled errors: warning, --strict and the runtime stop -------------------
+UNHANDLED='fn f() int : Erru { lansa Erru::{mensage: "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+
+printf "  %-44s" "unhandled error warns"
+tmpbin=$(mktemp /tmp/kriol_warn_XXXX)
+if "$KRIOL" --text "$UNHANDLED" -o "$tmpbin" 2>&1 | grep -Fq "warn:" && [ -x "$tmpbin" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "unhandled error warns"
+fi
+
+printf "  %-44s" "unhandled error stops the program"
+unhandled_status=0
+unhandled_out=$(timeout 5 "$tmpbin" 2>&1) || unhandled_status=$?
+if [ "$unhandled_status" -ne 0 ] && echo "$unhandled_out" | grep -Fq "boom" && ! echo "$unhandled_out" | grep -Fq "never"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "unhandled error stops the program"
+fi
+rm -f "$tmpbin"
+
+printf "  %-44s" "--strict rejects warnings"
+if "$KRIOL" --strict --text "$UNHANDLED" -o /dev/null >/dev/null 2>&1; then
+    echo " FAIL (should have been rejected)"; record_failure "--strict rejects warnings"
+else
+    echo " PASS"; pass=$((pass+1))
+fi
+
+printf "  %-44s" "--strict accepts clean programs"
+tmpbin=$(mktemp /tmp/kriol_strict_XXXX)
+if "$KRIOL" --strict "$ROOT/tests/pass/error_union_basic.kr" -o "$tmpbin" >/dev/null 2>&1; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "--strict accepts clean programs"
+fi
+rm -f "$tmpbin"
+
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)

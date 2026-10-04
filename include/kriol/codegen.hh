@@ -124,6 +124,10 @@ namespace ast {
         // Ends the current block with a terminator.
         void emitFailure(llvm::Value* erruValue);
 
+        // For a call whose error nobody handles: stops the program with the
+        // error message if the call failed, and leaves the plain value.
+        void emitUnhandledFailureCheck(ast::FunCallExpr& node);
+
         // 'tenta call' and 'call sinon fallback'.
         void emitTenta(ast::UnaryExpr& node);
         void emitSinon(ast::BinExpr& node);

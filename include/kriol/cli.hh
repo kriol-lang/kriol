@@ -29,6 +29,7 @@ namespace kriol::cli
     };
 
     void PrintErr(std::string message);
+    void PrintWarn(std::string message);
     void PrintErr(std::string message, int exitNum);
 
     void SetSourceFile(const std::string& filename);
@@ -53,6 +54,8 @@ namespace kriol::cli
         unsigned optLevel = 2;
         bool emitIR = false;
         bool outputToMemory = false;
+        // Treat warnings as errors.
+        bool strict = false;
     };
 
     struct CompileResult
@@ -61,6 +64,8 @@ namespace kriol::cli
         std::string outputPath;
         std::vector<unsigned char> outputBytes;
         std::vector<std::string> diagnostics;
+        // Problems that did not stop the compilation.
+        std::vector<std::string> warnings;
     };
 
     CompileResult Compile(const CompileOptions& options);
@@ -88,6 +93,7 @@ namespace kriol::cli
             std::string target = "native";
             unsigned optLevel = 2;
             bool emitIR = false;
+            bool strict = false;
             bool ignoreExtension = false;
         };
 

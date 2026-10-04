@@ -57,6 +57,9 @@ namespace sema {
         // Collected errors
         std::vector<std::string> Errors;
 
+        // Collected warnings: problems that do not stop compilation
+        std::vector<std::string> Warnings;
+
         // Source file name, used for error location prefixes
         std::string SourceFile;
 
@@ -152,6 +155,7 @@ namespace sema {
 
         // Adds an error message to the error list
         void addError(const std::string& msg) { Errors.push_back(msg); }
+        void addWarning(const std::string& msg) { Warnings.push_back(msg); }
 
     public:
         SemanticAnalyzer() = default;
@@ -161,6 +165,7 @@ namespace sema {
 
         bool HasErrors() const { return !Errors.empty(); }
         const std::vector<std::string>& GetErrors() const { return Errors; }
+        const std::vector<std::string>& GetWarnings() const { return Warnings; }
 
         // Sets the source filename included in error location prefixes.
         void SetSourceFile(const std::string& f) { SourceFile = f; }

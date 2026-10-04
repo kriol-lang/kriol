@@ -613,10 +613,10 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             return;
 
         case prelude::Builtin::Toma:
+            // An unhandled toma() stops the program when the input ends, like an
+            // out-of-range index would; no warning, to keep simple programs simple.
             node.Fallible = true;
-            if (!handled)
-                addError(loc + "call to 'toma' can fail (the input may end); handle the error with "
-                         "'tenta' or 'sinon'");
+            node.ErrorHandled = handled;
             if (node.Args)
                 for (auto& arg : node.Args->Args)
                     if (arg) arg->accept(*this);
@@ -707,9 +707,10 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     const FuncInfo& info = it->second;
     node.ResolvedType = info.retType;
     node.Fallible = info.canFail;
+    node.ErrorHandled = handled;
     if (info.canFail && !handled)
-        addError(errLoc(node.LineNum) + "call to '" + callee->Name + "' can fail; handle the error with "
-                 "'tenta' or 'sinon'");
+        addWarning(errLoc(node.LineNum) + "the error of '" + callee->Name + "' is not handled, so the "
+                   "program stops if it fails; use 'tenta' or 'sinon'");
 
     size_t want = info.paramTypes.size();
 

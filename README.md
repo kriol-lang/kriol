@@ -144,6 +144,14 @@ Programs are optimized at level 2 by default. Use `--opt-lvl 0` to turn
 optimization off (for example, when debugging the compiler), or `--opt-lvl 1`
 or `--opt-lvl 3` for the other levels.
 
+The compiler prints warnings (for example, when the error of a function that can
+fail is ignored) without stopping. Use `--strict` to treat every warning as an
+error:
+
+```sh
+kriol examples/ola.kriol --strict
+```
+
 To inspect the generated LLVM IR instead of producing a binary (the IR is shown
 before optimization):
 

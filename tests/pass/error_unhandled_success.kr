@@ -1,0 +1,21 @@
+// An unhandled error only stops the program when the call actually fails.
+fn pode_falhar(bool falha) int : Erru {
+    si falha {
+        lansa Erru::{mensage: "falhou"};
+    }
+    divolvi 5;
+}
+
+fn avisa(bool falha) : Erru {
+    si falha {
+        lansa Erru::{mensage: "falhou"};
+    }
+}
+
+fn inisiu() {
+    int a = pode_falhar(nau);
+    konfirma(a == 5);
+    avisa(nau);
+    int b = pode_falhar(nau) + 1;
+    konfirma(b == 6);
+}

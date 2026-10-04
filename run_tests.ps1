@@ -97,6 +97,15 @@ foreach ($level in '0', '3') {
     Write-Result "optimization level $level" ($output -eq '3')
 }
 
+$unhandled = 'fn f() int : Erru { lansa Erru::{mensage: "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+$exe = Join-Path $Work 'unhandled.exe'
+$ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)
+Write-Result 'unhandled error compiles' $ok
+$output = if ($ok) { (& $exe 2>&1) -join "`n" } else { '' }
+Write-Result 'unhandled error stops the program' ($ok -and $LASTEXITCODE -ne 0 -and $output -match 'boom' -and $output -notmatch 'never')
+$strictRejected = -not (Invoke-Kriol @('--strict', '--text', $unhandled, '-o', (Join-Path $Work 'strict.exe')))
+Write-Result '--strict rejects warnings' $strictRejected
+
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }

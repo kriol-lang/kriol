@@ -1281,6 +1281,38 @@ void CodeGenVisitor::emitFailure(llvm::Value* erruValue) {
     Builder->CreateRet(result);
 }
 
+static llvm::Function* getOrDeclarePanicAt(llvm::Module& Mod, llvm::LLVMContext& Context) {
+    if (auto* fn = Mod.getFunction("__kriol_panic_at")) return fn;
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
+void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
+    if (!node.Fallible || node.ErrorHandled || !LastValue) return;
+
+    llvm::Value* result = LastValue;
+    auto* resultTy = llvm::cast<llvm::StructType>(result->getType());
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* failBB = llvm::BasicBlock::Create(Context, "unhandled.fail", fn);
+    auto* okBB = llvm::BasicBlock::Create(Context, "unhandled.ok", fn);
+    Builder->CreateCondBr(Builder->CreateExtractValue(result, {0u}, "failed"), failBB, okBB);
+
+    Builder->SetInsertPoint(failBB);
+    llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
+    const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
+    llvm::Value* message = Builder->CreateExtractValue(error, {messageIndex}, "error.message");
+    Builder->CreateCall(getOrDeclarePanicAt(*Mod, Context),
+                        {message, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
+    Builder->CreateUnreachable();
+
+    Builder->SetInsertPoint(okBB);
+    LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
+}
+
 void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     node.Operand->accept(*this);
     llvm::Value* result = LastValue;
@@ -1660,7 +1692,10 @@ void CodeGenVisitor::visit(FuncCallArgs& node) {
 void CodeGenVisitor::visit(FunCallExpr& node) {
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) { LastValue = nullptr; return; }
-    if (emitPreludeCall(node, callee->Name)) return;
+    if (emitPreludeCall(node, callee->Name)) {
+        emitUnhandledFailureCheck(node);
+        return;
+    }
 
     const std::string name = llvmFunctionName(callee->Name);
     auto* fn = Mod->getFunction(name);
@@ -1691,6 +1726,7 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     }
 
     LastValue = Builder->CreateCall(fn, callArgs);
+    emitUnhandledFailureCheck(node);
 }
 
 void CodeGenVisitor::emitShortCircuit(BinExpr& node) {

@@ -93,6 +93,11 @@ void cli::PrintErr(std::string message)
     std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
 }
 
+void cli::PrintWarn(std::string message)
+{
+    std::cerr << KR_STANDARD_COMPILER_NAME << ": warn: " << message << std::endl;
+}
+
 void cli::PrintErr(std::string message, int exitNum)
 {
     cli::PrintErr(message);
@@ -161,6 +166,11 @@ void cli::Compiler::DefineArgs()
         .nargs(1)
         .choices("0", "1", "2", "3");
 
+    Parser->add_argument("--strict")
+        .help("Treat warnings as errors.")
+        .default_value(false)
+        .implicit_value(true);
+
     Parser->add_argument("--ignore-extension")
         .help("Accept file inputs without a ." +
               std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
@@ -208,6 +218,7 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
     Args.target = Parser->get<std::string>("--target");
     Args.optLevel = static_cast<unsigned>(std::stoul(Parser->get<std::string>("--opt-lvl")));
     Args.emitIR = Parser->get<bool>("--emit-ir");
+    Args.strict = Parser->get<bool>("--strict");
     Args.ignoreExtension = Parser->get<bool>("--ignore-extension");
 }
 
@@ -349,6 +360,12 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
             result.diagnostics = sema.GetErrors();
             return result;
         }
+        if (options.strict && !sema.GetWarnings().empty())
+        {
+            result.diagnostics = sema.GetWarnings();
+            return result;
+        }
+        result.warnings = sema.GetWarnings();
     }
 
     ast::CodegenTarget Target = ResolveTarget(options.target);
@@ -423,6 +440,7 @@ cli::CompileOptions cli::Compiler::MakeCompileOptions() const
     options.target = Args.target;
     options.optLevel = Args.optLevel;
     options.emitIR = Args.emitIR;
+    options.strict = Args.strict;
     return options;
 }
 
@@ -434,6 +452,8 @@ void cli::Compiler::Run(int argc, const char* const* argv)
     try
     {
         CompileResult result = Compile(MakeCompileOptions());
+        for (const auto& warning : result.warnings)
+            cli::PrintWarn(warning);
         if (!result.diagnostics.empty())
         {
             for (const auto& err : result.diagnostics)
