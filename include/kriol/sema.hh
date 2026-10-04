@@ -106,6 +106,9 @@ namespace sema {
         // Whether `op` is a bitwise binary operator ("&", "|" or "^").
         static bool isBitwiseOp(const std::string& op);
 
+        // 'T::konverti(text)': converts text to the number or bool type T.
+        void visitConversionCall(ast::FunCallExpr& node, ast::QualifiedAccessExpr& callee, bool handled);
+
         // The call under any parentheses, or null if `expr` is not a call.
         static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);
 

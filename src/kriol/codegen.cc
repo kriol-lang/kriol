@@ -1292,6 +1292,72 @@ static llvm::Function* getOrDeclarePanicAt(llvm::Module& Mod, llvm::LLVMContext&
     return fn;
 }
 
+void CodeGenVisitor::emitConversionCall(FunCallExpr& node) {
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    const Type& target = node.ConvertTarget;
+
+    node.Args->Args[0]->accept(*this);
+    llvm::Value* text = LastValue;
+    if (!text)
+        throw std::runtime_error("internal error: failed to generate the text to convert");
+
+    auto declare = [&](const char* name, std::vector<llvm::Type*> params) {
+        if (auto* fn = Mod->getFunction(name)) return fn;
+        auto* ftype = llvm::FunctionType::get(i32Ty, params, false);
+        return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
+    };
+
+    // The runtime stores the converted value in `slot` (as i64, double or i32)
+    // and returns 1 on success, or sets the message in `errorSlot` and returns 0.
+    auto* errorSlot = createEntryAlloca(CurrentFunction, "konverti.error", ptrTy);
+    Builder->CreateStore(llvm::ConstantPointerNull::get(ptrTy), errorSlot);
+
+    llvm::Type* slotTy;
+    llvm::Value* ok;
+    llvm::AllocaInst* slot;
+    if (target.isInteger()) {
+        slotTy = llvm::Type::getInt64Ty(Context);
+        slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
+        Builder->CreateStore(llvm::ConstantInt::get(slotTy, 0), slot);
+        ok = Builder->CreateCall(declare("__kriol_convert_int", {ptrTy, ptrTy, i32Ty, i32Ty, ptrTy}),
+                                 {text, slot, llvm::ConstantInt::get(i32Ty, target.bitWidth()),
+                                  llvm::ConstantInt::get(i32Ty, target.isSigned() ? 1 : 0), errorSlot});
+    } else if (target.isFloat()) {
+        slotTy = llvm::Type::getDoubleTy(Context);
+        slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
+        Builder->CreateStore(llvm::ConstantFP::get(slotTy, 0.0), slot);
+        ok = Builder->CreateCall(declare("__kriol_convert_float", {ptrTy, ptrTy, ptrTy}),
+                                 {text, slot, errorSlot});
+    } else {
+        slotTy = i32Ty;
+        slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
+        Builder->CreateStore(llvm::ConstantInt::get(slotTy, 0), slot);
+        ok = Builder->CreateCall(declare("__kriol_convert_bool", {ptrTy, ptrTy, ptrTy}),
+                                 {text, slot, errorSlot});
+    }
+
+    llvm::Value* raw = Builder->CreateLoad(slotTy, slot, "konverti.raw");
+    llvm::Value* value;
+    if (target.isInteger())
+        value = Builder->CreateTrunc(raw, mapType(target), "konverti.int");  // no-op for 64 bits
+    else if (target.isFloat())
+        value = Builder->CreateFPTrunc(raw, mapType(target), "konverti.float");
+    else
+        value = Builder->CreateICmpNE(raw, llvm::ConstantInt::get(i32Ty, 0), "konverti.bool");
+
+    auto* resultTy = failableResultType(target);
+    auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(2));
+    const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
+    llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "konverti.message");
+    llvm::Value* erru = Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+
+    llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
+    result = Builder->CreateInsertValue(result, Builder->CreateIsNull(ok, "konverti.failed"), {0u});
+    result = Builder->CreateInsertValue(result, value, {1u});
+    LastValue = Builder->CreateInsertValue(result, erru, {2u}, "konverti.result");
+}
+
 void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
     if (!node.Fallible || node.ErrorHandled || !LastValue) return;
 
@@ -1691,6 +1757,11 @@ void CodeGenVisitor::visit(FuncCallArgs& node) {
 }
 
 void CodeGenVisitor::visit(FunCallExpr& node) {
+    if (node.ConvertTarget.valid()) {
+        emitConversionCall(node);
+        emitUnhandledFailureCheck(node);
+        return;
+    }
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) { LastValue = nullptr; return; }
     if (emitPreludeCall(node, callee->Name)) {

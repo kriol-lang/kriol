@@ -217,6 +217,9 @@ namespace ast {
         // Whether a surrounding 'tenta' or 'sinon' handles the error. An
         // unhandled error stops the program at the call.
         bool ErrorHandled = false;
+        // For 'T::konverti(text)': the type the text converts to. Invalid for
+        // every other call.
+        kriol::Type ConvertTarget;
 
         FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
             : Callee(std::move(Callee)), Args(std::move(Args)) {

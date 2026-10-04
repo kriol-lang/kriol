@@ -581,8 +581,51 @@ void SemanticAnalyzer::visit(FuncCallArgs& node) {
     // Handled inside FunCallExpr
 }
 
+void SemanticAnalyzer::visitConversionCall(FunCallExpr& node, QualifiedAccessExpr& callee, bool handled) {
+    const std::string loc = errLoc(node.LineNum);
+    node.ResolvedType = Type::Invalid();
+    if (node.Args)
+        for (auto& arg : node.Args->Args)
+            if (arg) arg->accept(*this);
+
+    auto* typeName = dynamic_cast<IdentExpr*>(callee.Qualifier.get());
+    if (!typeName || callee.Member != "konverti") {
+        addError(loc + "unknown function '" + (typeName ? typeName->Name : "?") + "::" + callee.Member
+                 + "'; the only function of a type is '<type>::konverti'");
+        return;
+    }
+
+    const Type target = Type::FromName(typeName->Name);
+    if (!target.isNumeric() && target != Type::Bool()) {
+        addError(loc + "cannot convert text to '" + typeName->Name
+                 + "'; only numbers and 'bool' can be converted");
+        return;
+    }
+
+    const size_t got = node.Args ? node.Args->Args.size() : 0;
+    if (got != 1) {
+        addError(loc + "'" + typeName->Name + "::konverti' expects 1 argument(s), got " + std::to_string(got));
+    } else {
+        const Type& argType = node.Args->Args[0]->ResolvedType;
+        if (argType.valid() && argType != Type::Text())
+            addError(loc + "argument 1 of '" + typeName->Name + "::konverti': expected 'textu', got '"
+                     + argType.str() + "'");
+    }
+
+    // Like an unhandled toma(), an unhandled conversion stops the program when
+    // the text is invalid, without a warning.
+    node.ConvertTarget = target;
+    node.ResolvedType = target;
+    node.Fallible = true;
+    node.ErrorHandled = handled;
+}
+
 void SemanticAnalyzer::visit(FunCallExpr& node) {
     const bool handled = (&node == HandledCall);
+    if (auto* qualified = dynamic_cast<QualifiedAccessExpr*>(node.Callee.get())) {
+        visitConversionCall(node, *qualified, handled);
+        return;
+    }
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) {
         if (node.Args)

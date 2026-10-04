@@ -5,6 +5,7 @@
  */
 
 #include <stdio.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -482,6 +483,125 @@ char* __kriol_array_to_text(const void* data, int64_t count, int32_t kind, int32
 
     builder.Data[builder.Len] = '\0';
     return builder.Data;
+}
+
+/* ---- text to number conversion: T::konverti(text) ----------------------------
+ * Each function returns 1 and stores the value on success. On failure it
+ * returns 0 and stores a message in *error. Surrounding white space is ignored. */
+
+static int __kriol_is_space(char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+static void __kriol_trim(const char* text, const char** begin, const char** end) {
+    const char* start = text;
+    while (__kriol_is_space(*start)) ++start;
+    const char* stop = start + strlen(start);
+    while (stop > start && __kriol_is_space(stop[-1])) --stop;
+    *begin = start;
+    *end = stop;
+}
+
+int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is_signed, const char** error) {
+    const char* p;
+    const char* end;
+    __kriol_trim(text, &p, &end);
+
+    int negative = 0;
+    if (p < end && (*p == '+' || *p == '-')) {
+        negative = (*p == '-');
+        ++p;
+    }
+    if (p == end) {
+        *error = __kriol_format("invalid integer '%s'", text);
+        return 0;
+    }
+
+    uint64_t magnitude = 0;
+    int overflow = 0;
+    for (; p < end; ++p) {
+        if (*p < '0' || *p > '9') {
+            *error = __kriol_format("invalid integer '%s'", text);
+            return 0;
+        }
+        unsigned digit = (unsigned)(*p - '0');
+        if (magnitude > (UINT64_MAX - digit) / 10)
+            overflow = 1;
+        else
+            magnitude = magnitude * 10 + digit;
+    }
+
+    uint64_t limit;
+    if (is_signed)
+        limit = negative ? ((uint64_t)1 << (bits - 1)) : ((uint64_t)1 << (bits - 1)) - 1;
+    else
+        limit = bits >= 64 ? UINT64_MAX : (((uint64_t)1 << bits) - 1);
+    if (!is_signed && negative && magnitude != 0)
+        overflow = 1;
+
+    if (overflow || magnitude > limit) {
+        *error = __kriol_format("'%s' does not fit in '%c%d'", text, is_signed ? 'i' : 'u', (int)bits);
+        return 0;
+    }
+
+    *out = (is_signed && negative) ? (int64_t)(0 - magnitude) : (int64_t)magnitude;
+    return 1;
+}
+
+int __kriol_convert_float(const char* text, double* out, const char** error) {
+    const char* begin;
+    const char* end;
+    __kriol_trim(text, &begin, &end);
+
+    /* [+-] digits [. digits] [(e|E) [+-] digits], and nothing else. */
+    const char* p = begin;
+    if (p < end && (*p == '+' || *p == '-')) ++p;
+    const char* digits = p;
+    while (p < end && *p >= '0' && *p <= '9') ++p;
+    int valid = p > digits;
+    if (valid && p < end && *p == '.') {
+        ++p;
+        const char* fraction = p;
+        while (p < end && *p >= '0' && *p <= '9') ++p;
+        valid = p > fraction;
+    }
+    if (valid && p < end && (*p == 'e' || *p == 'E')) {
+        ++p;
+        if (p < end && (*p == '+' || *p == '-')) ++p;
+        const char* exponent = p;
+        while (p < end && *p >= '0' && *p <= '9') ++p;
+        valid = p > exponent;
+    }
+    if (!valid || p != end) {
+        *error = __kriol_format("invalid number '%s'", text);
+        return 0;
+    }
+
+    double value = strtod(begin, NULL);
+    if (value == HUGE_VAL || value == -HUGE_VAL) {
+        *error = __kriol_format("number '%s' is out of range", text);
+        return 0;
+    }
+    *out = value;
+    return 1;
+}
+
+int __kriol_convert_bool(const char* text, int32_t* out, const char** error) {
+    const char* begin;
+    const char* end;
+    __kriol_trim(text, &begin, &end);
+    size_t length = (size_t)(end - begin);
+
+    if (length == 3 && strncmp(begin, "sin", 3) == 0) {
+        *out = 1;
+        return 1;
+    }
+    if (length == 3 && strncmp(begin, "nau", 3) == 0) {
+        *out = 0;
+        return 1;
+    }
+    *error = __kriol_format("invalid boolean '%s' (expected sin or nau)", text);
+    return 0;
 }
 
 void __kriol_assert_message(int cond, int line, const char* message) {

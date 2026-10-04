@@ -128,6 +128,10 @@ namespace ast {
         // error message if the call failed, and leaves the plain value.
         void emitUnhandledFailureCheck(ast::FunCallExpr& node);
 
+        // 'T::konverti(text)': calls the runtime and wraps the outcome in the
+        // failable result of the call.
+        void emitConversionCall(ast::FunCallExpr& node);
+
         // 'tenta call' and 'call sinon fallback'.
         void emitTenta(ast::UnaryExpr& node);
         void emitSinon(ast::BinExpr& node);

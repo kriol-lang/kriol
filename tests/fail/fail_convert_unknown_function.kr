@@ -1,0 +1,3 @@
+fn inisiu() {
+    int n = int::parsa("5") sinon 0;
+}

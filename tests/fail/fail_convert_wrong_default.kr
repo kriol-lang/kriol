@@ -1,0 +1,3 @@
+fn inisiu() {
+    int n = int::konverti("5") sinon "x";
+}

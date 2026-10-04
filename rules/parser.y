@@ -273,6 +273,7 @@ postfix_expression : primary_atom { $$ = $1; }
                    ;
 
 primary_atom : record_literal { $$ = $1; }
+             | if_initializer_type_specifier COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::make_unique<ast::IdentExpr>(*$1), *$3); n->LineNum = @$.first_line; delete $1; delete $3; $$ = n; }
              | typed_array_initializer { $$ = $1; }
              | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
              | constant { $$ = $1; }
@@ -362,11 +363,12 @@ compound_statement : LCURLY statements RCURLY { $$ = $2; $$->UseBrackets(); }
 
 selection_statement : SI if_initializer expression compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = @$.first_line; $$ = n; }
                     | SI if_initializer expression compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; }
+                    | SI expression compound_statement { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), nullptr); n->LineNum = @$.first_line; $$ = n; }
+                    | SI expression compound_statement SINON else_then { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
 if_initializer : if_initializer_type_specifier declarator ASSIGN initializer SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
                | if_initializer_type_specifier array_declarator ASSIGN initializer SEMIC { $2->SetType(Type::FixedArray(Type::FromName(*$1), $2->ArraySize)); $2->Value = std::unique_ptr<ast::Expr>($4); $2->LineNum = @$.first_line; $$ = $2; delete $1; }
-               | %empty { $$ = nullptr; }
                ;
 
 if_initializer_type_specifier : TYPE_NUM { $$ = $1; }

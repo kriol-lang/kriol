@@ -1,0 +1,37 @@
+fn valor(textu t) int : Erru {
+    divolvi tenta int::konverti(t);
+}
+
+fn inisiu() : Erru {
+    // Integers: sign, surrounding white space, exact range of each width.
+    konfirma((int::konverti("42") sinon -1) == 42);
+    konfirma((int::konverti("  -17 ") sinon 0) == -17);
+    konfirma((int::konverti("+5") sinon 0) == 5);
+    konfirma((int::konverti("9223372036854775807") sinon 0) == 9223372036854775807);
+    konfirma((u8::konverti("255") sinon 0) == 255);
+    konfirma((i8::konverti("-128") sinon 0) == -128);
+    konfirma((u64::konverti("18446744073709551615") sinon 0) == (u64) -1);
+
+    // Invalid or out-of-range text takes the fallback.
+    konfirma((int::konverti("abc") sinon -1) == -1);
+    konfirma((int::konverti("") sinon -1) == -1);
+    konfirma((int::konverti("12x") sinon -1) == -1);
+    konfirma((int::konverti("9223372036854775808") sinon -1) == -1);
+    konfirma((u8::konverti("256") sinon 7) == 7);
+    konfirma((u8::konverti("-1") sinon 7) == 7);
+    konfirma((i8::konverti("128") sinon 7) == 7);
+
+    // Reals and booleans.
+    konfirma((num::konverti("3.25") sinon -1.0) == 3.25);
+    konfirma((num::konverti(" -2e3 ") sinon 0.0) == -2000.0);
+    konfirma((num::konverti("1.") sinon -1.0) == -1.0);
+    konfirma((num::konverti("nan") sinon -1.0) == -1.0);
+    konfirma((f32::konverti("0.5") sinon -1.0) == 0.5);
+    konfirma(bool::konverti("sin") sinon nau);
+    konfirma(!(bool::konverti("nau") sinon sin));
+    konfirma(bool::konverti("true") sinon sin);
+
+    // tenta propagates the error of an invalid conversion.
+    konfirma((valor("12") sinon 0) == 12);
+    konfirma((valor("doze") sinon 0) == 0);
+}

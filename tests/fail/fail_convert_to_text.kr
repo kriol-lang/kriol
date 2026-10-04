@@ -1,0 +1,3 @@
+fn inisiu() {
+    textu t = textu::konverti("x") sinon "";
+}
