@@ -95,7 +95,7 @@ namespace ast {
                                                llvm::Type* ty);
         llvm::AllocaInst*    lookupVar(const std::string& name);
         llvm::GlobalVariable* lookupGlobal(const std::string& name);
-        llvm::Value*         getArrayStorage(const std::string& name);
+        llvm::Value*         getVariableStorage(const std::string& name);
         llvm::Value*         createArrayElementPtr(llvm::Value* storage,
                                llvm::Type* arrayTy,
                                llvm::Value* index);
@@ -130,15 +130,19 @@ namespace ast {
         llvm::StructType* failableResultType(const Type& valueType);
         llvm::Type* functionReturnType(const ast::FuncDeclSttmt& node);
 
-        // Arrays travel by address: an expression of array type evaluates to a
-        // pointer to its storage, an array parameter is a pointer the callee
-        // copies, and a function returning an array writes it into a buffer the
-        // caller passes as a hidden first argument. Large arrays as LLVM values
-        // make the backend crawl.
+        // Aggregates (arrays and molda) travel by address: an expression of
+        // aggregate type evaluates to a pointer to its storage, an aggregate
+        // parameter is a pointer the callee copies, and a function returning an
+        // aggregate writes it into a buffer the caller passes as a hidden first
+        // argument. Large aggregates as LLVM values make the backend crawl.
+        static bool isAggregate(const Type& type) { return type.isArray() || type.isNamed(); }
         llvm::Type* abiType(const Type& type);
-        // The address of an array value, materializing an initializer in a temporary.
-        llvm::Value* emitArrayAddress(ast::Expr* expr, const Type& arrayType);
-        void emitArrayCopy(llvm::Value* dest, llvm::Value* src, const Type& arrayType);
+        // The address of an aggregate value, materializing a literal in a temporary.
+        llvm::Value* emitAggregateAddress(ast::Expr* expr, const Type& type);
+        // Stores the aggregate value of `expr` into `dest`, building literals in place.
+        void emitAggregateStore(llvm::Value* dest, const Type& type, ast::Expr* expr);
+        void emitAggregateCopy(llvm::Value* dest, llvm::Value* src, const Type& type);
+        void emitRecordLiteral(llvm::Value* dest, ast::RecordLiteralExpr& node);
 
         // The failable result of a built-in call: `message` is the runtime's
         // error text, read only when `failed` is true.

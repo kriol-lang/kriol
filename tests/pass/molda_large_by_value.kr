@@ -1,0 +1,17 @@
+// A large molda passed and returned by value compiles quickly, because
+// aggregates travel by address instead of as LLVM values.
+molda Grandi {
+    int[100000] v;
+}
+
+fn mexe(Grandi g) Grandi {
+    g.v[5] = 42;
+    divolvi g;
+}
+
+Grandi global = Grandi::{v: [0; 100000]};
+
+fn inisiu() {
+    Grandi g = mexe(global);
+    konfirma(g.v[5] == 42 && global.v[5] == 0);
+}

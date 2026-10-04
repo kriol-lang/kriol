@@ -881,8 +881,8 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     llvm::AllocaInst* alloca = createEntryAlloca(CurrentFunction, node.Name, ty);
     declareVar(node.Name, alloca);
 
-    if (node.IsArray) {
-        emitArrayInitializer(alloca, node.Type, node.Value.get());
+    if (isAggregate(node.Type)) {
+        emitAggregateStore(alloca, node.Type, node.Value.get());
     } else {
         node.Value->accept(*this);
         if (LastValue) {
@@ -925,24 +925,24 @@ void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
     const Type& elemType = arrayType.elementType();
 
     if (!dynamic_cast<ArrayLiteralExpr*>(init) && !dynamic_cast<ArrayRepeatExpr*>(init)) {
-        emitArrayCopy(storage, emitArrayAddress(init, arrayType), arrayType);
+        emitAggregateCopy(storage, emitAggregateAddress(init, arrayType), arrayType);
         LastValue = nullptr;
         return;
     }
 
     auto* i64Ty = llvm::Type::getInt64Ty(Context);
-    if (elemType.isArray()) {
+    if (isAggregate(elemType)) {
         if (auto* initLit = dynamic_cast<ArrayLiteralExpr*>(init)) {
             for (size_t i = 0; i < initLit->Elements.size(); ++i)
-                emitArrayInitializer(createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, i)),
-                                     elemType, initLit->Elements[i].get());
+                emitAggregateStore(createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, i)),
+                                   elemType, initLit->Elements[i].get());
         } else {
-            // Build the first row, then copy it into the others.
+            // Build the first element, then copy it into the others.
             auto* initRep = static_cast<ArrayRepeatExpr*>(init);
             llvm::Value* first = createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, 0));
-            emitArrayInitializer(first, elemType, initRep->Fill.get());
+            emitAggregateStore(first, elemType, initRep->Fill.get());
             for (uint64_t i = 1; i < arrayTy->getNumElements(); ++i)
-                emitArrayCopy(createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, i)),
+                emitAggregateCopy(createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, i)),
                               first, elemType);
         }
         LastValue = nullptr;
@@ -1037,7 +1037,7 @@ void CodeGenVisitor::emitDivGuard(llvm::Value* lhs, llvm::Value* rhs,
     });
 }
 
-llvm::Value* CodeGenVisitor::getArrayStorage(const std::string& name) {
+llvm::Value* CodeGenVisitor::getVariableStorage(const std::string& name) {
     if (auto* alloca = lookupVar(name)) return alloca;
     if (auto* gv = lookupGlobal(name)) return gv;
     return nullptr;
@@ -1111,8 +1111,8 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr, bool allow
     if (!allowTemporary) return {};
     expr->accept(*this);
     if (!LastValue) return {};
-    // An array value already evaluates to an address.
-    if (expr->ResolvedType.isArray())
+    // An aggregate value already evaluates to an address.
+    if (isAggregate(expr->ResolvedType))
         return {LastValue, mapType(expr->ResolvedType)};
     auto* temporary = createEntryAlloca(CurrentFunction, "tmp", LastValue->getType());
     Builder->CreateStore(LastValue, temporary);
@@ -1122,48 +1122,16 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr, bool allow
 void CodeGenVisitor::visit(ArrayAccessExpr& node) {
     LValue elem = resolveLValue(&node, true);
     if (!elem.Ptr || !elem.Type) { LastValue = nullptr; return; }
-    // A row of a multi-dimensional array stays an address.
-    LastValue = node.ResolvedType.isArray() ? elem.Ptr : Builder->CreateLoad(elem.Type, elem.Ptr, "array.elem");
+    // An aggregate element, such as a row, stays an address.
+    LastValue = isAggregate(node.ResolvedType) ? elem.Ptr : Builder->CreateLoad(elem.Type, elem.Ptr, "array.elem");
 }
 
 void CodeGenVisitor::visit(MemberAccessExpr& node) {
-    if (!node.Base || !node.Base->ResolvedType.isNamed()) {
-        LastValue = nullptr;
-        return;
-    }
-
-    auto recordIt = Records.find(node.Base->ResolvedType.name());
-    if (recordIt == Records.end()) {
-        LastValue = nullptr;
-        return;
-    }
-
-    auto fieldIt = recordIt->second.fieldIndex.find(node.Member);
-    if (fieldIt == recordIt->second.fieldIndex.end()) {
-        LastValue = nullptr;
-        return;
-    }
-
-    std::size_t fieldIndex = fieldIt->second;
-
-    if (node.ResolvedType.isArray()) {
-        LastValue = resolveLValue(&node, true).Ptr;
-        return;
-    }
-
-    LValue field = resolveLValue(&node);
-    if (field.Ptr && field.Type) {
-        LastValue = Builder->CreateLoad(field.Type, field.Ptr, "field." + node.Member);
-        return;
-    }
-
-    node.Base->accept(*this);
-    if (!LastValue) return;
-    LastValue = Builder->CreateExtractValue(
-        LastValue,
-        {static_cast<unsigned>(fieldIndex)},
-        "field." + node.Member
-    );
+    LValue field = resolveLValue(&node, true);
+    if (!field.Ptr || !field.Type) { LastValue = nullptr; return; }
+    LastValue = isAggregate(node.ResolvedType)
+        ? field.Ptr
+        : Builder->CreateLoad(field.Type, field.Ptr, "field." + node.Member);
 }
 
 void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
@@ -1171,64 +1139,48 @@ void CodeGenVisitor::visit(QualifiedAccessExpr& node) {
 }
 
 void CodeGenVisitor::visit(ArrayLiteralExpr& node) {
-    LastValue = node.ResolvedType.isArray() ? emitArrayAddress(&node, node.ResolvedType) : nullptr;
+    LastValue = node.ResolvedType.isArray() ? emitAggregateAddress(&node, node.ResolvedType) : nullptr;
 }
 
 void CodeGenVisitor::visit(ArrayRepeatExpr& node) {
-    LastValue = node.ResolvedType.isArray() ? emitArrayAddress(&node, node.ResolvedType) : nullptr;
+    LastValue = node.ResolvedType.isArray() ? emitAggregateAddress(&node, node.ResolvedType) : nullptr;
 }
 
 void CodeGenVisitor::visit(RecordLiteralExpr& node) {
+    LastValue = Records.count(node.TypeName) ? emitAggregateAddress(&node, Type::Named(node.TypeName)) : nullptr;
+}
+
+void CodeGenVisitor::emitRecordLiteral(llvm::Value* dest, RecordLiteralExpr& node) {
     auto recordIt = Records.find(node.TypeName);
-    if (recordIt == Records.end()) {
-        LastValue = nullptr;
-        return;
-    }
+    if (recordIt == Records.end()) return;
 
     llvm::StructType* structTy = getOrCreateRecordType(node.TypeName);
-    llvm::Value* record = llvm::UndefValue::get(structTy);
     std::vector<bool> initialized(recordIt->second.fields.size(), false);
 
     for (auto& field : node.Fields) {
         auto fieldIt = recordIt->second.fieldIndex.find(field.Name);
-        if (fieldIt == recordIt->second.fieldIndex.end()) continue;
+        if (fieldIt == recordIt->second.fieldIndex.end() || !field.Value) continue;
 
-        std::size_t index = fieldIt->second;
-        llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(index));
+        const unsigned index = static_cast<unsigned>(fieldIt->second);
+        llvm::Value* fieldPtr = Builder->CreateStructGEP(structTy, dest, index, "field.ptr");
         const Type& fieldType = recordIt->second.fields[index]->Type;
-        if (fieldType.isArray() && field.Value) {
-            llvm::Value* address = emitArrayAddress(field.Value.get(), fieldType);
-            record = Builder->CreateInsertValue(record, Builder->CreateLoad(fieldTy, address),
-                                                {static_cast<unsigned>(index)}, "record.field");
-            initialized[index] = true;
+        initialized[index] = true;
+        if (isAggregate(fieldType)) {
+            emitAggregateStore(fieldPtr, fieldType, field.Value.get());
             continue;
         }
-        if (field.Value) field.Value->accept(*this);
-        llvm::Value* value = LastValue;
-        if (!value) value = llvm::Constant::getNullValue(fieldTy);
-        if (value->getType() != fieldTy)
-            value = coerceToType(value, field.Value->ResolvedType, recordIt->second.fields[index]->Type);
-        record = Builder->CreateInsertValue(
-            record,
-            value,
-            {static_cast<unsigned>(index)},
-            "record.field"
-        );
-        initialized[index] = true;
+        field.Value->accept(*this);
+        if (!LastValue) continue;
+        Builder->CreateStore(coerceToType(LastValue, field.Value->ResolvedType, fieldType), fieldPtr);
     }
 
     for (std::size_t i = 0; i < initialized.size(); ++i) {
         if (initialized[i]) continue;
         llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(i));
-        record = Builder->CreateInsertValue(
-            record,
-            llvm::Constant::getNullValue(fieldTy),
-            {static_cast<unsigned>(i)},
-            "record.field.default"
-        );
+        Builder->CreateStore(llvm::Constant::getNullValue(fieldTy),
+                             Builder->CreateStructGEP(structTy, dest, static_cast<unsigned>(i), "field.ptr"));
     }
-
-    LastValue = record;
+    LastValue = nullptr;
 }
 
 void CodeGenVisitor::registerRecord(ast::MoldaDeclSttmt& node) {
@@ -1259,26 +1211,40 @@ llvm::Type* CodeGenVisitor::functionReturnType(const ast::FuncDeclSttmt& node) {
 }
 
 llvm::Type* CodeGenVisitor::abiType(const Type& type) {
-    return type.isArray() ? llvm::PointerType::getUnqual(Context) : mapType(type);
+    return isAggregate(type) ? llvm::PointerType::getUnqual(Context) : mapType(type);
 }
 
-llvm::Value* CodeGenVisitor::emitArrayAddress(ast::Expr* expr, const Type& arrayType) {
-    if (dynamic_cast<ArrayLiteralExpr*>(expr) || dynamic_cast<ArrayRepeatExpr*>(expr)) {
-        auto* temporary = createEntryAlloca(CurrentFunction, "array.tmp", mapType(arrayType));
-        emitArrayInitializer(temporary, arrayType, expr);
+static bool isAggregateLiteral(Expr* expr) {
+    return dynamic_cast<ArrayLiteralExpr*>(expr) || dynamic_cast<ArrayRepeatExpr*>(expr)
+        || dynamic_cast<RecordLiteralExpr*>(expr);
+}
+
+llvm::Value* CodeGenVisitor::emitAggregateAddress(ast::Expr* expr, const Type& type) {
+    if (isAggregateLiteral(expr)) {
+        auto* temporary = createEntryAlloca(CurrentFunction, "aggregate.tmp", mapType(type));
+        emitAggregateStore(temporary, type, expr);
         return temporary;
     }
     expr->accept(*this);
     if (!LastValue)
-        throw std::runtime_error("internal error: failed to generate an array value");
+        throw std::runtime_error("internal error: failed to generate an aggregate value");
     return LastValue;
 }
 
-void CodeGenVisitor::emitArrayCopy(llvm::Value* dest, llvm::Value* src, const Type& arrayType) {
+void CodeGenVisitor::emitAggregateStore(llvm::Value* dest, const Type& type, ast::Expr* expr) {
+    if (auto* record = dynamic_cast<RecordLiteralExpr*>(expr))
+        emitRecordLiteral(dest, *record);
+    else if (type.isArray())
+        emitArrayInitializer(dest, type, expr);
+    else
+        emitAggregateCopy(dest, emitAggregateAddress(expr, type), type);
+    LastValue = nullptr;
+}
+
+void CodeGenVisitor::emitAggregateCopy(llvm::Value* dest, llvm::Value* src, const Type& type) {
     // memmove, because `a = a` or `m[0] = m[0]` may name the same storage.
-    llvm::Type* arrayTy = mapType(arrayType);
     Builder->CreateMemMove(dest, llvm::MaybeAlign(), src, llvm::MaybeAlign(),
-                           llvm::ConstantExpr::getSizeOf(arrayTy));
+                           llvm::ConstantExpr::getSizeOf(mapType(type)));
 }
 
 llvm::Value* CodeGenVisitor::erruMessage(llvm::Value* erru) {
@@ -1445,7 +1411,7 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     node.RHS->accept(*this);
     if (!LastValue)
         throw std::runtime_error("internal error: failed to generate the value after 'sinon'");
-    llvm::Value* fallback = node.ResolvedType.isArray()
+    llvm::Value* fallback = isAggregate(node.ResolvedType)
         ? LastValue
         : coerceToType(LastValue, node.RHS->ResolvedType, node.ResolvedType);
     llvm::BasicBlock* fallbackEndBB = Builder->GetInsertBlock();
@@ -1472,7 +1438,7 @@ llvm::Function* CodeGenVisitor::declareFunction(const ast::FuncDeclSttmt& node) 
     if (auto* fn = Mod->getFunction(name)) return fn;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Type.isArray())
+    if (isAggregate(node.Type))
         paramTypes.push_back(llvm::PointerType::getUnqual(Context));
     if (node.Args)
         for (auto& arg : node.Args->Args)
@@ -1569,7 +1535,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     auto* fn = declareFunction(node);
     llvm::Type* retTy = fn->getReturnType();
 
-    const unsigned firstParam = node.Type.isArray() ? 1 : 0;
+    const unsigned firstParam = isAggregate(node.Type) ? 1 : 0;
     if (firstParam) fn->getArg(0)->setName("return.slot");
     if (node.Args)
         for (size_t i = 0; i < node.Args->Args.size(); ++i)
@@ -1589,9 +1555,9 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             auto& p = node.Args->Args[i];
             llvm::Argument* llvmArg = fn->getArg(firstParam + i);
             auto* a = createEntryAlloca(fn, p->Name, mapType(p->Type));
-            // An array argument is the caller's address; the parameter is a copy.
-            if (p->Type.isArray())
-                emitArrayCopy(a, llvmArg, p->Type);
+            // An aggregate argument is the caller's address; the parameter is a copy.
+            if (isAggregate(p->Type))
+                emitAggregateCopy(a, llvmArg, p->Type);
             else
                 Builder->CreateStore(llvmArg, a);
             declareVar(p->Name, a);
@@ -1606,8 +1572,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     // Emit deferred global initializers at the top of inisiu (main)
     if (isMain && !DeferredGlobalInits.empty()) {
         for (auto& di : DeferredGlobalInits) {
-            if (di.TargetType.isArray()) {
-                emitArrayInitializer(di.Var, di.TargetType, di.InitExpr);
+            if (isAggregate(di.TargetType)) {
+                emitAggregateStore(di.Var, di.TargetType, di.InitExpr);
                 continue;
             }
             di.InitExpr->accept(*this);
@@ -1737,12 +1703,10 @@ void CodeGenVisitor::visit(JumpSttmt& node) {
 void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.Throws) {
-        node.ReturnValue->accept(*this);
-        if (!LastValue)
-            throw std::runtime_error("internal error: failed to generate the error of 'lansa'");
-        emitFailure(LastValue);
-    } else if (CurrentReturnType.isArray()) {
-        emitArrayInitializer(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
+        llvm::Value* erru = emitAggregateAddress(node.ReturnValue.get(), node.ReturnValue->ResolvedType);
+        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"));
+    } else if (isAggregate(CurrentReturnType)) {
+        emitAggregateStore(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
         if (CurrentCanFail) {
             auto* resultTy = llvm::cast<llvm::StructType>(retTy);
             Builder->CreateRet(Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(resultTy),
@@ -1796,16 +1760,16 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
     auto sigIt = FunctionSigs.find(name);
 
     std::vector<llvm::Value*> callArgs;
-    if (node.ResolvedType.isArray())
+    if (isAggregate(node.ResolvedType))
         callArgs.push_back(createEntryAlloca(CurrentFunction, "call.result", mapType(node.ResolvedType)));
     const size_t firstParam = callArgs.size();
     if (node.Args) {
         size_t i = 0;
         for (auto& arg : node.Args->Args) {
             const bool arrayParam = sigIt != FunctionSigs.end() && i < sigIt->second.paramTypes.size()
-                && sigIt->second.paramTypes[i].isArray();
+                && isAggregate(sigIt->second.paramTypes[i]);
             if (arrayParam) {
-                callArgs.push_back(emitArrayAddress(arg.get(), sigIt->second.paramTypes[i]));
+                callArgs.push_back(emitAggregateAddress(arg.get(), sigIt->second.paramTypes[i]));
                 ++i;
                 continue;
             }
@@ -1946,8 +1910,8 @@ void CodeGenVisitor::visit(ExprSttmt& node) {
 }
 
 void CodeGenVisitor::visit(IdentExpr& node) {
-    if (node.ResolvedType.isArray()) {
-        LastValue = getArrayStorage(node.Name);
+    if (isAggregate(node.ResolvedType)) {
+        LastValue = getVariableStorage(node.Name);
         return;
     }
     auto* alloca = lookupVar(node.Name);
@@ -1969,12 +1933,12 @@ void CodeGenVisitor::visit(ParExpr& node) {
 
 void CodeGenVisitor::visit(AssignExpr& node) {
     const Type& assigneeType = node.Assignee->ResolvedType;
-    if (assigneeType.isArray()) {
+    if (isAggregate(assigneeType)) {
         // The value is built first, so `a = [a[1], a[0]]` reads the old elements.
-        llvm::Value* src = emitArrayAddress(node.Assigned.get(), assigneeType);
+        llvm::Value* src = emitAggregateAddress(node.Assigned.get(), assigneeType);
         LValue dest = resolveLValue(node.Assignee.get());
         if (!dest.Ptr) { LastValue = nullptr; return; }
-        emitArrayCopy(dest.Ptr, src, assigneeType);
+        emitAggregateCopy(dest.Ptr, src, assigneeType);
         LastValue = dest.Ptr;
         return;
     }

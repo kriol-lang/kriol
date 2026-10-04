@@ -287,7 +287,7 @@ void CodeGenVisitor::emitPrintBuiltin(ast::FuncCallArgs* argsNode, bool addNewli
         auto& arg = args[i];
 
         if (arg->ResolvedType.isArray()) {
-            llvm::Value* text = emitArrayToText(emitArrayAddress(arg.get(), arg->ResolvedType), arg->ResolvedType);
+            llvm::Value* text = emitArrayToText(emitAggregateAddress(arg.get(), arg->ResolvedType), arg->ResolvedType);
             Builder->CreateCall(getOrDeclareRuntimePrint(*Mod, Context, "string", ptrTy, addNlHere), {text});
             continue;
         }
@@ -314,7 +314,7 @@ void CodeGenVisitor::visit(FStringExpr& node) {
         } else {
             if (seg.expr->ResolvedType.isArray()) {
                 fmtStr += "%s";
-                callArgs.push_back(emitArrayToText(emitArrayAddress(seg.expr.get(), seg.expr->ResolvedType),
+                callArgs.push_back(emitArrayToText(emitAggregateAddress(seg.expr.get(), seg.expr->ResolvedType),
                                                    seg.expr->ResolvedType));
                 continue;
             }

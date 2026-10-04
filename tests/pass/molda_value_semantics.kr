@@ -1,0 +1,64 @@
+// molda values are copied on assignment, when passed and when returned.
+molda Pontu {
+    int x;
+    int y;
+}
+
+molda Linha {
+    Pontu a;
+    Pontu b;
+}
+
+fn move(Pontu p, int dx) Pontu {
+    p.x += dx;
+    divolvi p;
+}
+
+fn kria(int x) Pontu : Erru {
+    si x < 0 {
+        lansa Erru::{mensage: "negativu"};
+    }
+    divolvi Pontu::{x: x, y: x * 2};
+}
+
+fn kaminhu(int x) int : Erru {
+    Pontu p = tenta kria(x);
+    divolvi p.y;
+}
+
+fn falha() : Erru {
+    Erru e = Erru::{mensage: "guardadu"};
+    lansa e;
+}
+
+Pontu origin = Pontu::{x: 0, y: 0};
+Pontu longi = move(origin, 100);
+
+fn inisiu() {
+    Pontu a = Pontu::{x: 1, y: 2};
+    Pontu b = a;
+    b.x = 9;
+    konfirma(a.x == 1 && b.x == 9);
+
+    Pontu c = move(a, 5);
+    konfirma(a.x == 1 && c.x == 6 && move(c, 1).x == 7);
+
+    // The new value is built before it is stored.
+    a = Pontu::{x: a.y, y: a.x};
+    konfirma(a.x == 2 && a.y == 1);
+
+    Linha l = Linha::{a: a, b: move(a, 10)};
+    l.b.y = 77;
+    konfirma(l.a.x == 2 && l.b.x == 12 && l.b.y == 77);
+
+    Pontu[2] ps = [a, Pontu::{x: 3, y: 4}];
+    ps[0] = ps[1];
+    ps[1].x = 30;
+    konfirma(ps[0].x == 3 && ps[1].x == 30);
+
+    konfirma((kria(-1) sinon Pontu::{x: -1, y: -1}).x == -1);
+    konfirma((kaminhu(4) sinon 0) == 8 && (kaminhu(-4) sinon 0) == 0);
+    konfirma(longi.x == 100 && origin.x == 0);
+
+
+}
