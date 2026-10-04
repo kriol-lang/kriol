@@ -1,0 +1,5 @@
+fn inisiu() {
+    int x = 5;
+    konfirma(x > 0, "x must be positive");
+    konfirma(x == 5, f"x was {x}");
+}

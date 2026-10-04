@@ -327,10 +327,23 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
 }
 
 
+// A statement that is a call to paniku() or sai() never completes normally.
+static bool isDivergingCallStatement(const Sttmt* stmt) {
+    auto* exprStmt = dynamic_cast<const ExprSttmt*>(stmt);
+    auto* call = exprStmt ? dynamic_cast<const FunCallExpr*>(exprStmt->Expression.get()) : nullptr;
+    auto* callee = call ? dynamic_cast<const IdentExpr*>(call->Callee.get()) : nullptr;
+    if (!callee) return false;
+    const auto builtin = prelude::lookupBuiltin(callee->Name);
+    return builtin == prelude::Builtin::Paniku || builtin == prelude::Builtin::Sai;
+}
+
 bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
     if (!block) return false;
     for (auto& stmt : block->SttmtList) {
         if (!stmt) continue;
+
+        if (isDivergingCallStatement(stmt.get()))
+            return true;
 
         // Direct return
         if (dynamic_cast<ReturnSttmt*>(stmt.get()))
@@ -618,16 +631,36 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             if (node.Args)
                 for (auto& arg : node.Args->Args)
                     if (arg) arg->accept(*this);
-            if (got > 1) {
-                addError(loc + "prelude function 'konfirma' expects 0 or 1 argument(s), got "
+            if (got < 1 || got > 2) {
+                addError(loc + "prelude function 'konfirma' expects 1 or 2 argument(s), got "
                          + std::to_string(got));
                 node.ResolvedType = Type::Void();
                 return;
             }
-            if (got == 1) {
+            {
                 const Type& t = node.Args->Args[0]->ResolvedType;
                 if (t.valid() && t != Type::Bool() && !t.isInteger() && !t.isFloat())
                     addError(loc + "konfirma() expects a boolean condition, got value of type '" + t.str() + "'");
+            }
+            if (got == 2) {
+                const Type& t = node.Args->Args[1]->ResolvedType;
+                if (t.valid() && t != Type::Text())
+                    addError(loc + "argument 2 of 'konfirma': expected 'textu', got '" + t.str() + "'");
+            }
+            node.ResolvedType = Type::Void();
+            return;
+
+        case prelude::Builtin::Paniku:
+            if (node.Args)
+                for (auto& arg : node.Args->Args)
+                    if (arg) arg->accept(*this);
+            if (got != 1) {
+                addError(loc + "prelude function 'paniku' expects 1 argument(s), got "
+                         + std::to_string(got));
+            } else {
+                const Type& t = node.Args->Args[0]->ResolvedType;
+                if (t.valid() && t != Type::Text())
+                    addError(loc + "argument 1 of 'paniku': expected 'textu', got '" + t.str() + "'");
             }
             node.ResolvedType = Type::Void();
             return;

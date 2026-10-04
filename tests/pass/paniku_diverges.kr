@@ -1,0 +1,19 @@
+// paniku() never returns, so no 'divolvi' is needed after it.
+fn positivu(int n) int {
+    si n > 0 {
+        divolvi n;
+    } sinon {
+        paniku("n must be positive");
+    }
+}
+
+fn nunka_chega() int {
+    sai(0);
+}
+
+fn inisiu() {
+    konfirma(positivu(3) == 3);
+    si nau {
+        paniku(f"unreachable {positivu(1)}");
+    }
+}

@@ -60,6 +60,28 @@ static llvm::Function* getOrDeclareRuntimeAssert(llvm::Module& Mod, llvm::LLVMCo
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_assert", Mod);
 }
 
+static llvm::Function* getOrDeclareRuntimeAssertMessage(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_assert_message")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {i32Ty, i32Ty, ptrTy}, false);
+    return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_assert_message", Mod);
+}
+
+static llvm::Function* getOrDeclareRuntimePanicAt(llvm::Module& Mod, llvm::LLVMContext& Context)
+{
+    if (auto* fn = Mod.getFunction("__kriol_panic_at")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {ptrTy, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
+
 static llvm::Function* getOrDeclareRuntimeBoolToString(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_bool_to_string")) return fn;
@@ -170,7 +192,30 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
                 }
             }
             llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
+            if (node.Args && node.Args->Args.size() > 1 && node.Args->Args[1]) {
+                node.Args->Args[1]->accept(*this);
+                if (LastValue) {
+                    Builder->CreateCall(getOrDeclareRuntimeAssertMessage(*Mod, Context), {cond, line, LastValue});
+                    LastValue = nullptr;
+                    return true;
+                }
+            }
             Builder->CreateCall(getOrDeclareRuntimeAssert(*Mod, Context), {cond, line});
+            LastValue = nullptr;
+            return true;
+        }
+
+        case prelude::Builtin::Paniku: {
+            auto* i32Ty = llvm::Type::getInt32Ty(Context);
+            node.Args->Args[0]->accept(*this);
+            llvm::Value* message = LastValue;
+            if (!message)
+                throw std::runtime_error("internal error: failed to generate the message of paniku");
+            llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
+            Builder->CreateCall(getOrDeclareRuntimePanicAt(*Mod, Context), {message, line});
+            Builder->CreateUnreachable();
+            // Like sai(): later statements go into a fresh dead block.
+            startDeadBlock();
             LastValue = nullptr;
             return true;
         }

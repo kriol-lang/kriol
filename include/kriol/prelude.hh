@@ -12,7 +12,8 @@ enum class Builtin {
     Mostran,
     Toma,
     Sai,
-    Konfirma
+    Konfirma,
+    Paniku
 };
 
 inline Builtin lookupBuiltin(const std::string& name) {
@@ -21,6 +22,7 @@ inline Builtin lookupBuiltin(const std::string& name) {
     if (name == "toma") return Builtin::Toma;
     if (name == "sai") return Builtin::Sai;
     if (name == "konfirma") return Builtin::Konfirma;
+    if (name == "paniku") return Builtin::Paniku;
     return Builtin::None;
 }
 
