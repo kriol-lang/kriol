@@ -1,4 +1,4 @@
-fn inisiu() {
-    textu nome = toma();
+fn inisiu() : Erru {
+    textu nome = tenta toma();
     mostran(f"Ola, {nome}");
 }

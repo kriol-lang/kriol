@@ -6,9 +6,9 @@ fn ola(textu nomi, bool naKriolu) {
   }
 }
 
-fn inisiu() {
+fn inisiu() : Erru {
   // Toma nomi atravez di entrada
-  textu nomi = toma('Nomi: ');
+  textu nomi = tenta toma('Nomi: ');
 
   // Tchoma funson ola
   ola(nomi, sin);

@@ -1,0 +1,4 @@
+fn inisiu() {
+    textu nome = toma("Nome: ");
+    mostran(nome);
+}

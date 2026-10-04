@@ -12,7 +12,7 @@ fn mostra_pessoa(Pessoa p) {
   mostran(f"{p.nomi} {p.apelidu} tem {p.idadi} anos de idade.");
 }
 
-fn inisiu() {
+fn inisiu() : Erru {
   Pessoa[3] pessoas = [
     novu_pessoa('José', 'Tavares', '60'),
     novu_pessoa('Yara', 'Coelho', '44'),
@@ -26,9 +26,9 @@ fn inisiu() {
   mostran("-----------------");
   mostran("[[ y abo go? ]]");
 
-  textu nomi = toma("-> nomi: ");
-  textu apelidu = toma("-> apelidu: ");
-  textu idadi = toma("-> idadi: ");
+  textu nomi = tenta toma("-> nomi: ");
+  textu apelidu = tenta toma("-> apelidu: ");
+  textu idadi = tenta toma("-> idadi: ");
 
   mostran("-----------------");
 

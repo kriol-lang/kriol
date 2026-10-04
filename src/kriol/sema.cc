@@ -613,6 +613,10 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             return;
 
         case prelude::Builtin::Toma:
+            node.Fallible = true;
+            if (!handled)
+                addError(loc + "call to 'toma' can fail (the input may end); handle the error with "
+                         "'tenta' or 'sinon'");
             if (node.Args)
                 for (auto& arg : node.Args->Args)
                     if (arg) arg->accept(*this);

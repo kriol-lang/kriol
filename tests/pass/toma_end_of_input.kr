@@ -1,0 +1,12 @@
+// The input has a single line, so the second read reaches the end of input.
+fn le_duas() : Erru {
+    textu a = tenta toma();
+    textu b = tenta toma();
+    mostran(f"{a} {b}");
+}
+
+fn inisiu() {
+    textu primeira = toma() sinon "vaziu";
+    textu segunda = toma() sinon "fim";
+    mostran(f"{primeira}/{segunda}");
+}

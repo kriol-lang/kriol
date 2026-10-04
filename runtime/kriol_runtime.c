@@ -257,7 +257,7 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
 
 #ifdef _WIN32
 /* The C runtime would return console input in the legacy code page. */
-static char* __kriol_read_console_line(HANDLE console) {
+static char* __kriol_read_console_line(HANDLE console, const char** error) {
     size_t cap = 128;
     size_t len = 0;
     WCHAR* wide = (WCHAR*)malloc(cap * sizeof(WCHAR));
@@ -272,13 +272,22 @@ static char* __kriol_read_console_line(HANDLE console) {
         }
 
         DWORD read = 0;
-        if (!ReadConsoleW(console, wide + len, (DWORD)(cap - len), &read, NULL))
-            __kriol_panic("failed to read from stdin");
+        if (!ReadConsoleW(console, wide + len, (DWORD)(cap - len), &read, NULL)) {
+            free(wide);
+            *error = "failed to read from stdin";
+            return NULL;
+        }
         if (read == 0)
             break;
         len += read;
         if (wide[len - 1] == L'\n')
             break;
+    }
+
+    if (len == 0) {
+        free(wide);
+        *error = "end of input";
+        return NULL;
     }
 
     for (size_t i = 0; i < len; ++i) {
@@ -300,7 +309,9 @@ static char* __kriol_read_console_line(HANDLE console) {
 }
 #endif
 
-char* __kriol_read_line(const char* prompt) {
+/* Reads one line. On end of input without data, or on a read failure, returns
+ * NULL and stores a message in *error. */
+char* __kriol_read_line(const char* prompt, const char** error) {
     if (prompt && prompt[0] != '\0')
         __kriol_write_text(stdout, prompt);
     __kriol_flush(stdout);
@@ -308,7 +319,7 @@ char* __kriol_read_line(const char* prompt) {
 #ifdef _WIN32
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     if (__kriol_is_console(input))
-        return __kriol_read_console_line(input);
+        return __kriol_read_console_line(input, error);
 #endif
 
     size_t cap = 128;
@@ -316,7 +327,9 @@ char* __kriol_read_line(const char* prompt) {
     char* buf = __kriol_alloc_text(cap);
 
     int ch;
+    int read_any = 0;
     while ((ch = fgetc(stdin)) != EOF) {
+        read_any = 1;
         if (ch == '\n') break;
         if (len + 1 >= cap) {
             if (cap > ((size_t)-1) / 2)
@@ -327,8 +340,14 @@ char* __kriol_read_line(const char* prompt) {
         buf[len++] = (char)ch;
     }
 
-    if (ferror(stdin))
-        __kriol_panic("failed to read from stdin");
+    if (ferror(stdin)) {
+        *error = "failed to read from stdin";
+        return NULL;
+    }
+    if (!read_any) {
+        *error = "end of input";
+        return NULL;
+    }
 
     if (len > 0 && buf[len - 1] == '\r')
         --len;

@@ -36,7 +36,7 @@ static llvm::Function* getOrDeclareRuntimeReadLine(llvm::Module& Mod, llvm::LLVM
 {
     if (auto* fn = Mod.getFunction("__kriol_read_line")) return fn;
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* ftype = llvm::FunctionType::get(ptrTy, {ptrTy}, false);
+    auto* ftype = llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy}, false);
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_read_line", Mod);
 }
 
@@ -160,7 +160,26 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
                 node.Args->Args[0]->accept(*this);
                 prompt = LastValue ? LastValue : prompt;
             }
-            LastValue = Builder->CreateCall(getOrDeclareRuntimeReadLine(*Mod, Context), {prompt}, "toma");
+
+            // The runtime returns null and sets the message when the input ends
+            // or cannot be read; wrap that in the failable result of the call.
+            auto* errorSlot = createEntryAlloca(CurrentFunction, "toma.error", ptrTy);
+            Builder->CreateStore(llvm::ConstantPointerNull::get(ptrTy), errorSlot);
+            llvm::Value* line = Builder->CreateCall(getOrDeclareRuntimeReadLine(*Mod, Context),
+                                                    {prompt, errorSlot}, "toma");
+            llvm::Value* failed = Builder->CreateIsNull(line, "toma.failed");
+
+            auto* resultTy = failableResultType(Type::Text());
+            auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(2));
+            const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
+            llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "toma.message");
+            llvm::Value* erru = Builder->CreateInsertValue(
+                llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+
+            llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
+            result = Builder->CreateInsertValue(result, failed, {0u});
+            result = Builder->CreateInsertValue(result, line, {1u});
+            LastValue = Builder->CreateInsertValue(result, erru, {2u}, "toma.result");
             return true;
         }
 
