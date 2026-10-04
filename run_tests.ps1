@@ -105,7 +105,7 @@ foreach ($level in '0', '3') {
     Write-Result "optimization level $level" ($output -eq '3')
 }
 
-$unhandled = 'fn f() int : Erru { lansa Erru::{mensage: "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+$unhandled = 'fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'
 $ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)
 Write-Result 'unhandled error compiles' $ok

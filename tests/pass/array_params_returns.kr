@@ -22,7 +22,7 @@ fn identidade() int[2][2] {
 
 fn repeti(int n) int[3] : Erru {
     si n < 0 {
-        lansa Erru::{mensage: "negativu"};
+        lansa Erru{mensage = "negativu"};
     }
     divolvi [n; 3];
 }

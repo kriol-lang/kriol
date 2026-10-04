@@ -9,7 +9,7 @@ fn mexe(Grandi g) Grandi {
     divolvi g;
 }
 
-Grandi global = Grandi::{v: [0; 100000]};
+Grandi global = Grandi{v = [0; 100000]};
 
 fn inisiu() {
     Grandi g = mexe(global);

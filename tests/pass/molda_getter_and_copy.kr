@@ -4,9 +4,9 @@ molda Pessoa {
 }
 
 fn get_pessoa(textu nomi, int idadi) Pessoa {
-    divolvi Pessoa:: {
-        nomi: nomi,
-        idadi: idadi
+    divolvi Pessoa{
+        nomi = nomi,
+        idadi = idadi
     };
 }
 

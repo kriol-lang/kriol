@@ -4,7 +4,7 @@ molda Pessoa {
 }
 
 fn novu_pessoa() Pessoa {
-    divolvi Pessoa::{nomi: "jose", idadi: 60};
+    divolvi Pessoa{nomi = "jose", idadi = 60};
 }
 
 fn identidade(Pessoa pessoa) Pessoa {

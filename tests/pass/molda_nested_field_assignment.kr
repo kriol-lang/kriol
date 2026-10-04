@@ -10,10 +10,10 @@ molda Pessoa {
 }
 
 fn inisiu() {
-    Pessoa pessoa = Pessoa:: {
-        nomi: "jose",
-        enderesu: Enderesu::{rua: "antigu", numero: 10},
-        flags: [0, 1]
+    Pessoa pessoa = Pessoa{
+        nomi = "jose",
+        enderesu = Enderesu{rua = "antigu", numero = 10},
+        flags = [0, 1]
     };
 
     pessoa.enderesu.rua = "novu";

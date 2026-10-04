@@ -32,7 +32,7 @@ fn inisiu() {
     bool[2][2] logicus = [[sin, nau], [nau, sin]];
     konfirma(logicus[1][1]);
 
-    Grelha g = Grelha::{c: [[1, 2], [3, 4]]};
+    Grelha g = Grelha{c = [[1, 2], [3, 4]]};
     konfirma(g.c[1][0] == 3);
 
     int[2][2][2] cubu = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];

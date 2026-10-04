@@ -7,7 +7,7 @@ fn fallback() int {
 
 fn pode_falhar(bool falha) int : Erru {
     si falha {
-        lansa Erru::{mensage: "falhou"};
+        lansa Erru{mensage = "falhou"};
     }
     divolvi 1;
 }

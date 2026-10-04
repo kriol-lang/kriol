@@ -436,15 +436,15 @@ jump_statement : KEBRA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum 
                | DIVOLVI SEMIC { auto n = new ast::ReturnSttmt(nullptr); n->LineNum = @$.first_line; $$ = n; }
                ;
 
-record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY { auto* n = static_cast<ast::RecordLiteralExpr*>($4); n->TypeName = *$1; n->LineNum = @$.first_line; $$ = n; delete $1; }
-               | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
+record_literal : TYPE_IDENT LCURLY record_field_initializers RCURLY { auto* n = static_cast<ast::RecordLiteralExpr*>($3); n->TypeName = *$1; n->LineNum = @$.first_line; $$ = n; delete $1; }
+               | TYPE_IDENT LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
                ;
 
 typed_array_initializer : LPAR type_specifier LBRAC RBRAC RPAR array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($6); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
                         ;
 
-record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $1; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                          | record_field_initializers COMMA IDENT COLON initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); delete $3; KRIOL_CHECK_DEPTH($1, @$.first_line); $$ = $1; }
+record_field_initializers : IDENT ASSIGN initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $1; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                          | record_field_initializers COMMA IDENT ASSIGN initializer { static_cast<ast::RecordLiteralExpr*>($1)->AddField(*$3, std::unique_ptr<ast::Expr>($5)); delete $3; KRIOL_CHECK_DEPTH($1, @$.first_line); $$ = $1; }
                           ;
 %%
 

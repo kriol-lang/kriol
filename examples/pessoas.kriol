@@ -5,7 +5,7 @@ molda Pessoa {
 }
 
 fn novu_pessoa(textu nomi, textu apelidu, int idadi) Pessoa {
-  divolvi Pessoa::{nomi: nomi, apelidu: apelidu, idadi: idadi};
+  divolvi Pessoa{nomi = nomi, apelidu = apelidu, idadi = idadi};
 }
 
 fn mostra_pessoa(Pessoa p) {

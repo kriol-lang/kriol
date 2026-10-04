@@ -159,7 +159,7 @@ namespace
             case 8:
                 return "divolvi " + expr(rng, depth) + ";";
             case 9:
-                return "lansa Erru::{mensage: " + expr(rng, depth) + "};";
+                return "lansa Erru{mensage = " + expr(rng, depth) + "};";
             case 10:
                 return "paniku(" + expr(rng, depth) + ");";
             case 11:

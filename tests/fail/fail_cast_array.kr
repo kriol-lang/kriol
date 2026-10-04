@@ -4,6 +4,6 @@ molda Par {
 }
 
 fn inisiu() {
-    Par p = Par::{v: [1, 2]};
+    Par p = Par{v = [1, 2]};
     int n = (int) p.v;
 }

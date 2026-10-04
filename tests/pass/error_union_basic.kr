@@ -1,13 +1,13 @@
 fn metadi(int a, int b) num : Erru {
     si b == 0 {
-        lansa Erru::{mensage: "divizon pa zero"};
+        lansa Erru{mensage = "divizon pa zero"};
     }
     divolvi (num) a / b;
 }
 
 fn valida(int n) : Erru {
     si n < 0 {
-        lansa Erru::{mensage: f"negativu: {n}"};
+        lansa Erru{mensage = f"negativu: {n}"};
     }
 }
 
@@ -24,7 +24,7 @@ fn inisiu() : Erru {
     konfirma((kaminhu(-5) sinon 99.5) == 99.5);
 
     // The error is an ordinary molda value.
-    Erru e = Erru::{mensage: "x"};
+    Erru e = Erru{mensage = "x"};
     mostran(e.mensage);
 
     // A fallible inisiu may finish without failing.

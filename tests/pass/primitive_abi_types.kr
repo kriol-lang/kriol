@@ -23,7 +23,7 @@ fn inisiu() {
     f64 total = ratio + 2.5;
     usize count = 3;
     u8[3] bytes = [1, 2, 3];
-    Bytes rec = Bytes::{first: byte, delta: small, ratio: ratio};
+    Bytes rec = Bytes{first = byte, delta = small, ratio = ratio};
 
     konfirma(byte == 255);
     konfirma(wide == -120);

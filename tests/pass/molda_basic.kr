@@ -8,7 +8,7 @@ fn envelhece(Pessoa pessoa) int {
 }
 
 fn inisiu() {
-    Pessoa pessoa = Pessoa::{nomi: 'jose', idadi: 60};
+    Pessoa pessoa = Pessoa{nomi = 'jose', idadi = 60};
     mostra(pessoa.nomi);
     mostra(" ");
     mostran(envelhece(pessoa));

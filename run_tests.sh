@@ -87,7 +87,7 @@ for level in 0 3; do
 done
 
 # ---- unhandled errors: warning, --strict and the runtime stop -------------------
-UNHANDLED='fn f() int : Erru { lansa Erru::{mensage: "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+UNHANDLED='fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 
 printf "  %-44s" "unhandled error warns"
 tmpbin=$(mktemp /tmp/kriol_warn_XXXX)

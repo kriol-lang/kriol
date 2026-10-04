@@ -5,6 +5,6 @@ molda Pessoa {
 }
 
 fn inisiu() {
-    Pessoa[1] pessoas = [Pessoa::{nomi: "Ana", idadi: 60}];
+    Pessoa[1] pessoas = [Pessoa{nomi = "Ana", idadi = 60}];
     mostran(f"{pessoas}");
 }
