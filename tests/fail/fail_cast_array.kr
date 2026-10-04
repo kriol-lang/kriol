@@ -1,0 +1,4 @@
+fn inisiu() {
+    int[2] a = (int[]) [1, 2];
+    int n = (int) a;
+}

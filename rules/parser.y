@@ -256,6 +256,7 @@ multiplicative_expression : unary_expression { $$ = $1; }
 unary_expression : primary_expression                          { $$ = $1; }
                  | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | TENTA unary_expression                        { auto n = new ast::UnaryExpr("tenta", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                 | LPAR type_specifier RPAR unary_expression    { auto n = new ast::CastExpr(Type::FromName(*$2), std::unique_ptr<ast::Expr>($4)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | BIT_NOT unary_expression                     { auto n = new ast::UnaryExpr("~", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  ;
@@ -394,7 +395,7 @@ record_literal : TYPE_IDENT COLONCOLON LCURLY record_field_initializers RCURLY {
                | TYPE_IDENT COLONCOLON LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
                ;
 
-typed_array_initializer : LT type_specifier GT array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($4); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
+typed_array_initializer : LPAR type_specifier LBRAC RBRAC RPAR array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($6); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
                         ;
 
 record_field_initializers : IDENT COLON initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $1; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }

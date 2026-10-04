@@ -1,0 +1,7 @@
+molda Pessoa {
+    int idadi;
+}
+
+fn inisiu() {
+    int n = (Pessoa) 5;
+}

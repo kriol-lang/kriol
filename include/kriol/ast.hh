@@ -42,6 +42,7 @@ namespace ast {
     class RecordLiteralExpr;
     class FStringExpr;
     class UnaryExpr;
+    class CastExpr;
 
     class Visitor {
     public:
@@ -73,6 +74,7 @@ namespace ast {
         virtual void visit(RecordLiteralExpr& node) = 0;
         virtual void visit(FStringExpr& node) = 0;
         virtual void visit(UnaryExpr& node) = 0;
+        virtual void visit(CastExpr& node) = 0;
     };
 
     class Sttmt {
@@ -421,6 +423,19 @@ namespace ast {
 
         UnaryExpr(std::string op, std::unique_ptr<Expr> operand)
             : Op(std::move(op)), Operand(std::move(operand)) {
+            Depth = 1 + depthOf(Operand);
+        }
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    /// Explicit conversion `(Type) operand`.
+    class CastExpr : public Expr {
+    public:
+        kriol::Type Target;
+        std::unique_ptr<Expr> Operand;
+
+        CastExpr(kriol::Type target, std::unique_ptr<Expr> operand)
+            : Target(std::move(target)), Operand(std::move(operand)) {
             Depth = 1 + depthOf(Operand);
         }
         void accept(Visitor& v) override { v.visit(*this); }

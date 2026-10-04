@@ -35,6 +35,7 @@ LLD_HAS_DRIVER(wasm)
 #include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
+#include <llvm/IR/Intrinsics.h>
 #include "../../include/kriol/type_rules.hh"
 
 using namespace kriol::ast;
@@ -1927,6 +1928,25 @@ void CodeGenVisitor::visit(ForSttmt& node) {
 
 void CodeGenVisitor::visit(ImportSttmt&) {
     // TODO: Implement module imports
+}
+
+void CodeGenVisitor::visit(CastExpr& node) {
+    node.Operand->accept(*this);
+    llvm::Value* value = LastValue;
+    if (!value) { LastValue = nullptr; return; }
+
+    const Type& from = node.Operand->ResolvedType;
+    const Type& to = node.Target;
+
+    if (to == Type::Bool()) {
+        LastValue = toBool(value);
+    } else if (from.isFloat() && to.isInteger()) {
+        // Saturating: NaN becomes 0 and out-of-range values clamp, so the result is always defined.
+        const auto intrinsic = to.isSigned() ? llvm::Intrinsic::fptosi_sat : llvm::Intrinsic::fptoui_sat;
+        LastValue = Builder->CreateIntrinsic(intrinsic, {mapType(to), value->getType()}, {value}, nullptr, "cast");
+    } else {
+        LastValue = coerceToType(value, from, to);
+    }
 }
 
 void CodeGenVisitor::visit(UnaryExpr& node) {

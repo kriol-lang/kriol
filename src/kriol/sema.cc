@@ -1185,6 +1185,29 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
     node.ResolvedType = Type::Text();
 }
 
+void SemanticAnalyzer::visit(CastExpr& node) {
+    node.ResolvedType = Type::Invalid();
+    if (node.Operand) node.Operand->accept(*this);
+    const Type& from = node.Operand ? node.Operand->ResolvedType : Type::Invalid();
+    const Type& to = node.Target;
+    const std::string loc = errLoc(node.LineNum);
+
+    // Only numbers and booleans convert among themselves; text conversion can
+    // fail, so it is left for a separate, fallible feature.
+    const auto castable = [](const Type& t) { return t.isNumeric() || t == Type::Bool(); };
+
+    if (!castable(to)) {
+        addError(loc + "cannot cast to '" + to.str() + "'; only numbers and 'bool' are valid cast targets");
+        return;
+    }
+    if (!from.valid()) return;
+    if (!castable(from)) {
+        addError(loc + "cannot cast a value of type '" + from.str() + "' to '" + to.str() + "'");
+        return;
+    }
+    node.ResolvedType = to;
+}
+
 void SemanticAnalyzer::visit(UnaryExpr& node) {
     if (node.Op == "tenta") {
         if (!CurrFuncCanFail)

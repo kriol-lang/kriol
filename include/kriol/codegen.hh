@@ -210,6 +210,7 @@ namespace ast {
         void visit(ImportSttmt&       node) override;
         void visit(FStringExpr&       node) override;
         void visit(UnaryExpr&         node) override;
+        void visit(CastExpr&          node) override;
     };
 
 } // namespace ast

@@ -198,6 +198,7 @@ namespace sema {
         void visit(ast::ImportSttmt&       node) override;
         void visit(ast::FStringExpr&       node) override;
         void visit(ast::UnaryExpr&         node) override;
+        void visit(ast::CastExpr&          node) override;
     };
 
 } // namespace sema

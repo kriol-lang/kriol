@@ -1,6 +1,6 @@
 fn inisiu() {
-    int[3] valores = <int>[1, 2, 3];
-    mostran(f"valores: {valores}");
-    konfirma(valores[0] == 1);
+    int[3] valores = (int[]) [1, 2, 3];
+    num[2] reais = (num[]) [1, 2];
     konfirma(valores[2] == 3);
+    konfirma(reais[1] == 2.0);
 }

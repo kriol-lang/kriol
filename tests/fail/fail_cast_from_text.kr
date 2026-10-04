@@ -1,0 +1,3 @@
+fn inisiu() {
+    int n = (int) "5";
+}
