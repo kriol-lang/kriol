@@ -1,0 +1,5 @@
+// expect: compound assignment operator '+=' requires a numeric target, got 'int[3]'
+fn inisiu() {
+    int[3] a = [1, 2, 3];
+    a += 1;
+}

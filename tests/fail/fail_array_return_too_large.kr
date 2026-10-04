@@ -1,0 +1,7 @@
+// expect: return type of function 'grandi' needs 1600000 bytes of stack, over the limit of 1048576 bytes
+fn grandi() int[200000] {
+    divolvi [0; 200000];
+}
+
+fn inisiu() {
+}

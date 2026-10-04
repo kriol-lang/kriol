@@ -83,9 +83,8 @@ static llvm::Function* getOrDeclareRuntimeArrayToText(llvm::Module& Mod, llvm::L
 {
     if (auto* fn = Mod.getFunction("__kriol_array_to_text")) return fn;
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* i64Ty = llvm::Type::getInt64Ty(Context);
     auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    auto* ftype = llvm::FunctionType::get(ptrTy, {ptrTy, i64Ty, i32Ty, i32Ty}, false);
+    auto* ftype = llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy, i32Ty, i32Ty, i32Ty}, false);
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_array_to_text", Mod);
 }
 
@@ -121,7 +120,11 @@ llvm::Function* CodeGenVisitor::getOrDeclarePanicAt()
 }
 
 llvm::Value* CodeGenVisitor::emitArrayToText(llvm::Value* storage, const Type& arrayType) {
-    const Type& element = arrayType.elementType();
+    auto* i64Ty = llvm::Type::getInt64Ty(Context);
+    std::vector<llvm::Constant*> dims;
+    Type element = arrayType;
+    for (; element.isArray(); element = element.elementType())
+        dims.push_back(llvm::ConstantInt::get(i64Ty, element.arraySize()));
     ArrayElementKind kind;
     unsigned bits = element.bitWidth();
     if (element.isInteger())
@@ -135,9 +138,15 @@ llvm::Value* CodeGenVisitor::emitArrayToText(llvm::Value* storage, const Type& a
     else
         throw std::runtime_error("internal error: cannot format an array of '" + element.str() + "'");
 
+    auto* dimsTy = llvm::ArrayType::get(i64Ty, dims.size());
+    auto* dimsGlobal = new llvm::GlobalVariable(*Mod, dimsTy, /*isConstant=*/true,
+                                                llvm::GlobalValue::PrivateLinkage,
+                                                llvm::ConstantArray::get(dimsTy, dims), "array.dims");
+    dimsGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     return Builder->CreateCall(getOrDeclareRuntimeArrayToText(*Mod, Context), {
         storage,
-        llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), arrayType.arraySize()),
+        dimsGlobal,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), static_cast<int>(dims.size())),
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), static_cast<int>(kind)),
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), bits)
     }, "array.text");
@@ -278,11 +287,7 @@ void CodeGenVisitor::emitPrintBuiltin(ast::FuncCallArgs* argsNode, bool addNewli
         auto& arg = args[i];
 
         if (arg->ResolvedType.isArray()) {
-            LValue storage = resolveLValue(arg.get());
-            if (!storage.Ptr)
-                throw std::runtime_error("cannot print non-addressable array expression");
-
-            llvm::Value* text = emitArrayToText(storage.Ptr, arg->ResolvedType);
+            llvm::Value* text = emitArrayToText(emitArrayAddress(arg.get(), arg->ResolvedType), arg->ResolvedType);
             Builder->CreateCall(getOrDeclareRuntimePrint(*Mod, Context, "string", ptrTy, addNlHere), {text});
             continue;
         }
@@ -308,12 +313,9 @@ void CodeGenVisitor::visit(FStringExpr& node) {
             }
         } else {
             if (seg.expr->ResolvedType.isArray()) {
-                LValue storage = resolveLValue(seg.expr.get());
-                if (!storage.Ptr)
-                    throw std::runtime_error("cannot interpolate non-addressable array expression");
-
                 fmtStr += "%s";
-                callArgs.push_back(emitArrayToText(storage.Ptr, seg.expr->ResolvedType));
+                callArgs.push_back(emitArrayToText(emitArrayAddress(seg.expr.get(), seg.expr->ResolvedType),
+                                                   seg.expr->ResolvedType));
                 continue;
             }
 

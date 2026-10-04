@@ -169,13 +169,11 @@ namespace sema {
         // Checks if a name is reserved and cannot be declared, and if so adds an error.
         bool checkDeclaredNameValid(const std::string& name, const std::string& kind, int lineNum);
 
-        // If expr (after stripping ParExpr wrappers) is an array variable identifier,
-        // annotates ResolvedType on both the IdentExpr and expr,
-        // and returns true so the caller can skip its normal accept() dispatch.
-        // Returns false for non-array or non-identifier expressions.
-        // Also returns true (and emits an error) for undefined identifiers to avoid
-        // a redundant second error from accept().
-        bool handleArrayIdentArg(ast::Expr& expr);
+        // Visits a value stored into an array of type `expected`: an array
+        // initializer is validated against it, any other expression must have
+        // exactly that type. `context` names the destination in errors.
+        bool visitArrayValue(ast::Expr* value, const Type& expected, int lineNum,
+                             const std::string& context);
 
         // Adds an error message to the error list
         void addError(const std::string& msg) { Errors.push_back(msg); }

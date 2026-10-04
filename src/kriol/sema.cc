@@ -17,6 +17,7 @@ namespace {
 
 using kriol::typeutils::arrayElementType;
 using kriol::typeutils::firstArrayDim;
+using kriol::typeutils::hasEmptyDimension;
 using kriol::typeutils::isArrayType;
 using namespace kriol::typerules;
 
@@ -40,24 +41,6 @@ private:
     T Saved;
 };
 
-}
-
-bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
-    auto* ident = unwrapIdentExpr(&expr);
-    if (!ident) return false;
-
-    auto t = lookupVar(ident->Name);
-    if (!t) {
-        addError(errLoc(ident->LineNum) + "undefined variable name '" + ident->Name + "'");
-        return true;
-    }
-
-    if (!isArrayType(*t)) return false;
-
-    checkNotSelfInitialized(ident->Name, ident->LineNum);
-    ident->ResolvedType = *t;
-    expr.ResolvedType = *t;
-    return true;
 }
 
 static const std::unordered_set<std::string> reservedKeywords = {
@@ -150,6 +133,13 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
         addError(errLoc(node.LineNum) + "unknown error type '" + node.ErrorTypeName
                  + "' in function '" + node.Name + "'; only '" + erruName + "' can follow ':'");
     validateTypeKnown(node.Type, node.LineNum, "return type of function '" + node.Name + "'");
+    if (hasEmptyDimension(node.Type))
+        addError(errLoc(node.LineNum) + "array return type of function '" + node.Name
+                 + "' must have a positive size");
+    else if (node.Type.isArray() && storageBytes(node.Type) > KR_MAX_LOCAL_BYTES)
+        addError(errLoc(node.LineNum) + "return type of function '" + node.Name + "' needs "
+                 + std::to_string(storageBytes(node.Type)) + " bytes of stack, over the limit of "
+                 + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes");
     if (node.Args)
         for (auto& arg : node.Args->Args) {
             if (!arg) continue;
@@ -259,35 +249,43 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
     const std::size_t expectedSize = expectedType.arraySize();
     const Type elemType = arrayElementType(expectedType);
 
+    // A row of a multi-dimensional array may itself be an array initializer.
+    auto checkElement = [&](ast::Expr* element, const std::string& what) {
+        if (!element) return false;
+        if (dynamic_cast<ArrayLiteralExpr*>(element) || dynamic_cast<ArrayRepeatExpr*>(element))
+            return validateArrayInitializer(elemType, element, lineNum, what);
+        element->accept(*this);
+        const Type& got = element->ResolvedType;
+        if (got.valid() && !canCoerceExprTo(element, elemType)) {
+            addError(errLoc(lineNum) + what + ": expected '" + elemType.str()
+                     + "', got '" + got.str() + "'");
+            return false;
+        }
+        return true;
+    };
+
     if (initRep) {
-        initRep->accept(*this);
         if (initRep->Count != expectedSize) {
             addError(errLoc(lineNum) + context + " has size "
                      + std::to_string(expectedSize) + " but repeat initializer [value; "
                      + std::to_string(initRep->Count) + "] has a different count");
             return false;
         }
-
-        const Type fillType = initRep->Fill ? initRep->Fill->ResolvedType : Type::Invalid();
-        if (fillType.valid() && !canCoerceExprTo(initRep->Fill.get(), elemType)) {
-            addError(errLoc(lineNum) + context + " repeat initializer fill type '"
-                     + fillType.str() + "' does not match array element type '"
-                     + elemType.str() + "'");
+        if (!checkElement(initRep->Fill.get(), context + " repeat initializer"))
             return false;
-        }
-
         initRep->ResolvedType = expectedType;
         return true;
     }
 
-    initLit->accept(*this);
-    if (initLit->ExplicitElementType.valid()
-            && initLit->ExplicitElementType != elemType
-            && !isWideningCoercion(initLit->ExplicitElementType, elemType)) {
-        addError(errLoc(lineNum) + context + " expects array element type '"
-                 + elemType.str() + "', got explicit array literal element type '"
-                 + initLit->ExplicitElementType.str() + "'");
-        return false;
+    if (initLit->ExplicitElementType.valid()) {
+        initLit->accept(*this);
+        if (initLit->ExplicitElementType != elemType
+                && !isWideningCoercion(initLit->ExplicitElementType, elemType)) {
+            addError(errLoc(lineNum) + context + " expects array element type '"
+                     + elemType.str() + "', got explicit array literal element type '"
+                     + initLit->ExplicitElementType.str() + "'");
+            return false;
+        }
     }
 
     const std::size_t got = initLit->Elements.size();
@@ -300,17 +298,37 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
 
     bool ok = true;
     for (std::size_t i = 0; i < initLit->Elements.size(); ++i) {
-        const auto& gotType = initLit->Elements[i]->ResolvedType;
-        if (gotType.valid() && !canCoerceExprTo(initLit->Elements[i].get(), elemType)) {
-            addError(errLoc(lineNum) + context + " initializer element "
-                     + std::to_string(i + 1) + ": expected '" + elemType.str()
-                     + "', got '" + gotType.str() + "'");
+        const std::string what = context + " initializer element " + std::to_string(i + 1);
+        if (initLit->ExplicitElementType.valid()) {
+            const Type& gotType = initLit->Elements[i]->ResolvedType;
+            if (gotType.valid() && !canCoerceExprTo(initLit->Elements[i].get(), elemType)) {
+                addError(errLoc(lineNum) + what + ": expected '" + elemType.str()
+                         + "', got '" + gotType.str() + "'");
+                ok = false;
+            }
+        } else if (!checkElement(initLit->Elements[i].get(), what)) {
             ok = false;
         }
     }
 
     initLit->ResolvedType = expectedType;
     return ok;
+}
+
+bool SemanticAnalyzer::visitArrayValue(ast::Expr* value, const Type& expected, int lineNum,
+                                       const std::string& context) {
+    if (!value) return false;
+    if (dynamic_cast<ArrayLiteralExpr*>(value) || dynamic_cast<ArrayRepeatExpr*>(value))
+        return validateArrayInitializer(expected, value, lineNum, context);
+
+    value->accept(*this);
+    const Type& got = value->ResolvedType;
+    if (got.valid() && got != expected) {
+        addError(errLoc(lineNum) + context + ": expected '" + expected.str()
+                 + "', got '" + got.str() + "'");
+        return false;
+    }
+    return true;
 }
 
 void SemanticAnalyzer::Check(BlockSttmt* program) {
@@ -396,8 +414,8 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     const std::string kind = node.IsParam ? "parameter" : "variable";
     bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
 
-    if (node.IsArray && node.ArraySize == 0) {
-        addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must have a positive size");
+    if (node.IsArray && hasEmptyDimension(node.Type)) {
+        addError(errLoc(node.LineNum) + "array " + kind + " '" + node.Name + "' must have a positive size");
         canDeclare = false;
     }
 
@@ -415,19 +433,9 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         }
     }
 
-    if (node.IsArray && node.Value) {
-        auto* initLit = dynamic_cast<ArrayLiteralExpr*>(node.Value.get());
-        auto* initRep = dynamic_cast<ArrayRepeatExpr*>(node.Value.get());
-        if (!initLit && !initRep) {
-            addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must use an array initializer like [a, b, c] or [value; N]");
-            canDeclare = false;
-        } else {
-            if (!validateArrayInitializer(node.Type, node.Value.get(), node.LineNum,
-                                          "array variable '" + node.Name + "'")) {
-                canDeclare = false;
-            }
-        }
-    }
+    if (node.IsArray && node.Value
+            && !visitArrayValue(node.Value.get(), node.Type, node.LineNum, "array variable '" + node.Name + "'"))
+        canDeclare = false;
 
     // Check for duplicate in the innermost scope only.
     if (!SymbolScopes.empty()) {
@@ -594,7 +602,10 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
     if (CurrFuncRetType.valid() && !CurrFuncRetType.isVoid() && !node.ReturnValue)
         addError(loc + "missing return value in non-void function '" + CurrFuncName + "'");
 
-    if (node.ReturnValue) {
+    if (node.ReturnValue && CurrFuncRetType.isArray()) {
+        visitArrayValue(node.ReturnValue.get(), CurrFuncRetType, node.LineNum,
+                        "return value of '" + CurrFuncName + "'");
+    } else if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         const Type& got = node.ReturnValue->ResolvedType;
         if (got.valid() && CurrFuncRetType.valid()
@@ -670,8 +681,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             if (node.Args) {
                 for (auto& arg : node.Args->Args) {
                     if (!arg) continue;
-                    if (!handleArrayIdentArg(*arg))
-                        arg->accept(*this);
+                    arg->accept(*this);
                     const Type& t = arg->ResolvedType;
                     if (t.valid() && !isPrintableType(t, true))
                         addError(loc + "cannot print value of type '" + t.str() + "'");
@@ -738,13 +748,24 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             break;
     }
 
-    visitArgs(node);
-
     auto it = FunctionTable.find(callee->Name);
     if (it == FunctionTable.end()) {
+        visitArgs(node);
         addError(errLoc(node.LineNum) + "undeclared function '" + callee->Name + "'");
         return;
     }
+
+    // An array parameter takes an array initializer checked against its type.
+    if (node.Args)
+        for (size_t i = 0; i < node.Args->Args.size(); ++i) {
+            auto& arg = node.Args->Args[i];
+            if (!arg) continue;
+            if (i < it->second.paramTypes.size() && it->second.paramTypes[i].isArray())
+                visitArrayValue(arg.get(), it->second.paramTypes[i], node.LineNum,
+                                "argument " + std::to_string(i + 1) + " of '" + callee->Name + "'");
+            else
+                arg->accept(*this);
+        }
 
     const FuncInfo& info = it->second;
     node.ResolvedType = info.retType;
@@ -769,6 +790,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
         for (size_t i = 0; i < node.Args->Args.size(); ++i) {
             const Type& argType   = node.Args->Args[i]->ResolvedType;
             const Type& paramType = info.paramTypes[i];
+            if (paramType.isArray()) continue;  // checked by visitArrayValue
             if (argType.valid() && !canCoerceExprTo(node.Args->Args[i].get(), paramType))
                 addError(loc + "argument " + std::to_string(i + 1) + " of '" + callee->Name
                          + "': expected '" + paramType.str() + "', got '" + argType.str() + "'");
@@ -804,10 +826,15 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
 void SemanticAnalyzer::visit(BinExpr& node) {
     if (node.Op == "sinon") {
         const bool valid = visitFallibleOperand(node.LHS.get(), "sinon", node.LineNum);
+        const Type& valueType = node.LHS->ResolvedType;
+        if (valid && valueType.isArray()) {
+            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "the value after 'sinon'");
+            node.ResolvedType = valueType;
+            return;
+        }
         if (node.RHS) node.RHS->accept(*this);
         if (!valid) { node.ResolvedType = Type::Invalid(); return; }
 
-        const Type& valueType = node.LHS->ResolvedType;
         if (valueType.isVoid()) {
             addError(errLoc(node.LineNum) + "'sinon' needs a call that returns a value; "
                      "this function returns nothing");
@@ -929,8 +956,6 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
 
     checkNotSelfInitialized(node.Name, node.LineNum);
     node.ResolvedType = *t;
-    if (isArrayType(*t))
-        addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must be indexed");
 }
 
 void SemanticAnalyzer::visit(ParExpr& node) {
@@ -1158,17 +1183,19 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
 void SemanticAnalyzer::visit(AssignExpr& node) {
     Type assigneeType = resolveAssignableType(node.Assignee.get(), node.LineNum);
 
-    if (assigneeType.valid() && isArrayType(assigneeType)
-            && !dynamic_cast<ArrayAccessExpr*>(node.Assignee.get())) {
-        if (auto* ident = dynamic_cast<IdentExpr*>(node.Assignee.get())) {
-            addError(errLoc(node.LineNum) + "cannot assign directly to array variable '"
-                     + ident->Name + "'; assign to an index");
-        } else {
-            addError(errLoc(node.LineNum) + "cannot assign directly to array value; assign to an index");
-        }
-    }
-
     if (!node.Assigned) return;
+
+    if (assigneeType.valid() && isArrayType(assigneeType)) {
+        if (node.AssignOp != "=") {
+            addError(errLoc(node.LineNum) + "compound assignment operator '" + node.AssignOp
+                     + "' requires a numeric target, got '" + assigneeType.str() + "'");
+            node.Assigned->accept(*this);
+        } else {
+            visitArrayValue(node.Assigned.get(), assigneeType, node.LineNum, "assignment");
+        }
+        node.ResolvedType = assigneeType;
+        return;
+    }
 
     node.Assigned->accept(*this);
     node.ResolvedType = node.Assigned->ResolvedType;
@@ -1217,16 +1244,10 @@ void SemanticAnalyzer::visit(ImportSttmt& node) {
 void SemanticAnalyzer::visit(FStringExpr& node) {
     for (auto& seg : node.Parts) {
         if (!seg.expr) continue;
-        if (handleArrayIdentArg(*seg.expr)) {
-            const Type& t = seg.expr->ResolvedType;
-            if (t.valid() && !isPrintableType(t, true))
-                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
-        } else {
-            seg.expr->accept(*this);
-            const Type& t = seg.expr->ResolvedType;
-            if (t.valid() && !isPrintableType(t, true))
-                addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
-        }
+        seg.expr->accept(*this);
+        const Type& t = seg.expr->ResolvedType;
+        if (t.valid() && !isPrintableType(t, true))
+            addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
     }
     node.ResolvedType = Type::Text();
 }

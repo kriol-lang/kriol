@@ -129,8 +129,14 @@ public:
                 return Bits == 64 ? "num" : "f" + std::to_string(Bits);
             case TypeKind::Text: return "textu";
             case TypeKind::Named: return Name;
-            case TypeKind::FixedArray:
-                return elementType().str() + "[" + std::to_string(Size) + "]";
+            case TypeKind::FixedArray: {
+                // Outermost dimension first, as declared: `int[2][3]` has 2 rows of 3.
+                std::string dims;
+                Type element = *this;
+                for (; element.isArray(); element = element.elementType())
+                    dims += "[" + std::to_string(element.arraySize()) + "]";
+                return element.str() + dims;
+            }
             case TypeKind::Reference: return "ref " + elementType().str();
             case TypeKind::ArrayLiteral: return "array literal";
             case TypeKind::ArrayRepeat: return "array repeat";

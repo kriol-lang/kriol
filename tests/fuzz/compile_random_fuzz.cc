@@ -91,7 +91,7 @@ namespace
         if (depth <= 0 || chance(rng, 35))
             return chance(rng, 50) ? literal(rng) : ident(rng);
 
-        switch (randomInt(rng, 0, 14))
+        switch (randomInt(rng, 0, 15))
         {
             case 0:
                 return "(" + expr(rng, depth - 1) + ")";
@@ -124,6 +124,8 @@ namespace
                 return "tenta " + ident(rng) + "(" + expr(rng, depth - 1) + ")";
             case 13:
                 return ident(rng) + "(" + expr(rng, depth - 1) + ") sinon " + expr(rng, depth - 1);
+            case 14:
+                return ident(rng) + "[" + expr(rng, depth - 1) + "][" + expr(rng, depth - 1) + "]";
             default:
                 return ident(rng) + "." + ident(rng);
         }
@@ -131,7 +133,7 @@ namespace
 
     std::string statement(std::mt19937_64& rng, int depth)
     {
-        switch (randomInt(rng, 0, 12))
+        switch (randomInt(rng, 0, 13))
         {
             case 0:
                 return typeName(rng) + " " + ident(rng) + " = " + expr(rng, depth) + ";";
@@ -162,6 +164,9 @@ namespace
                 return "paniku(" + expr(rng, depth) + ");";
             case 11:
                 return chance(rng, 50) ? "kebra;" : "kontinua;";
+            case 12:
+                return typeName(rng) + "[2][2] " + ident(rng) + " = [[" + expr(rng, 1) + ", " +
+                       expr(rng, 1) + "], [" + expr(rng, 1) + "; 2]];";
             default:
                 return expr(rng, depth) + ";";
         }
@@ -187,11 +192,11 @@ namespace
         {
             if (i > 0)
                 out << ", ";
-            out << typeName(rng) << ' ' << ident(rng);
+            out << typeName(rng) << (chance(rng, 20) ? "[3] " : " ") << ident(rng);
         }
         out << ")";
         if (!entry && chance(rng, 40))
-            out << ' ' << typeName(rng);
+            out << ' ' << typeName(rng) << (chance(rng, 20) ? "[2][2]" : "");
         if (chance(rng, 30))
             out << " : Erru";
         out << " {\n";

@@ -45,6 +45,8 @@ namespace ast {
         Type CurrentReturnType;
         bool CurrentCanFail = false;
         bool CurrentIsMain = false;
+        // Where a function returning an array writes it: its hidden first argument.
+        llvm::Value* CurrentReturnSlot = nullptr;
 
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
@@ -127,6 +129,16 @@ namespace ast {
         // the value omitted when the function returns nothing.
         llvm::StructType* failableResultType(const Type& valueType);
         llvm::Type* functionReturnType(const ast::FuncDeclSttmt& node);
+
+        // Arrays travel by address: an expression of array type evaluates to a
+        // pointer to its storage, an array parameter is a pointer the callee
+        // copies, and a function returning an array writes it into a buffer the
+        // caller passes as a hidden first argument. Large arrays as LLVM values
+        // make the backend crawl.
+        llvm::Type* abiType(const Type& type);
+        // The address of an array value, materializing an initializer in a temporary.
+        llvm::Value* emitArrayAddress(ast::Expr* expr, const Type& arrayType);
+        void emitArrayCopy(llvm::Value* dest, llvm::Value* src, const Type& arrayType);
 
         // The failable result of a built-in call: `message` is the runtime's
         // error text, read only when `failed` is true.

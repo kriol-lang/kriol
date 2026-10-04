@@ -1,0 +1,4 @@
+// expect: array variable 'm' initializer element 1 expects 3 initializer element(s), got 2
+fn inisiu() {
+    int[2][3] m = [[1, 2], [3, 4]];
+}

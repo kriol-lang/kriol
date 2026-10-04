@@ -1,0 +1,9 @@
+// expect: argument 1 of 'soma': expected 'int[3]', got 'int[4]'
+fn soma(int[3] v) int {
+    divolvi v[0];
+}
+
+fn inisiu() {
+    int[4] b = [0; 4];
+    mostran(soma(b));
+}

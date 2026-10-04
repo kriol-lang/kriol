@@ -1,0 +1,51 @@
+// Arrays are values, like molda: passing, returning and assigning copy them.
+fn dobra(int[3] v) int[3] {
+    pa int i = 0; i < 3; i += 1 {
+        v[i] *= 2;
+    }
+    divolvi v;
+}
+
+fn soma(int[2][3] m) int {
+    int total = 0;
+    pa int i = 0; i < 2; i += 1 {
+        pa int j = 0; j < 3; j += 1 {
+            total += m[i][j];
+        }
+    }
+    divolvi total;
+}
+
+fn identidade() int[2][2] {
+    divolvi [[1, 0], [0, 1]];
+}
+
+fn repeti(int n) int[3] : Erru {
+    si n < 0 {
+        lansa Erru::{mensage: "negativu"};
+    }
+    divolvi [n; 3];
+}
+
+fn inisiu() {
+    int[3] a = [1, 2, 3];
+    int[3] b = dobra(a);
+    konfirma(a[0] == 1 && b[2] == 6);     // a was copied, not changed
+
+    a = dobra(a);
+    konfirma(a[1] == 4);
+    a = [a[2], a[1], a[0]];               // the new value is built before it is stored
+    konfirma(a[0] == 6 && a[2] == 2);
+
+    int[2][3] m = [[1, 2, 3], [4, 5, 6]];
+    m[0] = dobra(m[1]);
+    konfirma(m[0][2] == 12);
+    konfirma(soma(m) == 45 && soma([[1, 1, 1], [1, 1, 1]]) == 6);
+
+    konfirma(identidade()[1][1] == 1 && dobra([5; 3])[2] == 10);
+
+    int[3] r = repeti(4) sinon [0; 3];
+    konfirma(r[2] == 4);
+    r = repeti(-1) sinon (int[])[7, 7, 7];
+    konfirma(r[0] == 7);
+}

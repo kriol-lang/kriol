@@ -434,55 +434,72 @@ static unsigned long long __kriol_read_unsigned(const unsigned char* element, in
     }
 }
 
-char* __kriol_array_to_text(const void* data, int64_t count, int32_t kind, int32_t bits) {
+static void __kriol_append_element(KriolTextBuilder* builder, const unsigned char* element,
+                                   int32_t kind, int32_t bits) {
+    char number[64];
+    switch (kind) {
+        case KRIOL_ELEMENT_SIGNED:
+            snprintf(number, sizeof number, "%lld", __kriol_read_signed(element, bits));
+            __kriol_builder_append_text(builder, number);
+            break;
+        case KRIOL_ELEMENT_UNSIGNED:
+            snprintf(number, sizeof number, "%llu", __kriol_read_unsigned(element, bits));
+            __kriol_builder_append_text(builder, number);
+            break;
+        case KRIOL_ELEMENT_FLOAT: {
+            double v;
+            if (bits == 32) {
+                float f;
+                memcpy(&f, element, sizeof f);
+                v = f;
+            } else {
+                memcpy(&v, element, sizeof v);
+            }
+            snprintf(number, sizeof number, "%g", v);
+            __kriol_builder_append_text(builder, number);
+            break;
+        }
+        case KRIOL_ELEMENT_BOOL:
+            __kriol_builder_append_text(builder, __kriol_bool_to_string(*element != 0));
+            break;
+        default: {
+            const char* text;
+            memcpy(&text, element, sizeof text);
+            if (text)
+                __kriol_builder_append_text(builder, text);
+            break;
+        }
+    }
+}
+
+/* Appends `[a, b, ...]` for an array with dimensions dims[0..rank), the
+ * outermost first, laid out row after row. */
+static void __kriol_append_array(KriolTextBuilder* builder, const unsigned char* data,
+                                 const int64_t* dims, int32_t rank, int32_t kind, int32_t bits,
+                                 size_t stride) {
+    size_t step = stride;
+    for (int32_t d = 1; d < rank; ++d)
+        step *= (size_t)dims[d];
+
+    __kriol_builder_append(builder, "[", 1);
+    for (int64_t i = 0; i < dims[0]; ++i) {
+        if (i > 0)
+            __kriol_builder_append(builder, ", ", 2);
+        const unsigned char* element = data + (size_t)i * step;
+        if (rank > 1)
+            __kriol_append_array(builder, element, dims + 1, rank - 1, kind, bits, stride);
+        else
+            __kriol_append_element(builder, element, kind, bits);
+    }
+    __kriol_builder_append(builder, "]", 1);
+}
+
+char* __kriol_array_to_text(const void* data, const int64_t* dims, int32_t rank, int32_t kind, int32_t bits) {
     size_t stride = kind == KRIOL_ELEMENT_TEXT ? sizeof(const char*)
                   : kind == KRIOL_ELEMENT_BOOL ? 1
                   : (size_t)bits / 8;
     KriolTextBuilder builder = { __kriol_alloc_text(64), 0, 64 };
-    char number[64];
-
-    __kriol_builder_append(&builder, "[", 1);
-    for (int64_t i = 0; i < count; ++i) {
-        const unsigned char* element = (const unsigned char*)data + (size_t)i * stride;
-        if (i > 0)
-            __kriol_builder_append(&builder, ", ", 2);
-
-        switch (kind) {
-            case KRIOL_ELEMENT_SIGNED:
-                snprintf(number, sizeof number, "%lld", __kriol_read_signed(element, bits));
-                __kriol_builder_append_text(&builder, number);
-                break;
-            case KRIOL_ELEMENT_UNSIGNED:
-                snprintf(number, sizeof number, "%llu", __kriol_read_unsigned(element, bits));
-                __kriol_builder_append_text(&builder, number);
-                break;
-            case KRIOL_ELEMENT_FLOAT: {
-                double v;
-                if (bits == 32) {
-                    float f;
-                    memcpy(&f, element, sizeof f);
-                    v = f;
-                } else {
-                    memcpy(&v, element, sizeof v);
-                }
-                snprintf(number, sizeof number, "%g", v);
-                __kriol_builder_append_text(&builder, number);
-                break;
-            }
-            case KRIOL_ELEMENT_BOOL:
-                __kriol_builder_append_text(&builder, __kriol_bool_to_string(*element != 0));
-                break;
-            default: {
-                const char* text;
-                memcpy(&text, element, sizeof text);
-                if (text)
-                    __kriol_builder_append_text(&builder, text);
-                break;
-            }
-        }
-    }
-    __kriol_builder_append(&builder, "]", 1);
-
+    __kriol_append_array(&builder, (const unsigned char*)data, dims, rank, kind, bits, stride);
     builder.Data[builder.Len] = '\0';
     return builder.Data;
 }

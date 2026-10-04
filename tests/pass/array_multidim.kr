@@ -1,0 +1,40 @@
+// Multi-dimensional arrays: the first size is the outermost dimension, as in C and Go.
+molda Grelha {
+    int[2][2] c;
+}
+
+int[2][3] global = [[1, 2, 3], [4, 5, 6]];
+
+fn inisiu() {
+    int[2][3] m = [[1, 2, 3], [4, 5, 6]];
+    konfirma(m[0][0] == 1 && m[1][2] == 6);
+
+    int[3][2] zeros = [[0; 2]; 3];
+    zeros[2][1] = 9;
+    konfirma(zeros[2][1] == 9 && zeros[0][1] == 0);
+
+    int soma = 0;
+    pa int i = 0; i < 2; i += 1 {
+        pa int j = 0; j < 3; j += 1 {
+            soma += m[i][j] + global[i][j];
+        }
+    }
+    konfirma(soma == 42);
+
+    // A row is an array like any other: it can be copied and printed.
+    m[0] = m[1];
+    konfirma(m[0][2] == 6);
+    int[3] linha = m[1];
+    linha[0] = 0;
+    konfirma(m[1][0] == 4);
+    mostran(m, " ", m[0], " ", f"{zeros}");
+
+    bool[2][2] logicus = [[sin, nau], [nau, sin]];
+    konfirma(logicus[1][1]);
+
+    Grelha g = Grelha::{c: [[1, 2], [3, 4]]};
+    konfirma(g.c[1][0] == 3);
+
+    int[2][2][2] cubu = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
+    konfirma(cubu[1][0][1] == 6);
+}
