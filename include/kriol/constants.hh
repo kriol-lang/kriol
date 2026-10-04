@@ -3,7 +3,7 @@
 
 #define KR_VERSION_MAJOR 1
 #define KR_VERSION_MINOR 13
-#define KR_VERSION_PATCH 1
+#define KR_VERSION_PATCH 2
 
 #define KR_STANDARD_NAME "Kriol"
 #define KR_STANDARD_FILE_EXTENSION "kriol"
