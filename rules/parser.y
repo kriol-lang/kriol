@@ -38,13 +38,6 @@
         return true;
     }
 
-    // The built-in error type, `molda Erru { textu mensage; }`, available to every program.
-    static std::unique_ptr<kriol::ast::Sttmt> kriol_make_erru_declaration() {
-        auto erru = std::make_unique<kriol::ast::MoldaDeclSttmt>("Erru");
-        erru->AddField(std::make_unique<kriol::ast::VarDeclSttmt>(kriol::Type::Text(), "mensage", nullptr));
-        return erru;
-    }
-
     #define KRIOL_CHECK_DEPTH(node, line)                                           \
         do {                                                                       \
             if ((node)->Depth > KR_MAX_EXPR_DEPTH) {                               \
@@ -115,7 +108,7 @@
 
 %%
 
-program : statements { $1->SttmtList.insert($1->SttmtList.begin(), kriol_make_erru_declaration()); *Program = $1; }
+program : statements { *Program = $1; }
         | error { *Program = nullptr; }
         ;
 
@@ -273,7 +266,8 @@ postfix_expression : primary_atom { $$ = $1; }
                    ;
 
 primary_atom : record_literal { $$ = $1; }
-             | if_initializer_type_specifier COLONCOLON IDENT { auto n = new ast::QualifiedAccessExpr(std::make_unique<ast::IdentExpr>(*$1), *$3); n->LineNum = @$.first_line; delete $1; delete $3; $$ = n; }
+             | if_initializer_type_specifier COLONCOLON IDENT LPAR argument_list RPAR { auto n = new ast::TypeCallExpr(Type::FromName(*$1), *$3, std::unique_ptr<ast::FuncCallArgs>($5)); n->LineNum = @$.first_line; delete $1; delete $3; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+             | if_initializer_type_specifier COLONCOLON IDENT LPAR RPAR { auto n = new ast::TypeCallExpr(Type::FromName(*$1), *$3, nullptr); n->LineNum = @$.first_line; delete $1; delete $3; $$ = n; }
              | typed_array_initializer { $$ = $1; }
              | IDENT { auto n = new ast::IdentExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
              | constant { $$ = $1; }

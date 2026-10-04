@@ -1,3 +1,4 @@
+// expect: binary operator '+' requires numeric operands, got 'textu' and 'bool'
 fn inisiu(u64 _tmp3, u64 y0, int _tmp1) {
     mostran('linha\n773' + sin);
 }

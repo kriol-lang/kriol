@@ -91,7 +91,7 @@ namespace
         if (depth <= 0 || chance(rng, 35))
             return chance(rng, 50) ? literal(rng) : ident(rng);
 
-        switch (randomInt(rng, 0, 8))
+        switch (randomInt(rng, 0, 14))
         {
             case 0:
                 return "(" + expr(rng, depth - 1) + ")";
@@ -109,6 +109,21 @@ namespace
                 return ident(rng) + "(" + expr(rng, depth - 1) + ")";
             case 7:
                 return ident(rng) + "[" + expr(rng, depth - 1) + "]";
+            case 8:
+            {
+                static const std::vector<std::string> bitwise = {"&", "|", "^"};
+                return expr(rng, depth - 1) + " " + pick(rng, bitwise) + " " + expr(rng, depth - 1);
+            }
+            case 9:
+                return "~" + expr(rng, depth - 1);
+            case 10:
+                return "(" + typeName(rng) + ") " + expr(rng, depth - 1);
+            case 11:
+                return typeName(rng) + "::konverti(" + expr(rng, depth - 1) + ")";
+            case 12:
+                return "tenta " + ident(rng) + "(" + expr(rng, depth - 1) + ")";
+            case 13:
+                return ident(rng) + "(" + expr(rng, depth - 1) + ") sinon " + expr(rng, depth - 1);
             default:
                 return ident(rng) + "." + ident(rng);
         }
@@ -116,7 +131,7 @@ namespace
 
     std::string statement(std::mt19937_64& rng, int depth)
     {
-        switch (randomInt(rng, 0, 9))
+        switch (randomInt(rng, 0, 11))
         {
             case 0:
                 return typeName(rng) + " " + ident(rng) + " = " + expr(rng, depth) + ";";
@@ -138,6 +153,10 @@ namespace
                        ident(rng) + " += 1 { " + statement(rng, depth - 1) + " }";
             case 8:
                 return "divolvi " + expr(rng, depth) + ";";
+            case 9:
+                return "lansa Erru::{mensage: " + expr(rng, depth) + "};";
+            case 10:
+                return "paniku(" + expr(rng, depth) + ");";
             default:
                 return expr(rng, depth) + ";";
         }
@@ -168,6 +187,8 @@ namespace
         out << ")";
         if (!entry && chance(rng, 40))
             out << ' ' << typeName(rng);
+        if (chance(rng, 30))
+            out << " : Erru";
         out << " {\n";
         const int statements = randomInt(rng, 0, 24);
         for (int i = 0; i < statements; ++i)
@@ -198,7 +219,9 @@ namespace
             "para", "divolvi", "sai", "kontinua", "konfirma", "int", "num",
             "bool", "textu", "sin", "nau", "(", ")", "{", "}", "[", "]", ";",
             ",", ".", "::", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-",
-            "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'"
+            "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'",
+            "tenta", "lansa", "paniku", "konverti", "Erru", ":", "&", "|", "^", "~",
+            "&=", "|=", "^=", "%", "%="
         };
 
         std::string out;

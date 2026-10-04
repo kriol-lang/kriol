@@ -1,3 +1,4 @@
+// expect: condition must be a boolean or numeric value, got 'textu'
 fn inisiu() {
     si "abc" {
         mostran(1);

@@ -1,3 +1,4 @@
+// expect: syntax error, unexpected end of interpolation
 // ERROR: Empty and malformed interpolations in f-string
 fn inisiu() {
     mostra(f"{}");

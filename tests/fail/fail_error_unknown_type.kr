@@ -1,3 +1,4 @@
+// expect: unknown error type 'Falha' in function 'f'; only 'Erru' can follow ':'
 fn f() int : Falha {
     divolvi 1;
 }

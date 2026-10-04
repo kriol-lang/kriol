@@ -1,3 +1,4 @@
+// expect: undefined variable name 'h'
 int g = h + 1;
 
 fn inisiu() {

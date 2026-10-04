@@ -1,3 +1,4 @@
+// expect: 'tenta' can only be used in a function that declares an error type, such as 'fn inisiu(...) : Erru'
 fn f() int : Erru {
     divolvi 1;
 }

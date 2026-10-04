@@ -1,3 +1,4 @@
+// expect: unknown function 'int::parsa'; the only function of a type is '<type>::konverti'
 fn inisiu() {
     int n = int::parsa("5") sinon 0;
 }

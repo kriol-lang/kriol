@@ -1,3 +1,4 @@
+// expect: logical operator '!' requires a boolean operand, got 'int'
 fn inisiu() {
     mostran(!5);
 }

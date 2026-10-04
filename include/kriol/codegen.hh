@@ -2,6 +2,7 @@
 #define _KRIOL_CODEGEN_HEADER
 
 #include "ast.hh"
+#include "prelude.hh"
 
 #include <string>
 #include <memory>
@@ -42,7 +43,6 @@ namespace ast {
         // Currently-emitting function
         llvm::Function* CurrentFunction = nullptr;
         Type CurrentReturnType;
-        // The function being emitted declares an error type / is inisiu.
         bool CurrentCanFail = false;
         bool CurrentIsMain = false;
 
@@ -59,7 +59,6 @@ namespace ast {
         struct FuncSig {
             Type retType;
             std::vector<Type> paramTypes;
-            bool canFail = false;
         };
 
         std::unordered_map<std::string, FuncSig> FunctionSigs;
@@ -71,6 +70,7 @@ namespace ast {
         };
 
         std::unordered_map<std::string, RecordInfo> Records;
+        std::unique_ptr<ast::MoldaDeclSttmt> ErrorTypeDecl = prelude::makeErrorTypeDecl();
 
         struct LValue {
             llvm::Value* Ptr = nullptr;
@@ -97,9 +97,12 @@ namespace ast {
         llvm::Value*         createArrayElementPtr(llvm::Value* storage,
                                llvm::Type* arrayTy,
                                llvm::Value* index);
-        LValue               resolveLValue(ast::Expr* expr);
+        // `allowTemporary` lets a read through a non-addressable base, such as
+        // `f().v[0]`, spill the base into a temporary.
+        LValue               resolveLValue(ast::Expr* expr, bool allowTemporary = false);
         llvm::Function*      getOrDeclareKriolCheckBounds();
         llvm::Function*      getOrDeclareKriolCheckDiv();
+        llvm::Function*      getOrDeclarePanicAt();
 
         // After emitting a block terminator (break/continue/return/sai) moves
         // the insert point into a fresh unreachable block so that any further
@@ -119,6 +122,12 @@ namespace ast {
         llvm::StructType* failableResultType(const Type& valueType);
         llvm::Type* functionReturnType(const ast::FuncDeclSttmt& node);
 
+        // The failable result of a built-in call: `message` is the runtime's
+        // error text, read only when `failed` is true.
+        llvm::Value* makeFailableResult(const Type& valueType, llvm::Value* failed,
+                                        llvm::Value* value, llvm::Value* message);
+        llvm::Value* erruMessage(llvm::Value* erru);
+
         // Fails the current function with the given Erru value: returns it to
         // the caller, or reports it and exits when the function is inisiu.
         // Ends the current block with a terminator.
@@ -128,9 +137,8 @@ namespace ast {
         // error message if the call failed, and leaves the plain value.
         void emitUnhandledFailureCheck(ast::FunCallExpr& node);
 
-        // 'T::konverti(text)': calls the runtime and wraps the outcome in the
-        // failable result of the call.
-        void emitConversionCall(ast::FunCallExpr& node);
+        // 'T::konverti(text)'.
+        void emitConversionCall(ast::TypeCallExpr& node);
 
         // 'tenta call' and 'call sinon fallback'.
         void emitTenta(ast::UnaryExpr& node);
@@ -141,6 +149,10 @@ namespace ast {
         void declareVar(const std::string& name, llvm::AllocaInst* a) {
             if (!Scopes.empty()) Scopes.back()[name] = a;
         }
+
+        FuncSig makeFuncSig(const ast::FuncDeclSttmt& node) const;
+        // The LLVM function for `node`, declared now if it does not exist yet.
+        llvm::Function* declareFunction(const ast::FuncDeclSttmt& node);
 
         // Forward-declare a user function in the LLVM module (type + name, no body).
         // Called in the program-root pre-pass so mutual/forward calls resolve.
@@ -215,6 +227,7 @@ namespace ast {
         void visit(FStringExpr&       node) override;
         void visit(UnaryExpr&         node) override;
         void visit(CastExpr&          node) override;
+        void visit(TypeCallExpr&      node) override;
     };
 
 } // namespace ast

@@ -1,3 +1,4 @@
+// expect: bitwise operator '&' requires integer operands, got 'num' and 'int'
 fn inisiu() {
     num a = 1.5;
     num b = a & 1;

@@ -1,3 +1,4 @@
+// expect: undefined variable name 'res'
 // ERROR: if initializer variable must not escape the if/else chain.
 fn inisiu() {
   si int res = 1; res == 1 {

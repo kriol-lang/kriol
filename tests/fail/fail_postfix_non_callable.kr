@@ -1,3 +1,4 @@
+// expect: expression is not callable
 fn identidade(int valor) int {
     divolvi valor;
 }

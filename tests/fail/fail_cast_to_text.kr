@@ -1,3 +1,4 @@
+// expect: cannot cast to 'textu'; only numbers and 'bool' are valid cast targets
 fn inisiu() {
     textu t = (textu) 5;
 }

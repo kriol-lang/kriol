@@ -1,3 +1,4 @@
+// expect: 'inpristan' (import) statements are not supported yet
 inpristan "std";
 
 fn inisiu() {

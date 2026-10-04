@@ -1,3 +1,4 @@
+// expect: cannot cast a value of type 'textu' to 'int'
 fn inisiu() {
     int n = (int) "5";
 }

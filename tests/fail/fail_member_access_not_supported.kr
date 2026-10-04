@@ -1,3 +1,4 @@
+// expect: member access requires a molda value
 fn inisiu() {
     int valor = 1;
     mostra(valor.campo);

@@ -1,3 +1,4 @@
+// expect: argument 1 of 'paniku': expected 'textu', got 'int'
 fn inisiu() {
     paniku(42);
 }

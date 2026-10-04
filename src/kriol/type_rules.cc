@@ -1,5 +1,7 @@
 #include "../../include/kriol/type_rules.hh"
 
+#include <optional>
+
 #include <algorithm>
 #include <string>
 
@@ -31,17 +33,36 @@ Type divisionResultType(const Type& lhs, const Type& rhs) {
     return promotedNumericType(lhs, rhs);
 }
 
-const LiteralExpr* integerLiteralExpr(const Expr* expr, bool& negative) {
-    if (!expr) return nullptr;
-    if (auto* par = dynamic_cast<const ParExpr*>(expr))
-        return integerLiteralExpr(par->Content.get(), negative);
+static const Expr* stripParens(const Expr* expr) {
+    while (auto* par = dynamic_cast<const ParExpr*>(expr))
+        expr = par->Content.get();
+    return expr;
+}
+
+bool isIntegerLiteralExpr(const Expr* expr) {
+    expr = stripParens(expr);
+    if (auto* unary = dynamic_cast<const UnaryExpr*>(expr))
+        return (unary->Op == "-" || unary->Op == "~") && isIntegerLiteralExpr(unary->Operand.get());
+    auto* lit = dynamic_cast<const LiteralExpr*>(expr);
+    return lit && lit->Type.isInteger();
+}
+
+std::optional<long long> integerLiteralValue(const Expr* expr) {
+    expr = stripParens(expr);
     if (auto* unary = dynamic_cast<const UnaryExpr*>(expr)) {
-        if (unary->Op != "-") return nullptr;
-        negative = !negative;
-        return integerLiteralExpr(unary->Operand.get(), negative);
+        auto operand = integerLiteralValue(unary->Operand.get());
+        if (!operand) return std::nullopt;
+        if (unary->Op == "-") return -*operand;
+        if (unary->Op == "~") return ~*operand;
+        return std::nullopt;
     }
     auto* lit = dynamic_cast<const LiteralExpr*>(expr);
-    return lit && lit->Type.isInteger() ? lit : nullptr;
+    if (!lit || !lit->Type.isInteger()) return std::nullopt;
+    try {
+        return std::stoll(lit->Value);
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 const LiteralExpr* underlyingNumericLiteral(const Expr* expr) {
@@ -59,17 +80,14 @@ const LiteralExpr* underlyingNumericLiteral(const Expr* expr) {
 bool integerLiteralFitsType(const Expr* expr, const Type& to) {
     if (!to.isInteger()) return false;
 
-    bool negative = false;
-    auto* lit = integerLiteralExpr(expr, negative);
-    if (!lit) return false;
+    // In an unsigned type, ~n flips the bits of n within the type's width.
+    auto* unary = dynamic_cast<const UnaryExpr*>(stripParens(expr));
+    if (unary && unary->Op == "~" && !to.isSigned())
+        return integerLiteralFitsType(unary->Operand.get(), to);
 
-    long long value = 0;
-    try {
-        value = std::stoll(lit->Value);
-    } catch (...) {
-        return false;
-    }
-    if (negative) value = -value;
+    const auto literal = integerLiteralValue(expr);
+    if (!literal) return false;
+    const long long value = *literal;
 
     const unsigned bits = to.bitWidth();
     if (bits == 0 || bits > 64) return false;
@@ -92,10 +110,8 @@ Type promotedNumericTypeForExpr(const Expr* lhsExpr,
                                        const Type& lhs,
                                        const Type& rhs) {
     if (lhs.isInteger() && rhs.isInteger()) {
-        bool ignored = false;
-        const bool lhsLiteral = integerLiteralExpr(lhsExpr, ignored) != nullptr;
-        ignored = false;
-        const bool rhsLiteral = integerLiteralExpr(rhsExpr, ignored) != nullptr;
+        const bool lhsLiteral = isIntegerLiteralExpr(lhsExpr);
+        const bool rhsLiteral = isIntegerLiteralExpr(rhsExpr);
 
         if (lhsLiteral && !rhsLiteral && integerLiteralFitsType(lhsExpr, rhs))
             return rhs;

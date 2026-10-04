@@ -1,3 +1,4 @@
+// expect: function 'so_un_ramu' does not return on all paths
 // ERROR: non-void function where only one branch returns.
 fn so_un_ramu(num x) num {
     si x > 0 {

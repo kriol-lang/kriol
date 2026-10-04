@@ -1,3 +1,4 @@
+// expect: bitwise operator '|' requires integer operands, got 'bool' and 'bool'
 fn inisiu() {
     bool a = sin;
     bool b = a | nau;

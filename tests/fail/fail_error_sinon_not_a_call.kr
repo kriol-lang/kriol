@@ -1,3 +1,4 @@
+// expect: 'sinon' expects a call to a function that can fail
 fn inisiu() {
     int y = 1;
     int x = y sinon 2;

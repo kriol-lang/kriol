@@ -1,3 +1,4 @@
+// expect: variable 'x' already declared in this scope
 // ERROR: same variable declared twice in the same scope.
 fn inisiu() {
     int x = 1;

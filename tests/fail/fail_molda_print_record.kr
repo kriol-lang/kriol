@@ -1,3 +1,4 @@
+// expect: cannot print value of type 'Pessoa'
 molda Pessoa {
     textu nomi;
     int idadi;

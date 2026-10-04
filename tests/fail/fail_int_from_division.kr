@@ -1,3 +1,4 @@
+// expect: cannot assign value of type 'num' to variable 'b' of type 'int'
 fn inisiu() {
     int b = 7 / 2;
 }

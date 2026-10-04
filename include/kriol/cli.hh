@@ -64,7 +64,6 @@ namespace kriol::cli
         std::string outputPath;
         std::vector<unsigned char> outputBytes;
         std::vector<std::string> diagnostics;
-        // Problems that did not stop the compilation.
         std::vector<std::string> warnings;
     };
 

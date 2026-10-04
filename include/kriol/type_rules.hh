@@ -3,6 +3,8 @@
 
 #include "ast.hh"
 
+#include <optional>
+
 namespace kriol {
 namespace typerules {
 
@@ -22,9 +24,12 @@ Type promotedNumericTypeForExpr(const ast::Expr* lhsExpr,
                                 const Type& lhs,
                                 const Type& rhs);
 
-// The integer literal under any parentheses and unary minus signs, or null;
-// `negative` flips once per minus sign.
-const ast::LiteralExpr* integerLiteralExpr(const ast::Expr* expr, bool& negative);
+// Whether `expr` is an integer literal under any parentheses, unary minus
+// and bitwise-not operators.
+bool isIntegerLiteralExpr(const ast::Expr* expr);
+
+// The value of such an expression computed in 64 bits, or nullopt.
+std::optional<long long> integerLiteralValue(const ast::Expr* expr);
 
 // The numeric literal under any parentheses and unary minus signs, or null.
 const ast::LiteralExpr* underlyingNumericLiteral(const ast::Expr* expr);

@@ -1,3 +1,4 @@
+// expect: nested function declarations are not supported; declare 'inner' at the top level
 fn inisiu() {
     fn inner() {
         mostran("inner");

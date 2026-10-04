@@ -35,14 +35,16 @@ if ($Pre) {
     $releases = @(Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest")
 }
 
-$asset = $releases |
-    ForEach-Object { $_.assets } |
-    Where-Object { $_.name -like '*-windows-x86_64.zip' } |
+$AssetPattern = '*-windows-x86_64.zip'
+$release = $releases |
+    Where-Object { $_.assets | Where-Object { $_.name -like $AssetPattern } } |
     Select-Object -First 1
 
-if (-not $asset) {
+if (-not $release) {
     throw 'Could not find a Windows x86_64 release asset. Try -Pre, or download a release manually.'
 }
+$asset = $release.assets | Where-Object { $_.name -like $AssetPattern } | Select-Object -First 1
+$checksums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' } | Select-Object -First 1
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory $temp | Out-Null
@@ -51,6 +53,22 @@ try {
     $archive = Join-Path $temp $asset.name
     Write-Host "Downloading $($asset.name)..."
     Invoke-WebRequest $asset.browser_download_url -OutFile $archive -UseBasicParsing
+
+    if ($checksums) {
+        $sumsFile = Join-Path $temp $checksums.name
+        Invoke-WebRequest $checksums.browser_download_url -OutFile $sumsFile -UseBasicParsing
+        $expected = Get-Content $sumsFile |
+            ForEach-Object { $hash, $file = $_ -split '\s+', 2; if ($file -and $file.TrimStart('*') -eq $asset.name) { $hash } } |
+            Select-Object -First 1
+        if (-not $expected) {
+            throw "$($checksums.name) has no entry for $($asset.name)."
+        }
+        if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) {
+            throw "The checksum of $($asset.name) does not match $($checksums.name); the download may be corrupted."
+        }
+    } else {
+        Write-Warning "The release has no SHA256SUMS.txt, so $($asset.name) was not verified."
+    }
 
     Write-Host 'Extracting...'
     Expand-Archive $archive -DestinationPath $temp
@@ -64,24 +82,28 @@ try {
     # folder is installed together.
     New-Item -ItemType Directory $InstallDir -Force | Out-Null
     Copy-Item (Join-Path $kriol.DirectoryName '*') $InstallDir -Recurse -Force
+    $installed = Get-ChildItem $kriol.DirectoryName -Recurse -File |
+        ForEach-Object { Join-Path $InstallDir $_.FullName.Substring($kriol.DirectoryName.Length) }
 } finally {
     Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host ''
-Write-Host "-> Kriol installed successfully at: $InstallDir\kriol.exe"
-Write-Host ''
-
 # The binaries are not code-signed yet, so drop any downloaded-from-the-internet
-# mark and check that Windows actually lets kriol.exe run.
-Get-ChildItem $InstallDir -Recurse -File | Unblock-File -ErrorAction SilentlyContinue
+# mark from the installed files and check that Windows actually lets kriol.exe run.
+$installed | Unblock-File -ErrorAction SilentlyContinue
 $runs = $false
 try {
     & (Join-Path $InstallDir 'kriol.exe') --version *> $null
     $runs = $LASTEXITCODE -eq 0
 } catch {}
 
-if (-not $runs) {
+Write-Host ''
+if ($runs) {
+    Write-Host "-> Kriol installed successfully at: $InstallDir\kriol.exe"
+    Write-Host ''
+} else {
+    Write-Host "-> Kriol installed at: $InstallDir\kriol.exe"
+    Write-Host ''
     Write-Warning 'Windows did not let kriol.exe run. Windows support is experimental and'
     Write-Warning 'the binaries are not code-signed yet, so Smart App Control or an App'
     Write-Warning 'Control policy may block them. For workarounds, see:'

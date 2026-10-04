@@ -1,3 +1,4 @@
+// expect: sai() expects an integer exit code, got value of type 'textu'
 // sai() requires an integer exit code, not a string.
 fn inisiu() {
     sai("adeus");

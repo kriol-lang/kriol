@@ -17,6 +17,15 @@ fn inisiu() {
     konfirma(low == 3);
     konfirma(~mask == 240);
 
+    // ~ of a literal adopts the type it is used with, like any literal.
+    u8 all = ~0;
+    konfirma(all == 255);
+    u8 odd = 201;
+    u8 even = odd & ~1;
+    konfirma((mask & ~1) == 14 && even == 200);
+    i8 minus = ~0;
+    konfirma(minus == -1);
+
     int v = 6;
     v &= 3;
     konfirma(v == 2);

@@ -27,6 +27,7 @@ fn inisiu() : Erru {
     konfirma((num::konverti("1.") sinon -1.0) == -1.0);
     konfirma((num::konverti("nan") sinon -1.0) == -1.0);
     konfirma((f32::konverti("0.5") sinon -1.0) == 0.5);
+    konfirma((f32::konverti("1e300") sinon -1.0) == -1.0);
     konfirma(bool::konverti("sin") sinon nau);
     konfirma(!(bool::konverti("nau") sinon sin));
     konfirma(bool::konverti("true") sinon sin);

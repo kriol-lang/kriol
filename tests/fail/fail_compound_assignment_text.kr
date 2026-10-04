@@ -1,3 +1,4 @@
+// expect: compound assignment operator '+=' requires a numeric target, got 'textu'
 fn inisiu() {
     textu nome = "Ana";
     nome += " Maria";

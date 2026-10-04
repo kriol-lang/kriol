@@ -1,5 +1,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/CFG.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
@@ -35,7 +36,6 @@ LLD_HAS_DRIVER(wasm)
 #include <algorithm>
 
 #include "../../include/kriol/codegen.hh"
-#include <llvm/IR/Intrinsics.h>
 #include "../../include/kriol/type_rules.hh"
 
 using namespace kriol::ast;
@@ -1009,11 +1009,11 @@ llvm::Value* CodeGenVisitor::createArrayElementPtr(llvm::Value* storage,
     return Builder->CreateGEP(arrayTy, storage, {zero, index}, "array.elem.ptr");
 }
 
-CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
+CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr, bool allowTemporary) {
     if (!expr) return {};
 
     if (auto* par = dynamic_cast<ParExpr*>(expr))
-        return resolveLValue(par->Content.get());
+        return resolveLValue(par->Content.get(), allowTemporary);
 
     if (auto* ident = dynamic_cast<IdentExpr*>(expr)) {
         if (auto* alloca = lookupVar(ident->Name))
@@ -1024,7 +1024,7 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
     }
 
     if (auto* arr = dynamic_cast<ArrayAccessExpr*>(expr)) {
-        LValue base = resolveLValue(arr->Base.get());
+        LValue base = resolveLValue(arr->Base.get(), allowTemporary);
         if (!base.Ptr || !base.Type || !base.Type->isArrayTy()) return {};
 
         if (!arr->Index) return {};
@@ -1048,7 +1048,7 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
     if (auto* member = dynamic_cast<MemberAccessExpr*>(expr)) {
         if (!member->Base || !member->Base->ResolvedType.isNamed()) return {};
 
-        LValue base = resolveLValue(member->Base.get());
+        LValue base = resolveLValue(member->Base.get(), allowTemporary);
         if (!base.Ptr || !base.Type) return {};
 
         auto recordIt = Records.find(member->Base->ResolvedType.name());
@@ -1067,11 +1067,16 @@ CodeGenVisitor::LValue CodeGenVisitor::resolveLValue(ast::Expr* expr) {
         return {fieldPtr, structTy->getElementType(fieldIndex)};
     }
 
-    return {};
+    if (!allowTemporary) return {};
+    expr->accept(*this);
+    if (!LastValue) return {};
+    auto* temporary = createEntryAlloca(CurrentFunction, "tmp", LastValue->getType());
+    Builder->CreateStore(LastValue, temporary);
+    return {temporary, LastValue->getType()};
 }
 
 void CodeGenVisitor::visit(ArrayAccessExpr& node) {
-    LValue elem = resolveLValue(&node);
+    LValue elem = resolveLValue(&node, true);
     if (!elem.Ptr || !elem.Type) { LastValue = nullptr; return; }
     LastValue = Builder->CreateLoad(elem.Type, elem.Ptr, "array.elem");
 }
@@ -1246,7 +1251,7 @@ llvm::StructType* CodeGenVisitor::failableResultType(const Type& valueType) {
     std::vector<llvm::Type*> elements{llvm::Type::getInt1Ty(Context)};
     if (!valueType.isVoid())
         elements.push_back(mapType(valueType));
-    elements.push_back(getOrCreateRecordType("Erru"));
+    elements.push_back(getOrCreateRecordType(prelude::ErrorTypeName));
     return llvm::StructType::get(Context, elements);
 }
 
@@ -1254,6 +1259,28 @@ llvm::Type* CodeGenVisitor::functionReturnType(const ast::FuncDeclSttmt& node) {
     if (node.Name == "inisiu") return llvm::Type::getInt32Ty(Context);
     if (node.CanFail()) return failableResultType(node.Type);
     return mapType(node.Type);
+}
+
+llvm::Value* CodeGenVisitor::erruMessage(llvm::Value* erru) {
+    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
+    const unsigned index = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
+    return Builder->CreateExtractValue(erru, {index}, "error.message");
+}
+
+llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Value* failed,
+                                                llvm::Value* value, llvm::Value* message) {
+    auto* resultTy = failableResultType(valueType);
+    const unsigned erruIndex = resultTy->getNumElements() - 1;
+    auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(erruIndex));
+    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
+    const unsigned messageIndex = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
+    llvm::Value* erru = Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+
+    llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
+    result = Builder->CreateInsertValue(result, failed, {0u});
+    if (value)
+        result = Builder->CreateInsertValue(result, value, {1u});
+    return Builder->CreateInsertValue(result, erru, {erruIndex}, "result");
 }
 
 static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMContext& Context) {
@@ -1268,9 +1295,7 @@ static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMC
 
 void CodeGenVisitor::emitFailure(llvm::Value* erruValue) {
     if (CurrentIsMain) {
-        const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
-        llvm::Value* message = Builder->CreateExtractValue(erruValue, {messageIndex}, "error.message");
-        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context), {message});
+        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context), {erruMessage(erruValue)});
         Builder->CreateUnreachable();
         return;
     }
@@ -1282,20 +1307,10 @@ void CodeGenVisitor::emitFailure(llvm::Value* erruValue) {
     Builder->CreateRet(result);
 }
 
-static llvm::Function* getOrDeclarePanicAt(llvm::Module& Mod, llvm::LLVMContext& Context) {
-    if (auto* fn = Mod.getFunction("__kriol_panic_at")) return fn;
+void CodeGenVisitor::emitConversionCall(TypeCallExpr& node) {
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
     auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy, i32Ty}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", Mod);
-    fn->addFnAttr(llvm::Attribute::NoReturn);
-    return fn;
-}
-
-void CodeGenVisitor::emitConversionCall(FunCallExpr& node) {
-    auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* i32Ty = llvm::Type::getInt32Ty(Context);
-    const Type& target = node.ConvertTarget;
+    const Type& target = node.OwnerType;
 
     node.Args->Args[0]->accept(*this);
     llvm::Value* text = LastValue;
@@ -1308,31 +1323,27 @@ void CodeGenVisitor::emitConversionCall(FunCallExpr& node) {
         return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, name, *Mod);
     };
 
-    // The runtime stores the converted value in `slot` (as i64, double or i32)
-    // and returns 1 on success, or sets the message in `errorSlot` and returns 0.
     auto* errorSlot = createEntryAlloca(CurrentFunction, "konverti.error", ptrTy);
     Builder->CreateStore(llvm::ConstantPointerNull::get(ptrTy), errorSlot);
+    auto* bits = llvm::ConstantInt::get(i32Ty, target.bitWidth());
 
     llvm::Type* slotTy;
-    llvm::Value* ok;
     llvm::AllocaInst* slot;
+    llvm::Value* ok;
     if (target.isInteger()) {
         slotTy = llvm::Type::getInt64Ty(Context);
         slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
-        Builder->CreateStore(llvm::ConstantInt::get(slotTy, 0), slot);
         ok = Builder->CreateCall(declare("__kriol_convert_int", {ptrTy, ptrTy, i32Ty, i32Ty, ptrTy}),
-                                 {text, slot, llvm::ConstantInt::get(i32Ty, target.bitWidth()),
-                                  llvm::ConstantInt::get(i32Ty, target.isSigned() ? 1 : 0), errorSlot});
+                                 {text, slot, bits, llvm::ConstantInt::get(i32Ty, target.isSigned() ? 1 : 0),
+                                  errorSlot});
     } else if (target.isFloat()) {
         slotTy = llvm::Type::getDoubleTy(Context);
         slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
-        Builder->CreateStore(llvm::ConstantFP::get(slotTy, 0.0), slot);
-        ok = Builder->CreateCall(declare("__kriol_convert_float", {ptrTy, ptrTy, ptrTy}),
-                                 {text, slot, errorSlot});
+        ok = Builder->CreateCall(declare("__kriol_convert_float", {ptrTy, ptrTy, i32Ty, ptrTy}),
+                                 {text, slot, bits, errorSlot});
     } else {
         slotTy = i32Ty;
         slot = createEntryAlloca(CurrentFunction, "konverti.value", slotTy);
-        Builder->CreateStore(llvm::ConstantInt::get(slotTy, 0), slot);
         ok = Builder->CreateCall(declare("__kriol_convert_bool", {ptrTy, ptrTy, ptrTy}),
                                  {text, slot, errorSlot});
     }
@@ -1346,16 +1357,13 @@ void CodeGenVisitor::emitConversionCall(FunCallExpr& node) {
     else
         value = Builder->CreateICmpNE(raw, llvm::ConstantInt::get(i32Ty, 0), "konverti.bool");
 
-    auto* resultTy = failableResultType(target);
-    auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(2));
-    const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
     llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "konverti.message");
-    llvm::Value* erru = Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+    LastValue = makeFailableResult(target, Builder->CreateIsNull(ok, "konverti.failed"), value, message);
+}
 
-    llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
-    result = Builder->CreateInsertValue(result, Builder->CreateIsNull(ok, "konverti.failed"), {0u});
-    result = Builder->CreateInsertValue(result, value, {1u});
-    LastValue = Builder->CreateInsertValue(result, erru, {2u}, "konverti.result");
+void CodeGenVisitor::visit(TypeCallExpr& node) {
+    emitConversionCall(node);
+    emitUnhandledFailureCheck(node);
 }
 
 void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
@@ -1370,10 +1378,8 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 
     Builder->SetInsertPoint(failBB);
     llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
-    const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
-    llvm::Value* message = Builder->CreateExtractValue(error, {messageIndex}, "error.message");
-    Builder->CreateCall(getOrDeclarePanicAt(*Mod, Context),
-                        {message, llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
+    Builder->CreateCall(getOrDeclarePanicAt(),
+                        {erruMessage(error), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
     Builder->CreateUnreachable();
 
     Builder->SetInsertPoint(okBB);
@@ -1383,7 +1389,8 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     node.Operand->accept(*this);
     llvm::Value* result = LastValue;
-    if (!result) { LastValue = nullptr; return; }
+    if (!result)
+        throw std::runtime_error("internal error: failed to generate the call after 'tenta'");
 
     auto* resultTy = llvm::cast<llvm::StructType>(result->getType());
     auto* fn = Builder->GetInsertBlock()->getParent();
@@ -1402,7 +1409,8 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
 void CodeGenVisitor::emitSinon(BinExpr& node) {
     node.LHS->accept(*this);
     llvm::Value* result = LastValue;
-    if (!result) { LastValue = nullptr; return; }
+    if (!result)
+        throw std::runtime_error("internal error: failed to generate the call before 'sinon'");
 
     auto* fn = Builder->GetInsertBlock()->getParent();
     auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinon.fallback", fn);
@@ -1428,36 +1436,38 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     LastValue = phi;
 }
 
-void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
-    bool isMain = (node.Name == "inisiu");
-    std::string name = llvmFunctionName(node.Name);
-
+CodeGenVisitor::FuncSig CodeGenVisitor::makeFuncSig(const ast::FuncDeclSttmt& node) const {
     FuncSig sig;
-    sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
-    sig.canFail = node.CanFail();
-    if (node.Args) {
+    sig.retType = node.Name == "inisiu" ? Type::SignedInteger(32) : node.Type;
+    if (node.Args)
         for (auto& arg : node.Args->Args)
             sig.paramTypes.push_back(arg->Type);
-    }
-    FunctionSigs[name] = std::move(sig);
+    return sig;
+}
 
-    // already declared
-    if (Mod->getFunction(name)) return;
+llvm::Function* CodeGenVisitor::declareFunction(const ast::FuncDeclSttmt& node) {
+    const std::string name = llvmFunctionName(node.Name);
+    if (auto* fn = Mod->getFunction(name)) return fn;
 
     std::vector<llvm::Type*> paramTypes;
-    if (node.Args) {
+    if (node.Args)
         for (auto& arg : node.Args->Args)
             paramTypes.push_back(mapType(arg->Type));
-    }
 
     auto* ftype = llvm::FunctionType::get(functionReturnType(node), paramTypes, false);
-    llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
+    return llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
+}
+
+void CodeGenVisitor::forwardDeclareFunc(ast::FuncDeclSttmt& node) {
+    FunctionSigs[llvmFunctionName(node.Name)] = makeFuncSig(node);
+    declareFunction(node);
 }
 
 void CodeGenVisitor::visit(BlockSttmt& node) {
     // At program root forward-declare all user functions
     // so that forward calls and mutual recursion resolve in codegen.
     if (!CurrentFunction) {
+        registerRecord(*ErrorTypeDecl);
         for (auto& s : node.SttmtList)
             if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
                 registerRecord(*rec);
@@ -1529,30 +1539,11 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     bool isMain = (node.Name == "inisiu");
     std::string name = llvmFunctionName(node.Name);
 
-    FuncSig sig;
-    sig.retType = isMain ? Type::SignedInteger(32) : node.Type;
-    sig.canFail = node.CanFail();
-    if (node.Args) {
-        for (auto& arg : node.Args->Args)
-            sig.paramTypes.push_back(arg->Type);
-    }
+    FuncSig sig = makeFuncSig(node);
     FunctionSigs[name] = sig;
 
-    std::vector<llvm::Type*> paramTypes;
-    if (node.Args) {
-        for (auto& arg : node.Args->Args)
-            paramTypes.push_back(mapType(arg->Type));
-    }
-
-    llvm::Type* retTy = functionReturnType(node);
-
-    // Get the function if it was already forward-declared, otherwise create it now.
-    auto* fn = Mod->getFunction(name);
-
-    if (!fn) {
-        auto* ftype = llvm::FunctionType::get(retTy, paramTypes, false);
-        fn = llvm::Function::Create(ftype, functionLinkage(node.Name), name, *Mod);
-    }
+    auto* fn = declareFunction(node);
+    llvm::Type* retTy = fn->getReturnType();
 
     if (node.Args) {
         size_t i = 0;
@@ -1757,11 +1748,6 @@ void CodeGenVisitor::visit(FuncCallArgs& node) {
 }
 
 void CodeGenVisitor::visit(FunCallExpr& node) {
-    if (node.ConvertTarget.valid()) {
-        emitConversionCall(node);
-        emitUnhandledFailureCheck(node);
-        return;
-    }
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) { LastValue = nullptr; return; }
     if (emitPreludeCall(node, callee->Name)) {

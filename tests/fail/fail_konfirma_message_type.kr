@@ -1,3 +1,4 @@
+// expect: argument 2 of 'konfirma': expected 'textu', got 'int'
 fn inisiu() {
     konfirma(sin, 42);
 }

@@ -1,3 +1,4 @@
+// expect: integer literal '99999999999999999999999' is out of range
 fn inisiu() {
     int x = 99999999999999999999999;
     mostran(x);

@@ -1,3 +1,4 @@
+// expect: program must define an entry function 'fn inisiu()'
 fn helper() int {
     divolvi 1;
 }

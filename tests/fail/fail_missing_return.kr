@@ -1,3 +1,4 @@
+// expect: function 'sen_retornu' does not return on all paths
 // ERROR: non-void function that never returns.
 fn sen_retornu() num {
     int x = 42;

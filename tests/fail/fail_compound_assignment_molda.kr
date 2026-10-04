@@ -1,3 +1,4 @@
+// expect: compound assignment operator '+=' requires a numeric target, got 'Pessoa'
 molda Pessoa {
     textu nomi;
     int idadi;

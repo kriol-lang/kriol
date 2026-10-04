@@ -1,3 +1,4 @@
+// expect: f-string interpolation: cannot format value of type 'Pessoa[1]'
 molda Pessoa {
     textu nomi;
     int idadi;

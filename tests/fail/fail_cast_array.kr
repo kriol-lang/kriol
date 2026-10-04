@@ -1,4 +1,9 @@
+// expect: cannot cast a value of type 'int[2]' to 'int'
+molda Par {
+    int[2] v;
+}
+
 fn inisiu() {
-    int[2] a = (int[]) [1, 2];
-    int n = (int) a;
+    Par p = Par::{v: [1, 2]};
+    int n = (int) p.v;
 }

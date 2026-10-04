@@ -1,3 +1,4 @@
+// expect: invalid assignment target
 fn identidade(int valor) int {
     divolvi valor;
 }

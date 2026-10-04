@@ -1,3 +1,4 @@
+// expect: unary operator '-' requires a numeric operand, got 'textu'
 fn inisiu() {
     mostran(-"abc");
 }

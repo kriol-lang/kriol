@@ -1,3 +1,4 @@
+// expect: 'lansa' expects a value of type 'Erru', got 'textu'
 fn f() : Erru {
     lansa "texto";
 }

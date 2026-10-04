@@ -1,3 +1,4 @@
+// expect: argument 1 of 'toma': expected 'textu', got 'int'
 fn inisiu() : Erru {
     textu nome = tenta toma(42);
     mostran(nome);

@@ -1,3 +1,4 @@
+// expect: molda type name 'pessoa' must start with an uppercase letter
 molda pessoa {
     textu nomi;
 }

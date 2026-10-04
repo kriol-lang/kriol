@@ -1,3 +1,4 @@
+// expect: prelude function 'konfirma' expects 1 or 2 argument(s), got 0
 fn inisiu() {
     konfirma();
 }

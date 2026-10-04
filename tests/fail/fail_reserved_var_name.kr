@@ -1,1 +1,2 @@
+// expect: syntax error, unexpected (, expecting =
 int mostran() = 9;

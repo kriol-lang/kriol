@@ -1,3 +1,4 @@
+// expect: bitwise operator '~' requires an integer operand, got 'num'
 fn inisiu() {
     num a = 1.5;
     num b = ~a;

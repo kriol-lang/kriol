@@ -5,6 +5,7 @@
  */
 
 #include <stdio.h>
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -285,7 +286,8 @@ static char* __kriol_read_console_line(HANDLE console, const char** error) {
             break;
     }
 
-    if (len == 0) {
+    /* Ctrl+Z at the start of a line is the console's end of input. */
+    if (len == 0 || wide[0] == 0x1A) {
         free(wide);
         *error = "end of input";
         return NULL;
@@ -489,6 +491,20 @@ char* __kriol_array_to_text(const void* data, int64_t count, int32_t kind, int32
  * Each function returns 1 and stores the value on success. On failure it
  * returns 0 and stores a message in *error. Surrounding white space is ignored. */
 
+/* Error messages quote at most this many bytes of the input. */
+#define KRIOL_QUOTE_MAX 40
+
+static int __kriol_quote_length(const char* text) {
+    size_t cut = strlen(text);
+    if (cut <= KRIOL_QUOTE_MAX) return (int)cut;
+    cut = KRIOL_QUOTE_MAX;
+    while (cut > 0 && ((unsigned char)text[cut] & 0xC0) == 0x80) --cut;  /* UTF-8 boundary */
+    return (int)cut;
+}
+
+/* The arguments for a "%.*s%s" that quotes `text`, cut short when long. */
+#define KRIOL_QUOTE(text) __kriol_quote_length(text), (text), (strlen(text) > KRIOL_QUOTE_MAX ? "..." : "")
+
 static int __kriol_is_space(char ch) {
     return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
 }
@@ -513,7 +529,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
         ++p;
     }
     if (p == end) {
-        *error = __kriol_format("invalid integer '%s'", text);
+        *error = __kriol_format("invalid integer '%.*s%s'", KRIOL_QUOTE(text));
         return 0;
     }
 
@@ -521,7 +537,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
     int overflow = 0;
     for (; p < end; ++p) {
         if (*p < '0' || *p > '9') {
-            *error = __kriol_format("invalid integer '%s'", text);
+            *error = __kriol_format("invalid integer '%.*s%s'", KRIOL_QUOTE(text));
             return 0;
         }
         unsigned digit = (unsigned)(*p - '0');
@@ -540,7 +556,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
         overflow = 1;
 
     if (overflow || magnitude > limit) {
-        *error = __kriol_format("'%s' does not fit in '%c%d'", text, is_signed ? 'i' : 'u', (int)bits);
+        *error = __kriol_format("'%.*s%s' does not fit in '%c%d'", KRIOL_QUOTE(text), is_signed ? 'i' : 'u', (int)bits);
         return 0;
     }
 
@@ -548,7 +564,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
     return 1;
 }
 
-int __kriol_convert_float(const char* text, double* out, const char** error) {
+int __kriol_convert_float(const char* text, double* out, int32_t bits, const char** error) {
     const char* begin;
     const char* end;
     __kriol_trim(text, &begin, &end);
@@ -573,13 +589,13 @@ int __kriol_convert_float(const char* text, double* out, const char** error) {
         valid = p > exponent;
     }
     if (!valid || p != end) {
-        *error = __kriol_format("invalid number '%s'", text);
+        *error = __kriol_format("invalid number '%.*s%s'", KRIOL_QUOTE(text));
         return 0;
     }
 
     double value = strtod(begin, NULL);
-    if (value == HUGE_VAL || value == -HUGE_VAL) {
-        *error = __kriol_format("number '%s' is out of range", text);
+    if (isinf(value) || (bits == 32 && fabs(value) > FLT_MAX)) {
+        *error = __kriol_format("number '%.*s%s' is out of range", KRIOL_QUOTE(text));
         return 0;
     }
     *out = value;
@@ -600,7 +616,7 @@ int __kriol_convert_bool(const char* text, int32_t* out, const char** error) {
         *out = 0;
         return 1;
     }
-    *error = __kriol_format("invalid boolean '%s' (expected sin or nau)", text);
+    *error = __kriol_format("invalid boolean '%.*s%s' (expected sin or nau)", KRIOL_QUOTE(text));
     return 0;
 }
 

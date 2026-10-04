@@ -1,3 +1,4 @@
+// expect: prelude function 'paniku' expects 1 argument(s), got 0
 fn inisiu() {
     paniku();
 }

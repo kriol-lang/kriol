@@ -1,3 +1,4 @@
+// expect: undefined variable name 'x'
 // ERROR: variable used before it is declared.
 fn inisiu() {
     mostra(x);

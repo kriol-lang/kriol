@@ -1,3 +1,4 @@
+// expect: only declarations (variables, functions, molda, imports) are allowed at the top level
 mostran("no function here");
 
 fn inisiu() {

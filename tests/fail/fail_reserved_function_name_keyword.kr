@@ -1,3 +1,4 @@
+// expect: syntax error, unexpected si, expecting valid identifier
 fn si() {
 }
 

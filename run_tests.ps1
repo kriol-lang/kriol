@@ -38,6 +38,14 @@ function Invoke-Kriol([string[]] $Arguments) {
     return $LASTEXITCODE -eq 0
 }
 
+# The exit status and the combined output of one compiler run.
+function Get-KriolResult([string[]] $Arguments) {
+    # Windows PowerShell turns native stderr into terminating errors under 'Stop'.
+    $ErrorActionPreference = 'Continue'
+    $output = (& $Kriol @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    return [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
+}
+
 function Invoke-Program([string] $Exe, [string] $Stdin) {
     $info = [Diagnostics.ProcessStartInfo]::new($Exe)
     $info.UseShellExecute = $false
@@ -114,13 +122,18 @@ $ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("x"); }', '-o', (Join-Path
 $untouched = -not ($sentinels | Where-Object { (Get-Content $_ -ErrorAction SilentlyContinue) -ne 'precious' })
 Write-Result 'output directory left untouched' ($ok -and $untouched)
 
+# A '// expect: <text>' line names a diagnostic the compiler must report.
 foreach ($source in Get-Sources (Join-Path $Root 'tests/fail') '.kr') {
-    $rejected = -not (Invoke-Kriol @($source.FullName, '-o', (Join-Path $Work 'rejected.exe')))
+    $result = Get-KriolResult @($source.FullName, '-o', (Join-Path $Work 'rejected.exe'))
     $name = [IO.Path]::GetRelativePath($Root, $source.FullName)
-    if ($rejected) {
-        Write-Result $name $true ' (rejected)'
-    } else {
+    $expected = Select-String -Path $source.FullName -Pattern '^// expect: (.*)$' |
+        Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value }
+    if ($result.Ok) {
         Write-Result $name $false ' (should have been rejected)'
+    } elseif ($expected -and -not $result.Output.Contains($expected)) {
+        Write-Result $name $false " (expected: $expected)"
+    } else {
+        Write-Result $name $true ' (rejected)'
     }
 }
 

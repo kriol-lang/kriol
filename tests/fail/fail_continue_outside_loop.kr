@@ -1,3 +1,4 @@
+// expect: 'continue' used outside a loop
 // ERROR: kontinua (continue) used outside any loop.
 fn inisiu() {
     kontinua;

@@ -1,3 +1,4 @@
+// expect: missing field 'idadi' in 'Pessoa' literal
 molda Pessoa {
     textu nomi;
     int idadi;

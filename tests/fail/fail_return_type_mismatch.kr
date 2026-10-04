@@ -1,3 +1,4 @@
+// expect: returning 'textu' from function 'dobra' declared as 'int'
 fn dobra(int x) int {
     divolvi "nau e um int";
 }

@@ -1,3 +1,4 @@
+// expect: parameter 'g' needs 1600000 bytes of stack, over the limit of 1048576 bytes
 // Counts arrays inside molda too.
 molda Grandi {
     int[200000] xs;

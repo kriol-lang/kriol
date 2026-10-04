@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <cctype>
+#include <utility>
 
 using namespace kriol::ast;
 
@@ -23,6 +24,22 @@ static bool startsWithUppercaseAscii(const std::string& name) {
     return !name.empty() && std::isupper(static_cast<unsigned char>(name[0]));
 }
 
+const std::string erruName = prelude::ErrorTypeName;
+
+// Sets a member for the lifetime of the guard and restores it afterwards.
+template <typename T>
+class ScopedValue {
+public:
+    ScopedValue(T& target, T value) : Target(target), Saved(std::exchange(target, std::move(value))) {}
+    ~ScopedValue() { Target = std::move(Saved); }
+    ScopedValue(const ScopedValue&) = delete;
+    ScopedValue& operator=(const ScopedValue&) = delete;
+
+private:
+    T& Target;
+    T Saved;
+};
+
 }
 
 bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
@@ -37,6 +54,7 @@ bool SemanticAnalyzer::handleArrayIdentArg(ast::Expr& expr) {
 
     if (!isArrayType(*t)) return false;
 
+    checkNotSelfInitialized(ident->Name, ident->LineNum);
     ident->ResolvedType = *t;
     expr.ResolvedType = *t;
     return true;
@@ -54,7 +72,8 @@ static const std::unordered_set<std::string> reservedKeywords = {
 };
 
 bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
-    return reservedKeywords.count(name) != 0 || prelude::isPreludeName(name);
+    return reservedKeywords.count(name) != 0 || prelude::isPreludeName(name)
+        || name == erruName;
 }
 
 bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
@@ -125,9 +144,9 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
     FuncInfo info;
     info.retType = node.Type;
     info.canFail = node.CanFail();
-    if (node.CanFail() && node.ErrorTypeName != "Erru")
+    if (node.CanFail() && node.ErrorTypeName != erruName)
         addError(errLoc(node.LineNum) + "unknown error type '" + node.ErrorTypeName
-                 + "' in function '" + node.Name + "'; only 'Erru' can follow ':'");
+                 + "' in function '" + node.Name + "'; only '" + erruName + "' can follow ':'");
     validateTypeKnown(node.Type, node.LineNum, "return type of function '" + node.Name + "'");
     if (node.Args)
         for (auto& arg : node.Args->Args) {
@@ -138,8 +157,8 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
     FunctionTable[node.Name] = std::move(info);
 }
 
-void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node) {
-    if (!checkDeclaredNameValid(node.Name, "molda", node.LineNum)) return;
+void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node, bool builtin) {
+    if (!builtin && !checkDeclaredNameValid(node.Name, "molda", node.LineNum)) return;
 
     if (!startsWithUppercaseAscii(node.Name)) {
         addError(errLoc(node.LineNum) + "molda type name '" + node.Name
@@ -227,7 +246,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
                                                 int lineNum,
                                                 const std::string& context) {
     if (!isArrayType(expectedType)) {
-        addError(errLoc(lineNum) + context + " requires a non-array value; use an explicit '<T>[...]' array literal only for array targets");
+        addError(errLoc(lineNum) + context + " requires a non-array value; use an explicit '(T[])[...]' array literal only for array targets");
         return false;
     }
 
@@ -308,6 +327,7 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
                  + "only declarations (variables, functions, molda, imports) are allowed at the top level");
     }
 
+    registerRecord(*ErrorTypeDecl, true);
     for (auto& s : program->SttmtList) {
         if (auto* rec = dynamic_cast<MoldaDeclSttmt*>(s.get()))
             registerRecord(*rec);
@@ -370,6 +390,7 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
+    ScopedValue<std::string> initializing(InitializingVar, node.Name);
     const std::string kind = node.IsParam ? "parameter" : "variable";
     bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
 
@@ -422,7 +443,7 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (node.Value && !node.IsArray) {
         if (dynamic_cast<ArrayLiteralExpr*>(node.Value.get()) || dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
             addError(errLoc(node.LineNum) + kind + " '" + node.Name
-                     + "' uses an array initializer without an array target; declare an array type or use an explicit '<T>[...]' array literal where an array value is expected");
+                     + "' uses an array initializer without an array target; declare an array type or use an explicit '(T[])[...]' array literal where an array value is expected");
             return;
         }
 
@@ -544,18 +565,23 @@ void SemanticAnalyzer::visit(JumpSttmt& node) {
         addError(errLoc(node.LineNum) + "'" + node.Name + "' used outside a loop");
 }
 
+void SemanticAnalyzer::requireFallibleFunction(const std::string& keyword, int lineNum) {
+    if (CurrFuncCanFail) return;
+    const std::string example = CurrFuncName.empty() ? "f" : CurrFuncName;
+    addError(errLoc(lineNum) + "'" + keyword + "' can only be used in a function that declares an "
+             "error type, such as 'fn " + example + "(...) : " + erruName + "'");
+}
+
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
     const std::string loc = errLoc(node.LineNum);
 
     if (node.Throws) {
-        if (!CurrFuncCanFail)
-            addError(loc + "'lansa' can only be used in a function that declares an error type, "
-                     "such as 'fn " + CurrFuncName + "(...) : Erru'");
+        requireFallibleFunction("lansa", node.LineNum);
         if (node.ReturnValue) {
             node.ReturnValue->accept(*this);
             const Type& got = node.ReturnValue->ResolvedType;
-            if (got.valid() && got != Type::Named("Erru"))
-                addError(loc + "'lansa' expects a value of type 'Erru', got '" + got.str() + "'");
+            if (got.valid() && got != Type::Named(erruName))
+                addError(loc + "'lansa' expects a value of type '" + erruName + "', got '" + got.str() + "'");
         }
         return;
     }
@@ -581,56 +607,53 @@ void SemanticAnalyzer::visit(FuncCallArgs& node) {
     // Handled inside FunCallExpr
 }
 
-void SemanticAnalyzer::visitConversionCall(FunCallExpr& node, QualifiedAccessExpr& callee, bool handled) {
-    const std::string loc = errLoc(node.LineNum);
-    node.ResolvedType = Type::Invalid();
-    if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg) arg->accept(*this);
+void SemanticAnalyzer::visitArgs(FunCallExpr& node) {
+    if (!node.Args) return;
+    for (auto& arg : node.Args->Args)
+        if (arg) arg->accept(*this);
+}
 
-    auto* typeName = dynamic_cast<IdentExpr*>(callee.Qualifier.get());
-    if (!typeName || callee.Member != "konverti") {
-        addError(loc + "unknown function '" + (typeName ? typeName->Name : "?") + "::" + callee.Member
-                 + "'; the only function of a type is '<type>::konverti'");
+void SemanticAnalyzer::expectArgType(FunCallExpr& node, std::size_t index, const Type& expected,
+                                     const std::string& callee) {
+    const Type& got = node.Args->Args[index]->ResolvedType;
+    if (got.valid() && got != expected)
+        addError(errLoc(node.LineNum) + "argument " + std::to_string(index + 1) + " of '" + callee
+                 + "': expected '" + expected.str() + "', got '" + got.str() + "'");
+}
+
+void SemanticAnalyzer::visit(TypeCallExpr& node) {
+    const std::string loc = errLoc(node.LineNum);
+    const std::string callee = node.OwnerType.str() + "::" + node.Function;
+    node.ResolvedType = Type::Invalid();
+    node.ErrorHandled = (&node == HandledCall);
+    visitArgs(node);
+
+    if (node.Function != "konverti") {
+        addError(loc + "unknown function '" + callee + "'; the only function of a type is '<type>::konverti'");
         return;
     }
 
-    const Type target = Type::FromName(typeName->Name);
-    if (!target.isNumeric() && target != Type::Bool()) {
-        addError(loc + "cannot convert text to '" + typeName->Name
+    if (!node.OwnerType.isNumeric() && node.OwnerType != Type::Bool()) {
+        addError(loc + "cannot convert text to '" + node.OwnerType.str()
                  + "'; only numbers and 'bool' can be converted");
         return;
     }
 
     const size_t got = node.Args ? node.Args->Args.size() : 0;
-    if (got != 1) {
-        addError(loc + "'" + typeName->Name + "::konverti' expects 1 argument(s), got " + std::to_string(got));
-    } else {
-        const Type& argType = node.Args->Args[0]->ResolvedType;
-        if (argType.valid() && argType != Type::Text())
-            addError(loc + "argument 1 of '" + typeName->Name + "::konverti': expected 'textu', got '"
-                     + argType.str() + "'");
-    }
+    if (got != 1)
+        addError(loc + "'" + callee + "' expects 1 argument(s), got " + std::to_string(got));
+    else
+        expectArgType(node, 0, Type::Text(), callee);
 
-    // Like an unhandled toma(), an unhandled conversion stops the program when
-    // the text is invalid, without a warning.
-    node.ConvertTarget = target;
-    node.ResolvedType = target;
+    node.ResolvedType = node.OwnerType;
     node.Fallible = true;
-    node.ErrorHandled = handled;
 }
 
 void SemanticAnalyzer::visit(FunCallExpr& node) {
     const bool handled = (&node == HandledCall);
-    if (auto* qualified = dynamic_cast<QualifiedAccessExpr*>(node.Callee.get())) {
-        visitConversionCall(node, *qualified, handled);
-        return;
-    }
     auto* callee = unwrapIdentExpr(node.Callee.get());
     if (!callee) {
-        if (node.Args)
-            for (auto& arg : node.Args->Args)
-                if (arg) arg->accept(*this);
+        visitArgs(node);
         if (node.Callee) node.Callee->accept(*this);
         addError(errLoc(node.LineNum) + "expression is not callable");
         return;
@@ -656,31 +679,19 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             return;
 
         case prelude::Builtin::Toma:
-            // An unhandled toma() stops the program when the input ends, like an
-            // out-of-range index would; no warning, to keep simple programs simple.
             node.Fallible = true;
             node.ErrorHandled = handled;
-            if (node.Args)
-                for (auto& arg : node.Args->Args)
-                    if (arg) arg->accept(*this);
-            if (got > 1) {
+            visitArgs(node);
+            node.ResolvedType = Type::Text();
+            if (got > 1)
                 addError(loc + "prelude function 'toma' expects 0 or 1 argument(s), got "
                          + std::to_string(got));
-                node.ResolvedType = Type::Text();
-                return;
-            }
-            if (got == 1) {
-                const Type& t = node.Args->Args[0]->ResolvedType;
-                if (t.valid() && t != Type::Text())
-                    addError(loc + "argument 1 of 'toma': expected 'textu', got '" + t.str() + "'");
-            }
-            node.ResolvedType = Type::Text();
+            else if (got == 1)
+                expectArgType(node, 0, Type::Text(), "toma");
             return;
 
         case prelude::Builtin::Sai:
-            if (node.Args)
-                for (auto& arg : node.Args->Args)
-                    if (arg) arg->accept(*this);
+            visitArgs(node);
             if (got > 1) {
                 addError(loc + "prelude function 'sai' expects 0 or 1 argument(s), got "
                          + std::to_string(got));
@@ -695,51 +706,37 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             node.ResolvedType = Type::Void();
             return;
 
-        case prelude::Builtin::Konfirma:
-            if (node.Args)
-                for (auto& arg : node.Args->Args)
-                    if (arg) arg->accept(*this);
+        case prelude::Builtin::Konfirma: {
+            visitArgs(node);
+            node.ResolvedType = Type::Void();
             if (got < 1 || got > 2) {
                 addError(loc + "prelude function 'konfirma' expects 1 or 2 argument(s), got "
                          + std::to_string(got));
-                node.ResolvedType = Type::Void();
                 return;
             }
-            {
-                const Type& t = node.Args->Args[0]->ResolvedType;
-                if (t.valid() && t != Type::Bool() && !t.isInteger() && !t.isFloat())
-                    addError(loc + "konfirma() expects a boolean condition, got value of type '" + t.str() + "'");
-            }
-            if (got == 2) {
-                const Type& t = node.Args->Args[1]->ResolvedType;
-                if (t.valid() && t != Type::Text())
-                    addError(loc + "argument 2 of 'konfirma': expected 'textu', got '" + t.str() + "'");
-            }
-            node.ResolvedType = Type::Void();
+            const Type& cond = node.Args->Args[0]->ResolvedType;
+            if (cond.valid() && cond != Type::Bool() && !cond.isInteger() && !cond.isFloat())
+                addError(loc + "konfirma() expects a boolean condition, got value of type '" + cond.str() + "'");
+            if (got == 2)
+                expectArgType(node, 1, Type::Text(), "konfirma");
             return;
+        }
 
         case prelude::Builtin::Paniku:
-            if (node.Args)
-                for (auto& arg : node.Args->Args)
-                    if (arg) arg->accept(*this);
-            if (got != 1) {
+            visitArgs(node);
+            node.ResolvedType = Type::Void();
+            if (got != 1)
                 addError(loc + "prelude function 'paniku' expects 1 argument(s), got "
                          + std::to_string(got));
-            } else {
-                const Type& t = node.Args->Args[0]->ResolvedType;
-                if (t.valid() && t != Type::Text())
-                    addError(loc + "argument 1 of 'paniku': expected 'textu', got '" + t.str() + "'");
-            }
-            node.ResolvedType = Type::Void();
+            else
+                expectArgType(node, 0, Type::Text(), "paniku");
             return;
 
         case prelude::Builtin::None:
             break;
     }
 
-    if (node.Args)
-        for (auto& arg : node.Args->Args)
-            if (arg) arg->accept(*this);
+    visitArgs(node);
 
     auto it = FunctionTable.find(callee->Name);
     if (it == FunctionTable.end()) {
@@ -751,6 +748,9 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     node.ResolvedType = info.retType;
     node.Fallible = info.canFail;
     node.ErrorHandled = handled;
+    // Only functions declared with ': Erru' warn; an unhandled toma() or
+    // T::konverti() also stops the program on failure, but silently, to keep
+    // simple programs simple.
     if (info.canFail && !handled)
         addWarning(errLoc(node.LineNum) + "the error of '" + callee->Name + "' is not handled, so the "
                    "program stops if it fails; use 'tenta' or 'sinon'");
@@ -788,8 +788,10 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
         return false;
     }
 
-    HandledCall = call;
-    operand->accept(*this);
+    {
+        ScopedValue<const FunCallExpr*> handled(HandledCall, call);
+        operand->accept(*this);
+    }
     if (!call->Fallible) {
         addError(errLoc(lineNum) + "'" + keyword + "' applied to a call that cannot fail");
         return false;
@@ -852,6 +854,17 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         return;
     }
 
+    if (isBitwiseOp(node.Op)) {
+        if (lt.valid() && rt.valid() && (!lt.isInteger() || !rt.isInteger()))
+            addError(errLoc(node.LineNum) + "bitwise operator '" + node.Op
+                     + "' requires integer operands, got '" + lt.str()
+                     + "' and '" + rt.str() + "'");
+        node.ResolvedType = lt.isInteger() && rt.isInteger()
+            ? promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt)
+            : Type::Invalid();
+        return;
+    }
+
     if (!lt.isNumeric() || !rt.isNumeric()) {
         if (lt.valid() && rt.valid())
             addError(errLoc(node.LineNum) + "binary operator '" + node.Op
@@ -867,21 +880,12 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         node.ResolvedType = Type::Bool();
     } else if (node.Op == "/") {
         node.ResolvedType = divisionResultType(lt, rt);
-    } else if (isBitwiseOp(node.Op)) {
-        if (!lt.isInteger() || !rt.isInteger()) {
-            addError(errLoc(node.LineNum) + "bitwise operator '" + node.Op
-                     + "' requires integer operands, got '" + lt.str()
-                     + "' and '" + rt.str() + "'");
-            node.ResolvedType = Type::Invalid();
-            return;
-        }
-        node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
     } else {
         node.ResolvedType = promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt);
     }
 }
 
-bool SemanticAnalyzer::isBitwiseOp(const std::string& op) {
+bool SemanticAnalyzer::isBitwiseOp(std::string_view op) {
     return op == "&" || op == "|" || op == "^";
 }
 
@@ -924,6 +928,7 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
         return;
     }
 
+    checkNotSelfInitialized(node.Name, node.LineNum);
     node.ResolvedType = *t;
     if (isArrayType(*t))
         addError(errLoc(node.LineNum) + "array variable '" + node.Name + "' must be indexed");
@@ -952,6 +957,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
             addError(errLoc(node.LineNum) + "undefined array name '" + baseIdent->Name + "'");
             return;
         }
+        checkNotSelfInitialized(baseIdent->Name, node.LineNum);
         arrayType = *found;
         baseIdent->ResolvedType = arrayType;
     } else if (node.Base) {
@@ -1095,6 +1101,7 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
             addError(errLoc(lineNum) + "undefined variable name '" + ident->Name + "'");
             return Type::Invalid();
         }
+        checkNotSelfInitialized(ident->Name, lineNum);
         ident->ResolvedType = *t;
         expr->ResolvedType = *t;
         return *t;
@@ -1169,7 +1176,7 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
     const Type& valueType = node.Assigned->ResolvedType;
 
     if (node.AssignOp != "=" && assigneeType.valid()) {
-        const bool bitwise = isBitwiseOp(node.AssignOp.substr(0, node.AssignOp.size() - 1));
+        const bool bitwise = isBitwiseOp(std::string_view(node.AssignOp).substr(0, node.AssignOp.size() - 1));
         const char* required = bitwise ? "an integer" : "a numeric";
         const bool targetOk = bitwise ? assigneeType.isInteger() : assigneeType.isNumeric();
         const bool valueOk = bitwise ? valueType.isInteger() : valueType.isNumeric();
@@ -1235,8 +1242,7 @@ void SemanticAnalyzer::visit(CastExpr& node) {
     const Type& to = node.Target;
     const std::string loc = errLoc(node.LineNum);
 
-    // Only numbers and booleans convert among themselves; text conversion can
-    // fail, so it is left for a separate, fallible feature.
+    // Text goes through T::konverti instead, because that conversion can fail.
     const auto castable = [](const Type& t) { return t.isNumeric() || t == Type::Bool(); };
 
     if (!castable(to)) {
@@ -1251,11 +1257,14 @@ void SemanticAnalyzer::visit(CastExpr& node) {
     node.ResolvedType = to;
 }
 
+void SemanticAnalyzer::checkNotSelfInitialized(const std::string& name, int lineNum) {
+    if (name == InitializingVar)
+        addError(errLoc(lineNum) + "variable '" + name + "' is used in its own initializer");
+}
+
 void SemanticAnalyzer::visit(UnaryExpr& node) {
     if (node.Op == "tenta") {
-        if (!CurrFuncCanFail)
-            addError(errLoc(node.LineNum) + "'tenta' can only be used in a function that declares an "
-                     "error type, such as 'fn " + CurrFuncName + "(...) : Erru'");
+        requireFallibleFunction("tenta", node.LineNum);
         const bool valid = visitFallibleOperand(node.Operand.get(), "tenta", node.LineNum);
         node.ResolvedType = valid ? node.Operand->ResolvedType : Type::Invalid();
         return;

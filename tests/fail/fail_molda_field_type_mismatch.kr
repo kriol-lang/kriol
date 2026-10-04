@@ -1,3 +1,4 @@
+// expect: field 'nomi' of 'Pessoa': expected 'textu', got 'int'
 molda Pessoa {
     textu nomi;
     int idadi;

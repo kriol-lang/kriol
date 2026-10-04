@@ -137,14 +137,19 @@ rm -rf "$tmpdir"
 
 
 # ---- tests/fail/*.kr -------------------------------------------------------
+# A '// expect: <text>' line names a diagnostic the compiler must report.
 if [ -d "$ROOT/tests/fail" ]; then
     for f in "$ROOT"/tests/fail/*.kr; do
         [ -f "$f" ] || continue
         printf "  %-44s" "$f"
         tmpbin=$(mktemp /tmp/kriol_fail_bin_XXXX)
+        expected=$(sed -n 's|^// expect: ||p' "$f" | head -n 1)
 
-        if "$KRIOL" "$f" -o "$tmpbin" > /dev/null 2>&1; then
+        if output=$("$KRIOL" "$f" -o "$tmpbin" 2>&1); then
             echo " FAIL (should have been rejected)"
+            record_failure "$f"
+        elif [ -n "$expected" ] && ! printf '%s' "$output" | grep -Fq -- "$expected"; then
+            echo " FAIL (expected: $expected)"
             record_failure "$f"
         else
             echo " PASS (rejected)"; pass=$((pass+1))

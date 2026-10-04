@@ -1,3 +1,4 @@
+// expect: void expression cannot be used as an operand
 fn printHello() {
     mostran("Hello");
 }

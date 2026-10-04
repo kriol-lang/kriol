@@ -1,0 +1,22 @@
+// An array field of a value that is not stored in a variable can be indexed.
+molda Par {
+    int[3] v;
+}
+
+fn novu() Par {
+    divolvi Par::{v: [1, 2, 3]};
+}
+
+fn talvez(bool ok) Par : Erru {
+    si !ok {
+        lansa Erru::{mensage: "no"};
+    }
+    divolvi novu();
+}
+
+fn inisiu() {
+    konfirma(novu().v[1] == 2);
+    Par reserva = Par::{v: [7; 3]};
+    konfirma((talvez(sin) sinon reserva).v[2] == 3);
+    konfirma((talvez(nau) sinon reserva).v[0] == 7);
+}

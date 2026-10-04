@@ -1,3 +1,4 @@
+// expect: function 'soma' expects 2 argument(s), got 3
 fn soma(int a, int b) int {
     divolvi a + b;
 }

@@ -1,3 +1,4 @@
+// expect: array variable 'array' expects 2 initializer element(s), got 1
 fn inisiu() {
     int[2] array = [1];
 }

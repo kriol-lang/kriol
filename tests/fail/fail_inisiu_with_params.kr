@@ -1,3 +1,4 @@
+// expect: entry function 'inisiu' must not take parameters
 fn inisiu(int x) {
     mostran(x);
 }

@@ -43,6 +43,7 @@ namespace ast {
     class FStringExpr;
     class UnaryExpr;
     class CastExpr;
+    class TypeCallExpr;
 
     class Visitor {
     public:
@@ -75,6 +76,7 @@ namespace ast {
         virtual void visit(FStringExpr& node) = 0;
         virtual void visit(UnaryExpr& node) = 0;
         virtual void visit(CastExpr& node) = 0;
+        virtual void visit(TypeCallExpr& node) = 0;
     };
 
     class Sttmt {
@@ -217,9 +219,6 @@ namespace ast {
         // Whether a surrounding 'tenta' or 'sinon' handles the error. An
         // unhandled error stops the program at the call.
         bool ErrorHandled = false;
-        // For 'T::konverti(text)': the type the text converts to. Invalid for
-        // every other call.
-        kriol::Type ConvertTarget;
 
         FunCallExpr(std::unique_ptr<Expr> Callee, std::unique_ptr<FuncCallArgs> Args)
             : Callee(std::move(Callee)), Args(std::move(Args)) {
@@ -441,6 +440,18 @@ namespace ast {
             : Target(std::move(target)), Operand(std::move(operand)) {
             Depth = 1 + depthOf(Operand);
         }
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    /// `Type::Function(args)`: a call to a function that belongs to a type.
+    /// Sema resolves `Function`; the grammar accepts any name.
+    class TypeCallExpr : public FunCallExpr {
+    public:
+        kriol::Type OwnerType;
+        std::string Function;
+
+        TypeCallExpr(kriol::Type owner, std::string function, std::unique_ptr<FuncCallArgs> args)
+            : FunCallExpr(nullptr, std::move(args)), OwnerType(std::move(owner)), Function(std::move(function)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

@@ -1,3 +1,4 @@
 [submodule "include/external/bdwgc"]
 	path = include/external/bdwgc
 	url = https://github.com/ivmai/bdwgc
+	branch = release-8_2

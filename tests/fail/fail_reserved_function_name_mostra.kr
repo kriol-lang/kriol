@@ -1,3 +1,4 @@
+// expect: function name 'mostra' is reserved and cannot be redeclared
 fn mostra() {
 }
 

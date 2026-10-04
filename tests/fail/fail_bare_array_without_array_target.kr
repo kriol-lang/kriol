@@ -1,3 +1,4 @@
+// expect: variable 'valor' uses an array initializer without an array target; declare an array type or use an explicit '(T[])[...]' array literal where an array value is expected
 fn inisiu() {
     int valor = [1, 2];
 }

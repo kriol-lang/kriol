@@ -1,3 +1,4 @@
+// expect: cannot assign value of type 'int' to variable 'byte' of type 'u8'
 fn inisiu() {
     u8 byte = 300;
 }

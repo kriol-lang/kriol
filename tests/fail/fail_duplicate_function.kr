@@ -1,3 +1,4 @@
+// expect: duplicate function declaration 'soma'
 fn soma(int a, int b) int {
     divolvi a + b;
 }

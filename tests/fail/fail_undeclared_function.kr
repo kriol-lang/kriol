@@ -1,3 +1,4 @@
+// expect: undeclared function 'missingFunc'
 fn inisiu() {
     int x = missingFunc(3);
 }

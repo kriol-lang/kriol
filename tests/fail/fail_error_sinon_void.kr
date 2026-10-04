@@ -1,3 +1,4 @@
+// expect: 'sinon' needs a call that returns a value; this function returns nothing
 fn f() : Erru {
 }
 

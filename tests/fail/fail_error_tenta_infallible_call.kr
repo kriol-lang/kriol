@@ -1,3 +1,4 @@
+// expect: 'tenta' applied to a call that cannot fail
 fn f() int {
     divolvi 1;
 }

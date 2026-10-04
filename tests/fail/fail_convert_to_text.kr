@@ -1,3 +1,4 @@
+// expect: cannot convert text to 'textu'; only numbers and 'bool' can be converted
 fn inisiu() {
     textu t = textu::konverti("x") sinon "";
 }

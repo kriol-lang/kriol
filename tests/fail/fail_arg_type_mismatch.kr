@@ -1,3 +1,4 @@
+// expect: argument 1 of 'gritar': expected 'textu', got 'int'
 fn gritar(textu msg) {
     mostran(msg);
 }

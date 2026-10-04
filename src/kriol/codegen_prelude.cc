@@ -70,18 +70,6 @@ static llvm::Function* getOrDeclareRuntimeAssertMessage(llvm::Module& Mod, llvm:
     return llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_assert_message", Mod);
 }
 
-static llvm::Function* getOrDeclareRuntimePanicAt(llvm::Module& Mod, llvm::LLVMContext& Context)
-{
-    if (auto* fn = Mod.getFunction("__kriol_panic_at")) return fn;
-    auto* voidTy = llvm::Type::getVoidTy(Context);
-    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
-    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
-    auto* ftype  = llvm::FunctionType::get(voidTy, {ptrTy, i32Ty}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", Mod);
-    fn->addFnAttr(llvm::Attribute::NoReturn);
-    return fn;
-}
-
 static llvm::Function* getOrDeclareRuntimeBoolToString(llvm::Module& Mod, llvm::LLVMContext& Context)
 {
     if (auto* fn = Mod.getFunction("__kriol_bool_to_string")) return fn;
@@ -119,6 +107,18 @@ static llvm::Function* getOrDeclareRuntimeFormat(llvm::Module& Mod, llvm::LLVMCo
 }
 
 } // namespace
+
+llvm::Function* CodeGenVisitor::getOrDeclarePanicAt()
+{
+    if (auto* fn = Mod->getFunction("__kriol_panic_at")) return fn;
+    auto* voidTy = llvm::Type::getVoidTy(Context);
+    auto* i32Ty  = llvm::Type::getInt32Ty(Context);
+    auto* ptrTy  = llvm::PointerType::getUnqual(Context);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {ptrTy, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", *Mod);
+    fn->addFnAttr(llvm::Attribute::NoReturn);
+    return fn;
+}
 
 llvm::Value* CodeGenVisitor::emitArrayToText(llvm::Value* storage, const Type& arrayType) {
     const Type& element = arrayType.elementType();
@@ -162,24 +162,14 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             }
 
             // The runtime returns null and sets the message when the input ends
-            // or cannot be read; wrap that in the failable result of the call.
+            // or cannot be read.
             auto* errorSlot = createEntryAlloca(CurrentFunction, "toma.error", ptrTy);
             Builder->CreateStore(llvm::ConstantPointerNull::get(ptrTy), errorSlot);
             llvm::Value* line = Builder->CreateCall(getOrDeclareRuntimeReadLine(*Mod, Context),
                                                     {prompt, errorSlot}, "toma");
-            llvm::Value* failed = Builder->CreateIsNull(line, "toma.failed");
-
-            auto* resultTy = failableResultType(Type::Text());
-            auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(2));
-            const unsigned messageIndex = static_cast<unsigned>(Records.at("Erru").fieldIndex.at("mensage"));
             llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "toma.message");
-            llvm::Value* erru = Builder->CreateInsertValue(
-                llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
-
-            llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
-            result = Builder->CreateInsertValue(result, failed, {0u});
-            result = Builder->CreateInsertValue(result, line, {1u});
-            LastValue = Builder->CreateInsertValue(result, erru, {2u}, "toma.result");
+            LastValue = makeFailableResult(Type::Text(), Builder->CreateIsNull(line, "toma.failed"),
+                                           line, message);
             return true;
         }
 
@@ -231,7 +221,7 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             if (!message)
                 throw std::runtime_error("internal error: failed to generate the message of paniku");
             llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
-            Builder->CreateCall(getOrDeclareRuntimePanicAt(*Mod, Context), {message, line});
+            Builder->CreateCall(getOrDeclarePanicAt(), {message, line});
             Builder->CreateUnreachable();
             // Like sai(): later statements go into a fresh dead block.
             startDeadBlock();

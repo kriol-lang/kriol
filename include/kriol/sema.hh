@@ -3,8 +3,11 @@
 
 #include "ast.hh"
 #include "constants.hh"
+#include "prelude.hh"
 
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,8 +36,9 @@ namespace sema {
         // Known user-defined functions (name -> signature)
         std::unordered_map<std::string, FuncInfo> FunctionTable;
 
-        // Known user-defined record types (name -> fields)
+        // Known record types (name -> fields), including the built-in Erru
         std::unordered_map<std::string, RecordInfo> RecordTable;
+        std::unique_ptr<ast::MoldaDeclSttmt> ErrorTypeDecl = prelude::makeErrorTypeDecl();
 
         // Return type of the function currently being analysed ("" at top level)
         Type CurrFuncRetType;
@@ -53,6 +57,10 @@ namespace sema {
         // The fallible call that the enclosing 'tenta' or 'sinon' handles;
         // any other fallible call is an unhandled error.
         const ast::FunCallExpr* HandledCall = nullptr;
+
+        // The variable whose initializer is being analysed, which must not
+        // read the variable itself.
+        std::string InitializingVar;
 
         // Collected errors
         std::vector<std::string> Errors;
@@ -92,8 +100,8 @@ namespace sema {
         }
 
         // Returns true if every reachable code path in the block ends with a
-        // return statement. Conservative: only if/else with both branches
-        // returning is recognised as a definite return.
+        // return or a call to paniku()/sai(). Conservative: of the branching
+        // statements, only if/else with both branches returning counts.
         bool blockDefinitelyReturns(ast::BlockSttmt* block) const;
 
         // Returns true if assigning/returning `from` where `to` is expected
@@ -104,10 +112,21 @@ namespace sema {
         static bool isPrintableType(const Type& type, bool allowArray);
 
         // Whether `op` is a bitwise binary operator ("&", "|" or "^").
-        static bool isBitwiseOp(const std::string& op);
+        static bool isBitwiseOp(std::string_view op);
 
-        // 'T::konverti(text)': converts text to the number or bool type T.
-        void visitConversionCall(ast::FunCallExpr& node, ast::QualifiedAccessExpr& callee, bool handled);
+        void visitArgs(ast::FunCallExpr& node);
+
+        // Reports an error unless argument `index` of `callee` has type `expected`.
+        void expectArgType(ast::FunCallExpr& node, std::size_t index, const Type& expected,
+                           const std::string& callee);
+
+        // Reports an error if 'tenta' or 'lansa' is used outside a function
+        // that declares an error type.
+        void requireFallibleFunction(const std::string& keyword, int lineNum);
+
+        // Reports an error if `name` is the variable whose initializer is
+        // being analysed.
+        void checkNotSelfInitialized(const std::string& name, int lineNum);
 
         // The call under any parentheses, or null if `expr` is not a call.
         static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);
@@ -120,7 +139,9 @@ namespace sema {
         // visiting the body. Called in the first pass of Check().
         void registerFuncSignature(ast::FuncDeclSttmt& node);
 
-        void registerRecord(ast::MoldaDeclSttmt& node);
+        // `builtin` skips the reserved-name check, which rejects user
+        // declarations of built-in types.
+        void registerRecord(ast::MoldaDeclSttmt& node, bool builtin = false);
         bool validateTypeKnown(const Type& type, int lineNum, const std::string& context);
 
         // Approximate storage size of a value of `type` (ignores padding),
@@ -202,6 +223,7 @@ namespace sema {
         void visit(ast::FStringExpr&       node) override;
         void visit(ast::UnaryExpr&         node) override;
         void visit(ast::CastExpr&          node) override;
+        void visit(ast::TypeCallExpr&      node) override;
     };
 
 } // namespace sema

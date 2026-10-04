@@ -1,3 +1,4 @@
+// expect: syntax error, unexpected valid identifier, expecting {
 fn inisiu() {
     Mesa::novu();
 }
