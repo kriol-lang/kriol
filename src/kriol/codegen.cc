@@ -893,10 +893,14 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
     LastValue = nullptr;
 }
 
-void CodeGenVisitor::emitArrayFill(llvm::Value* storage,
+void CodeGenVisitor::emitArrayLoop(llvm::Value* storage,
                                    llvm::ArrayType* arrayTy,
-                                   llvm::Value* fill) {
-    // Sema rejects size 0, so the body can run before the bound check.
+                                   uint64_t first,
+                                   llvm::function_ref<void(llvm::Value*)> body) {
+    const uint64_t count = arrayTy->getNumElements();
+    if (first >= count) return;
+
+    // The range is known to be non-empty, so the body can run before the bound check.
     auto* i64Ty = llvm::Type::getInt64Ty(Context);
     auto* fn = Builder->GetInsertBlock()->getParent();
     auto* entryBB = Builder->GetInsertBlock();
@@ -906,12 +910,11 @@ void CodeGenVisitor::emitArrayFill(llvm::Value* storage,
 
     Builder->SetInsertPoint(loopBB);
     auto* index = Builder->CreatePHI(i64Ty, 2, "fill.index");
-    index->addIncoming(llvm::ConstantInt::get(i64Ty, 0), entryBB);
-    Builder->CreateStore(fill, createArrayElementPtr(storage, arrayTy, index));
+    index->addIncoming(llvm::ConstantInt::get(i64Ty, first), entryBB);
+    body(createArrayElementPtr(storage, arrayTy, index));
     auto* next = Builder->CreateAdd(index, llvm::ConstantInt::get(i64Ty, 1), "fill.next");
-    index->addIncoming(next, loopBB);
-    auto* more = Builder->CreateICmpULT(
-        next, llvm::ConstantInt::get(i64Ty, arrayTy->getNumElements()), "fill.more");
+    index->addIncoming(next, Builder->GetInsertBlock());
+    auto* more = Builder->CreateICmpULT(next, llvm::ConstantInt::get(i64Ty, count), "fill.more");
     Builder->CreateCondBr(more, loopBB, doneBB);
 
     Builder->SetInsertPoint(doneBB);
@@ -941,9 +944,9 @@ void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
             auto* initRep = static_cast<ArrayRepeatExpr*>(init);
             llvm::Value* first = createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, 0));
             emitAggregateStore(first, elemType, initRep->Fill.get());
-            for (uint64_t i = 1; i < arrayTy->getNumElements(); ++i)
-                emitAggregateCopy(createArrayElementPtr(storage, arrayTy, llvm::ConstantInt::get(i64Ty, i)),
-                              first, elemType);
+            emitArrayLoop(storage, arrayTy, 1, [&](llvm::Value* element) {
+                emitAggregateCopy(element, first, elemType);
+            });
         }
         LastValue = nullptr;
         return;
@@ -964,7 +967,9 @@ void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
         llvm::Value* fill = LastValue
             ? coerceToType(LastValue, initRep->Fill->ResolvedType, elemType)
             : llvm::Constant::getNullValue(elemTy);
-        emitArrayFill(storage, arrayTy, fill);
+        emitArrayLoop(storage, arrayTy, 0, [&](llvm::Value* element) {
+            Builder->CreateStore(fill, element);
+        });
     } else {
         throw std::runtime_error("internal error: array requires an array literal or repeat initializer");
     }

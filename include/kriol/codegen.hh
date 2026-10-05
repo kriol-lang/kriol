@@ -16,6 +16,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 
 namespace kriol {
 namespace ast {
@@ -199,7 +200,9 @@ namespace ast {
 
         llvm::Value* emitArrayToText(llvm::Value* storage, const Type& arrayType);
 
-        void emitArrayFill(llvm::Value* storage, llvm::ArrayType* arrayTy, llvm::Value* fill);
+        // Emits a loop calling `body` with the address of each element from `first` on.
+        void emitArrayLoop(llvm::Value* storage, llvm::ArrayType* arrayTy, uint64_t first,
+                           llvm::function_ref<void(llvm::Value*)> body);
 
         void emitArrayInitializer(llvm::Value* storage,
                                   const Type& arrayType,

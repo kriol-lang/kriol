@@ -1,0 +1,18 @@
+// Repeating an aggregate element fills every row through a loop, so the
+// generated code does not grow with the number of rows.
+int[100000][2] grade = [[3; 2]; 100000];
+
+molda Ponto {
+    int x;
+    int y;
+}
+
+fn inisiu() {
+    Ponto[1000] pontos = [Ponto{x = 1, y = 2}; 1000];
+    int[4][3] local = [[7; 3]; 4];
+
+    konfirma(grade[0][0] == 3 && grade[99999][1] == 3);
+    konfirma(pontos[0].y == 2 && pontos[999].x == 1);
+    konfirma(local[3][2] == 7);
+    mostran(grade[50000][0] + pontos[500].x + local[2][1]);
+}
