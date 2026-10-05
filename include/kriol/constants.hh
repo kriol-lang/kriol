@@ -2,7 +2,7 @@
 #define _KRIOL_CNST_HEADER
 
 #define KR_VERSION_MAJOR 1
-#define KR_VERSION_MINOR 15
+#define KR_VERSION_MINOR 16
 #define KR_VERSION_PATCH 0
 
 #define KR_STANDARD_NAME "Kriol"
