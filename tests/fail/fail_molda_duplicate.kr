@@ -1,0 +1,4 @@
+// expect: duplicate molda declaration 'P'
+molda P { int a; }
+molda P { int b; }
+fn inisiu() {}

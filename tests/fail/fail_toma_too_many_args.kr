@@ -1,0 +1,4 @@
+// expect: prelude function 'toma' expects 0 or 1 argument(s), got 2
+fn inisiu() : Erru {
+    textu t = tenta toma("a", "b");
+}

@@ -1,0 +1,32 @@
+// Acesso a arrays: crivo de Eratóstenes até um milhão, repetido dez vezes.
+bool[1000001] primo = [sin; 1000001];
+
+fn crivo(int n) int {
+    pa int i = 0; i <= n; i += 1 {
+        primo[i] = sin;
+    }
+    primo[0] = nau;
+    primo[1] = nau;
+    pa int i = 2; i * i <= n; i += 1 {
+        si primo[i] {
+            pa int j = i * i; j <= n; j += i {
+                primo[j] = nau;
+            }
+        }
+    }
+    int total = 0;
+    pa int i = 0; i <= n; i += 1 {
+        si primo[i] {
+            total += 1;
+        }
+    }
+    divolvi total;
+}
+
+fn inisiu() {
+    int total = 0;
+    pa int vez = 0; vez < 10; vez += 1 {
+        total = crivo(1000000);
+    }
+    mostran(total);
+}

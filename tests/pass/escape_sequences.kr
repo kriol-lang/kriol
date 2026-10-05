@@ -1,0 +1,5 @@
+// Escape sequences in double- and single-quoted text.
+fn inisiu() {
+    mostran("a\tb|\\|\"q\"|c\rd");
+    mostran('it\'s');
+}

@@ -1,0 +1,6 @@
+// expect: panic at line 4: division by zero
+fn inisiu() {
+    num a = 7;
+    mostran(a / 0.0);
+    mostran("never");
+}

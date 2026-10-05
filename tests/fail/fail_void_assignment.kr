@@ -1,0 +1,5 @@
+// expect: cannot assign void expression to variable 'x'
+fn f() {}
+fn inisiu() {
+    int x = f();
+}

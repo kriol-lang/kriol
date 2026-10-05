@@ -31,36 +31,83 @@ stdin_for() {
     fi
 }
 
-# ---- examples/*.kr --------------------------------------------------------
-for f in "$ROOT"/examples/*.kriol; do
-    printf "  %-44s" "$f"
-    tmpbin=$(mktemp /tmp/kriol_XXXX)
-    stdin_file=$(stdin_for "$f")
-    if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \
-       timeout 5 "$tmpbin" < "$stdin_file" > /dev/null 2>&1; then
+# A '<source>.stdout' fixture is the exact output the program must write.
+matches_stdout() {
+    [ ! -f "$1.stdout" ] || cmp -s "$1.stdout" "$2"
+}
+
+# The value of the first '// <key>: <value>' line of a source file.
+directive() {
+    sed -n "s|^// $2: ||p" "$1" | head -n 1
+}
+
+# Runs a compiled program on its fixtures: '<runner> <program>' must exit 0 and
+# write the expected output. An empty runner executes the program directly.
+runs_cleanly() {
+    local source="$1" runner="$2" program="$3" out
+    out=$(mktemp /tmp/kriol_out_XXXX)
+    timeout 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2>/dev/null && \
+        matches_stdout "$source" "$out"
+    local status=$?
+    rm -f "$out"
+    return $status
+}
+
+# Runs a compiled program that must stop with a runtime error: a non-zero exit
+# status (or the '// exit:' one), the '// expect:' message on stderr, and only
+# the expected output before it.
+stops_as_expected() {
+    local source="$1" runner="$2" program="$3" out err status=0 ok=1
+    out=$(mktemp /tmp/kriol_out_XXXX); err=$(mktemp /tmp/kriol_err_XXXX)
+    timeout 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2> "$err" || status=$?
+    local expected_status expected_message
+    expected_status=$(directive "$source" exit)
+    expected_message=$(directive "$source" expect)
+    if [ -n "$expected_status" ]; then
+        [ "$status" -eq "$expected_status" ] || ok=0
+    else
+        [ "$status" -ne 0 ] && [ "$status" -ne 124 ] || ok=0
+    fi
+    [ -z "$expected_message" ] || grep -Fq -- "$expected_message" "$err" || ok=0
+    matches_stdout "$source" "$out" || ok=0
+    rm -f "$out" "$err"
+    [ $ok -eq 1 ]
+}
+
+# Compiles one source for a target ('' is native) and checks it with a test
+# function: runs_cleanly or stops_as_expected.
+program_test() {
+    local source="$1" target="$2" check="$3" label="$4"
+    local program runner="" target_args=()
+    printf "  %-44s" "$label"
+    program=$(mktemp /tmp/kriol_XXXX)
+    if [ -n "$target" ]; then
+        target_args=(--target "$target")
+        runner="node --no-warnings $ROOT/tests/wasm/run_wasi.mjs"
+    fi
+    if "$KRIOL" "$source" "${target_args[@]}" -o "$program" >/dev/null 2>&1 && \
+       "$check" "$source" "$runner" "$program"; then
         echo " PASS"; pass=$((pass+1))
     else
-        echo " FAIL"; record_failure "$f"
+        echo " FAIL"; record_failure "$label"
     fi
-    rm -f "$tmpbin"
+    rm -f "$program"
+}
+
+# ---- examples/*.kriol and tests/pass/*.kr: compile, run and compare output ----
+shopt -s nullglob
+PROGRAMS=("$ROOT"/examples/*.kriol "$ROOT"/tests/pass/*.kr)
+PANICS=("$ROOT"/tests/panic/*.kr)
+shopt -u nullglob
+
+for f in "${PROGRAMS[@]}"; do
+    program_test "$f" "" runs_cleanly "$f"
 done
 
-# ---- tests/pass/*.kr -------------------------------------------------------
-if [ -d "$ROOT/tests/pass" ]; then
-    for f in "$ROOT"/tests/pass/*.kr; do
-        [ -f "$f" ] || continue
-        printf "  %-44s" "$f"
-        tmpbin=$(mktemp /tmp/kriol_XXXX)
-        stdin_file=$(stdin_for "$f")
-        if "$KRIOL" "$f" -o "$tmpbin" 2>/dev/null && \
-           timeout 5 "$tmpbin" < "$stdin_file" > /dev/null 2>&1; then
-            echo " PASS"; pass=$((pass+1))
-        else
-            echo " FAIL"; record_failure "$f"
-        fi
-        rm -f "$tmpbin"
-    done
-fi
+# ---- tests/panic/*.kr: programs that must stop with a runtime error ----------
+for f in "${PANICS[@]}"; do
+    program_test "$f" "" stops_as_expected "$f"
+done
 
 # ---- command-line source text ---------------------------------------------
 printf "  %-44s" "inline source text"
@@ -123,20 +170,6 @@ else
 fi
 rm -f "$tmpbin"
 
-# ---- division by zero stops the program, for integers and reals --------------
-for divisor in '0' '0.0'; do
-    printf "  %-44s" "division by $divisor stops the program"
-    tmpbin=$(mktemp /tmp/kriol_div_XXXX)
-    div_status=0
-    div_out=$("$KRIOL" --text "fn inisiu() { num a = 7; mostran(a / $divisor); mostran(\"never\"); }" -o "$tmpbin" 2>&1 && timeout 5 "$tmpbin" 2>&1) || div_status=$?
-    if [ "$div_status" -ne 0 ] && echo "$div_out" | grep -Fq "division by zero" && ! echo "$div_out" | grep -Fq "never"; then
-        echo " PASS"; pass=$((pass+1))
-    else
-        echo " FAIL"; record_failure "division by $divisor stops the program"
-    fi
-    rm -f "$tmpbin"
-done
-
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)
@@ -149,6 +182,49 @@ else
 fi
 rm -rf "$tmpdir"
 
+# ---- command-line errors ------------------------------------------------------
+# rejects_with <label> <expected message> <kriol arguments...>
+rejects_with() {
+    local label="$1" expected="$2" output
+    shift 2
+    printf "  %-44s" "$label"
+    if output=$("$KRIOL" "$@" 2>&1); then
+        echo " FAIL (should have been rejected)"; record_failure "$label"
+    elif ! printf '%s' "$output" | grep -Fq -- "$expected"; then
+        echo " FAIL (expected: $expected)"; record_failure "$label"
+    else
+        echo " PASS"; pass=$((pass+1))
+    fi
+}
+
+tmpdir=$(mktemp -d /tmp/kriol_cli_XXXX)
+mkdir "$tmpdir/folder.kriol"
+echo 'fn inisiu() { mostran("txt"); }' > "$tmpdir/program.txt"
+rejects_with "cli: missing input" "Provide exactly one input" -o /dev/null
+rejects_with "cli: file and --text together" "Provide exactly one input" \
+    "$tmpdir/program.txt" --text 'fn inisiu() {}'
+rejects_with "cli: missing file" "was not found" "$tmpdir/missing.kriol"
+rejects_with "cli: directory as input" "is not a regular file" "$tmpdir/folder.kriol"
+rejects_with "cli: unknown extension" "File format not recognized" "$tmpdir/program.txt"
+rejects_with "cli: invalid optimization level" "allowed options" --text 'fn inisiu() {}' --opt-lvl 5
+rejects_with "cli: unknown target" "allowed options" --text 'fn inisiu() {}' --target sparc
+
+printf "  %-44s" "cli: --ignore-extension"
+if "$KRIOL" --ignore-extension "$tmpdir/program.txt" -o "$tmpdir/program" 2>/dev/null && \
+   [ "$(timeout 5 "$tmpdir/program")" = "txt" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "cli: --ignore-extension"
+fi
+
+printf "  %-44s" "cli: --emit-ir writes the IR"
+if "$KRIOL" --emit-ir --text 'fn inisiu() {}' -o "$tmpdir/program.ll" 2>/dev/null && \
+   grep -Fq "define" "$tmpdir/program.ll"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "cli: --emit-ir writes the IR"
+fi
+rm -rf "$tmpdir"
 
 # ---- tests/fail/*.kr -------------------------------------------------------
 # A '// expect: <text>' line names a diagnostic the compiler must report.
@@ -200,6 +276,16 @@ if "$KRIOL" --target wasm32-wasi --text 'fn inisiu() {}' --emit-ir >/dev/null 2>
         echo " FAIL"; record_failure "wasm32-wasi f-string runtime"
     fi
     rm -f "$tmpwasm"
+
+    # The same programs again as wasm modules, when Node can run them.
+    if command -v node >/dev/null 2>&1; then
+        for f in "${PROGRAMS[@]}"; do
+            program_test "$f" wasm32-wasi runs_cleanly "wasm: ${f#"$ROOT"/}"
+        done
+        for f in "${PANICS[@]}"; do
+            program_test "$f" wasm32-wasi stops_as_expected "wasm: ${f#"$ROOT"/}"
+        done
+    fi
 fi
 
 echo -e "\n  $pass/$((pass+fail)) passed\n"

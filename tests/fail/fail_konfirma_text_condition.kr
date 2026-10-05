@@ -1,0 +1,4 @@
+// expect: konfirma() expects a boolean condition, got value of type 'textu'
+fn inisiu() {
+    konfirma("x");
+}

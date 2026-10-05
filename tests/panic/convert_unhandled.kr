@@ -1,0 +1,5 @@
+// expect: panic at line 3: invalid integer 'abc'
+fn inisiu() {
+    int n = int::konverti("abc");
+    mostran(n);
+}

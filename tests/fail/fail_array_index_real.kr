@@ -1,0 +1,5 @@
+// expect: array index must be an integer
+fn inisiu() {
+    int[2] a = [1, 2];
+    mostran(a[1.5]);
+}

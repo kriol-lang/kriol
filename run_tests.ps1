@@ -46,16 +46,20 @@ function Get-KriolResult([string[]] $Arguments) {
     return [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
 }
 
+# Runs a program on a stdin file; the exit status and both outputs, or $null on timeout.
 function Invoke-Program([string] $Exe, [string] $Stdin) {
     $info = [Diagnostics.ProcessStartInfo]::new($Exe)
     $info.UseShellExecute = $false
     $info.RedirectStandardInput = $true
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
+    # Programs write UTF-8 bytes whatever the console code page is.
+    $info.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $info.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
 
     $process = [Diagnostics.Process]::Start($info)
-    $null = $process.StandardOutput.ReadToEndAsync()
-    $null = $process.StandardError.ReadToEndAsync()
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
     try {
         $bytes = [IO.File]::ReadAllBytes($Stdin)
         $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
@@ -66,20 +70,55 @@ function Invoke-Program([string] $Exe, [string] $Stdin) {
 
     if (-not $process.WaitForExit(5000)) {
         $process.Kill()
-        return $false
+        return $null
     }
     $process.WaitForExit()
-    return $process.ExitCode -eq 0
+    return [pscustomobject]@{
+        ExitCode = $process.ExitCode
+        Stdout = $stdout.Result -replace "`r`n", "`n"
+        Stderr = $stderr.Result
+    }
 }
 
-function Test-CompilesAndRuns([IO.FileInfo] $Source) {
+# The value of the first '// <key>: <value>' line of a source file.
+function Get-Directive([IO.FileInfo] $Source, [string] $Key) {
+    Select-String -Path $Source.FullName -Pattern "^// ${Key}: (.*)$" |
+        Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value }
+}
+
+# A '<source>.stdout' fixture is the exact output the program must write.
+function Test-Stdout([IO.FileInfo] $Source, [string] $Actual) {
+    $fixture = "$($Source.FullName).stdout"
+    return -not (Test-Path $fixture) -or ([IO.File]::ReadAllText($fixture) -eq $Actual)
+}
+
+# Compiles and runs a source on its stdin fixture; $null if it does not compile or times out.
+function Invoke-Source([IO.FileInfo] $Source) {
     $exe = Join-Path $Work 'program.exe'
     Remove-Item $exe -ErrorAction SilentlyContinue
 
     $fixture = "$($Source.FullName).stdin"
     $stdin = if (Test-Path $fixture) { $fixture } else { $EmptyInput }
 
-    $ok = (Invoke-Kriol @($Source.FullName, '-o', $exe)) -and (Invoke-Program $exe $stdin)
+    if (-not (Invoke-Kriol @($Source.FullName, '-o', $exe))) { return $null }
+    return Invoke-Program $exe $stdin
+}
+
+function Test-CompilesAndRuns([IO.FileInfo] $Source) {
+    $run = Invoke-Source $Source
+    $ok = $run -and $run.ExitCode -eq 0 -and (Test-Stdout $Source $run.Stdout)
+    Write-Result ([IO.Path]::GetRelativePath($Root, $Source.FullName)) $ok
+}
+
+# A program that must stop with a runtime error: a non-zero exit status (or the
+# '// exit:' one), the '// expect:' message on stderr, and only the expected output.
+function Test-StopsAsExpected([IO.FileInfo] $Source) {
+    $run = Invoke-Source $Source
+    $status = Get-Directive $Source 'exit'
+    $message = Get-Directive $Source 'expect'
+    $ok = $run -and (Test-Stdout $Source $run.Stdout) -and
+        $(if ($status) { $run.ExitCode -eq [int] $status } else { $run.ExitCode -ne 0 }) -and
+        (-not $message -or $run.Stderr.Contains($message))
     Write-Result ([IO.Path]::GetRelativePath($Root, $Source.FullName)) $ok
 }
 
@@ -91,6 +130,10 @@ foreach ($source in Get-Sources (Join-Path $Root 'examples') '.kriol') {
 
 foreach ($source in Get-Sources (Join-Path $Root 'tests/pass') '.kr') {
     Test-CompilesAndRuns $source
+}
+
+foreach ($source in Get-Sources (Join-Path $Root 'tests/panic') '.kr') {
+    Test-StopsAsExpected $source
 }
 
 $exe = Join-Path $Work 'text.exe'
@@ -114,13 +157,6 @@ Write-Result 'unhandled error stops the program' ($ok -and $LASTEXITCODE -ne 0 -
 $strictRejected = -not (Invoke-Kriol @('--strict', '--text', $unhandled, '-o', (Join-Path $Work 'strict.exe')))
 Write-Result '--strict rejects warnings' $strictRejected
 
-foreach ($divisor in '0', '0.0') {
-    $exe = Join-Path $Work 'division.exe'
-    $ok = Invoke-Kriol @('--text', "fn inisiu() { num a = 7; mostran(a / $divisor); mostran(`"never`"); }", '-o', $exe)
-    $output = if ($ok) { (& $exe 2>&1) -join "`n" } else { '' }
-    Write-Result "division by $divisor stops the program" ($ok -and $LASTEXITCODE -ne 0 -and $output -match 'division by zero' -and $output -notmatch 'never')
-}
-
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }
@@ -128,6 +164,38 @@ $sentinels | ForEach-Object { Set-Content $_ 'precious' }
 $ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("x"); }', '-o', (Join-Path $outputDir 'program'))
 $untouched = -not ($sentinels | Where-Object { (Get-Content $_ -ErrorAction SilentlyContinue) -ne 'precious' })
 Write-Result 'output directory left untouched' ($ok -and $untouched)
+
+function Test-RejectedWith([string] $Name, [string] $Expected, [string[]] $Arguments) {
+    $result = Get-KriolResult $Arguments
+    if ($result.Ok) {
+        Write-Result $Name $false ' (should have been rejected)'
+    } elseif (-not $result.Output.Contains($Expected)) {
+        Write-Result $Name $false " (expected: $Expected)"
+    } else {
+        Write-Result $Name $true
+    }
+}
+
+$cliDir = Join-Path $Work 'cli'
+New-Item -ItemType Directory (Join-Path $cliDir 'folder.kriol') -Force | Out-Null
+$txtSource = Join-Path $cliDir 'program.txt'
+Set-Content $txtSource 'fn inisiu() { mostran("txt"); }'
+$cliOut = Join-Path $cliDir 'program.exe'
+Test-RejectedWith 'cli: missing input' 'Provide exactly one input' @('-o', $cliOut)
+Test-RejectedWith 'cli: file and --text together' 'Provide exactly one input' @($txtSource, '--text', 'fn inisiu() {}')
+Test-RejectedWith 'cli: missing file' 'was not found' @((Join-Path $cliDir 'missing.kriol'))
+Test-RejectedWith 'cli: directory as input' 'is not a regular file' @((Join-Path $cliDir 'folder.kriol'))
+Test-RejectedWith 'cli: unknown extension' 'File format not recognized' @($txtSource)
+Test-RejectedWith 'cli: invalid optimization level' 'allowed options' @('--text', 'fn inisiu() {}', '--opt-lvl', '5')
+Test-RejectedWith 'cli: unknown target' 'allowed options' @('--text', 'fn inisiu() {}', '--target', 'sparc')
+
+$ok = Invoke-Kriol @('--ignore-extension', $txtSource, '-o', $cliOut)
+$output = if ($ok) { & $cliOut } else { $null }
+Write-Result 'cli: --ignore-extension' ($output -eq 'txt')
+
+$irFile = Join-Path $cliDir 'program.ll'
+$ok = Invoke-Kriol @('--emit-ir', '--text', 'fn inisiu() {}', '-o', $irFile)
+Write-Result 'cli: --emit-ir writes the IR' ($ok -and (Select-String -Path $irFile -Pattern 'define' -Quiet))
 
 # A '// expect: <text>' line names a diagnostic the compiler must report.
 foreach ($source in Get-Sources (Join-Path $Root 'tests/fail') '.kr') {

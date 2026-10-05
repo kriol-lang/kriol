@@ -1,0 +1,6 @@
+// expect: panic at line 4: algo correu mal
+fn inisiu() {
+    mostran("antes");
+    paniku("algo correu mal");
+    mostran("never");
+}

@@ -1,0 +1,4 @@
+// expect: prelude function 'sai' expects 0 or 1 argument(s), got 2
+fn inisiu() {
+    sai(1, 2);
+}

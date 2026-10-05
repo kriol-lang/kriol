@@ -1,0 +1,29 @@
+// Aritmética real: pontos do conjunto de Mandelbrot numa grelha 800 x 600.
+fn pertence(num cx, num cy) bool {
+    num x = 0.0;
+    num y = 0.0;
+    pa int i = 0; i < 200; i += 1 {
+        num x2 = x * x;
+        num y2 = y * y;
+        si x2 + y2 > 4.0 {
+            divolvi nau;
+        }
+        y = 2.0 * x * y + cy;
+        x = x2 - y2 + cx;
+    }
+    divolvi sin;
+}
+
+fn inisiu() {
+    int total = 0;
+    pa int py = 0; py < 600; py += 1 {
+        pa int px = 0; px < 800; px += 1 {
+            num cx = -2.0 + 3.0 * px / 800;
+            num cy = -1.2 + 2.4 * py / 600;
+            si pertence(cx, cy) {
+                total += 1;
+            }
+        }
+    }
+    mostran(total);
+}

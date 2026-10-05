@@ -1,0 +1,5 @@
+// expect: panic at line 4: x tem de ser 2
+fn inisiu() {
+    int x = 1;
+    konfirma(x == 2, "x tem de ser 2");
+}

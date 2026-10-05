@@ -51,6 +51,7 @@ option(KRIOL_ENABLE_WASM "Build the kriol compiler with wasm32-wasi output suppo
 option(KRIOL_WASI_ENABLE_GC "Build and embed Boehm GC for wasm32-wasi output" OFF)
 option(KRIOL_USE_EMBEDDED_LLD "Use LLD as an embedded library for wasm32-wasi final linking" OFF)
 option(KRIOL_ENABLE_FUZZING "Build libFuzzer targets for the Kriol compiler" OFF)
+option(KRIOL_ENABLE_COVERAGE "Instrument the compiler for source-based code coverage (Clang)" OFF)
 
 set(KRIOL_MINGW_SYSROOT "" CACHE PATH
     "Root of an llvm-mingw (msvcrt) toolchain; enables x86_64-windows output")
@@ -416,6 +417,30 @@ if(KRIOL_ENABLE_FUZZING)
     )
 endif()
 
+if(KRIOL_ENABLE_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "KRIOL_ENABLE_COVERAGE requires Clang")
+    endif()
+
+    foreach(_KRIOL_COVERED_TARGET IN ITEMS
+        kriol_core
+        kriol
+        kriol_api_compile_memory_test
+        kriol_type_model_test
+    )
+        target_compile_options(${_KRIOL_COVERED_TARGET} PRIVATE -fprofile-instr-generate -fcoverage-mapping)
+        target_link_options(${_KRIOL_COVERED_TARGET} PRIVATE -fprofile-instr-generate)
+    endforeach()
+
+    # The profile format changes between releases: use the tools of the same Clang.
+    string(REGEX MATCH "^[0-9]+" _KRIOL_CLANG_MAJOR ${CMAKE_CXX_COMPILER_VERSION})
+    get_filename_component(_KRIOL_CLANG_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+    find_program(KRIOL_LLVM_PROFDATA NAMES llvm-profdata-${_KRIOL_CLANG_MAJOR} llvm-profdata
+                 HINTS ${_KRIOL_CLANG_DIR} REQUIRED)
+    find_program(KRIOL_LLVM_COV NAMES llvm-cov-${_KRIOL_CLANG_MAJOR} llvm-cov
+                 HINTS ${_KRIOL_CLANG_DIR} REQUIRED)
+endif()
+
 # -----------------------------------------------------------------------------
 # Linking
 # -----------------------------------------------------------------------------
@@ -532,6 +557,21 @@ if(VALGRIND)
         DEPENDS kriol
     )
 
+endif()
+
+if(KRIOL_ENABLE_COVERAGE)
+    add_custom_target(
+        coverage
+        COMMAND
+            ${CMAKE_COMMAND} -E env
+            LLVM_PROFDATA=${KRIOL_LLVM_PROFDATA}
+            LLVM_COV=${KRIOL_LLVM_COV}
+            ${CMAKE_SOURCE_DIR}/scripts/coverage.sh
+            ${CMAKE_BINARY_DIR}
+        DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        USES_TERMINAL
+    )
 endif()
 
 add_custom_target(

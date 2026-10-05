@@ -1,0 +1,7 @@
+// expect: void expression cannot be used as a condition
+fn f() {}
+fn inisiu() {
+    si f() {
+        mostran(1);
+    }
+}

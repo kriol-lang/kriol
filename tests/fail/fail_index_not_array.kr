@@ -1,0 +1,5 @@
+// expect: indexed expression is not an array
+fn inisiu() {
+    int x = 1;
+    mostran(x[0]);
+}

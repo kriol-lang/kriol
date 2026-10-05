@@ -1,0 +1,6 @@
+// exit: 3
+fn inisiu() {
+    mostran("a");
+    sai(3);
+    mostran("b");
+}

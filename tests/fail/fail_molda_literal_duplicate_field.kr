@@ -1,0 +1,5 @@
+// expect: duplicate field 'a' in 'P' literal
+molda P { int a; }
+fn inisiu() {
+    P p = P{a = 1, a = 2};
+}

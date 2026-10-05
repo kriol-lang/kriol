@@ -1,0 +1,6 @@
+// expect: panic at line 5: division by zero
+fn inisiu() {
+    int a = 7;
+    int b = 0;
+    mostran(a % b);
+}

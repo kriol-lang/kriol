@@ -1,0 +1,5 @@
+// expect: missing return value in non-void function 'f'
+fn f() int {
+    divolvi;
+}
+fn inisiu() {}

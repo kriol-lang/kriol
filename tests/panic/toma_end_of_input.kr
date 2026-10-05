@@ -1,0 +1,7 @@
+// expect: err: end of input
+fn inisiu() : Erru {
+    textu linha = tenta toma();
+    mostran(linha);
+    textu outra = tenta toma();
+    mostran("never");
+}

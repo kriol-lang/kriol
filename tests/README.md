@@ -20,14 +20,18 @@ The `check` target runs:
 - `tests/fuzz/compile_fuzz_smoke.cc`
 - `run_tests.sh`
 
-`run_tests.sh` also compiles and runs examples, pass tests, fail tests, inline
-source text, and lightweight wasm32-wasi compile checks when wasm support is
-available.
+`run_tests.sh` also compiles and runs examples, pass, panic and fail tests,
+inline source text and command-line error cases. When the compiler has wasm
+support and `node` is installed, it runs the examples, pass and panic tests
+again as wasm32-wasi modules through `tests/wasm/run_wasi.mjs`.
+`run_tests.ps1` is the Windows counterpart, without the wasm runs.
 
 ## Directory Layout
 
 - `pass/`: Kriol programs expected to compile successfully and execute with exit
   code 0.
+- `panic/`: Kriol programs expected to compile and then stop with a runtime
+  error.
 - `fail/`: Kriol programs expected to be rejected by the compiler.
 - `api/`: C++ tests for compiler API behavior that is awkward to express as
   source files.
@@ -40,15 +44,29 @@ Files in `tests/pass/*.kr` are compiled to a temporary native executable and
 executed with a 5 second timeout. A pass test fails if compilation fails, the
 program exits non-zero, or it times out.
 
+Two optional fixtures sit next to a test (and next to the examples):
+
+- `<test>.kr.stdin`: the program's standard input.
+- `<test>.kr.stdout`: the exact output the program must write; an empty file
+  means it must write nothing.
+
+## Panic Tests
+
+Files in `tests/panic/*.kr` must compile and then stop at runtime, such as an
+array index out of bounds, a failed `konfirma`, a division by zero or an
+unhandled `Erru`. A `// expect: <text>` line names the message the program must
+write to stderr, and a `// exit: <code>` line the exact exit status (any
+non-zero status otherwise). They use the same `.stdin` and `.stdout` fixtures,
+so a `.stdout` file also checks that nothing runs after the error.
+
 Keep pass tests deterministic. Do not depend on external files, network access,
 wall-clock time, or platform-specific output unless the test is explicitly about
 that behavior.
 
 ## Fail Tests
 
-Files in `tests/fail/*.kr` are expected to fail compilation. The current harness
-only checks that the compiler rejects the file; it does not compare diagnostics
-against `.err` files yet.
+Files in `tests/fail/*.kr` are expected to fail compilation. A
+`// expect: <text>` line names a diagnostic the compiler must report.
 
 Use fail tests for parser, semantic-analysis, and codegen rejection regressions.
 When a fuzz run finds an internal compiler exception, reduce it to the smallest
@@ -61,6 +79,18 @@ fix.
 Use them when the behavior under test is not naturally represented by a Kriol
 source file, such as in-memory compile API behavior, internal type-model rules,
 or runtime implementation details.
+
+## Coverage
+
+Build an instrumented compiler with Clang and run the `coverage` target:
+
+```sh
+CC=clang CXX=clang++ cmake -B build-coverage -DKRIOL_ENABLE_COVERAGE=ON
+cmake --build build-coverage --target coverage
+```
+
+It runs the API tests and `run_tests.sh`, prints a per-file report of the
+compiler's sources and writes an HTML report to `build-coverage/coverage/html`.
 
 ## Fuzzing
 

@@ -1,0 +1,5 @@
+// expect: panic at line 4: assertion failed
+fn inisiu() {
+    int x = 1;
+    konfirma(x == 2);
+}

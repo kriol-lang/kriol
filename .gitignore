@@ -29,4 +29,7 @@ rules/parser
 *.wasm
 
 # Cmake Build dir
-build/
+build*/
+
+# Python bytecode (bench/run.py)
+__pycache__/

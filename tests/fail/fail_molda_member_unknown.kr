@@ -1,0 +1,6 @@
+// expect: molda 'P' has no field 'b'
+molda P { int a; }
+fn inisiu() {
+    P p = P{a = 1};
+    mostran(p.b);
+}

@@ -1,0 +1,11 @@
+// Chamadas recursivas: fibo(35) faz cerca de 30 milhões de chamadas.
+fn fibo(int n) int {
+    si n < 2 {
+        divolvi n;
+    }
+    divolvi fibo(n - 1) + fibo(n - 2);
+}
+
+fn inisiu() {
+    mostran(fibo(35));
+}

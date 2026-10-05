@@ -1,0 +1,5 @@
+// expect: err: '256' does not fit in 'u8'
+fn inisiu() : Erru {
+    u8 n = tenta u8::konverti("256");
+    mostran(n);
+}

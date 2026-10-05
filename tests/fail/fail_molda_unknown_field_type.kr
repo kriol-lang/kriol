@@ -1,0 +1,3 @@
+// expect: unknown type 'Q' in field 'q'
+molda P { Q q; }
+fn inisiu() {}

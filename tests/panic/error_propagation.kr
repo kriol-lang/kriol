@@ -1,0 +1,15 @@
+// expect: err: divizon pa zero
+fn metadi(int a, int b) num : Erru {
+    si b == 0 { lansa Erru{mensage = "divizon pa zero"}; }
+    divolvi (num) a / b;
+}
+
+fn media(int a, int b) num : Erru {
+    divolvi tenta metadi(a + b, 2) + tenta metadi(a, b);
+}
+
+fn inisiu() : Erru {
+    mostran(tenta media(4, 2));
+    mostran(tenta media(4, 0));
+    mostran("never");
+}
