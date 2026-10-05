@@ -43,14 +43,30 @@ directive() {
 
 # Runs a compiled program on its fixtures: '<runner> <program>' must exit 0 and
 # write the expected output. An empty runner executes the program directly.
+# Why the last program test failed, shown under its FAIL line.
+DETAIL=$(mktemp /tmp/kriol_detail_XXXX)
+trap 'rm -f "$DETAIL"' EXIT
+
+# Writes a failed run to $DETAIL: its exit status, what it wrote to stderr and
+# how its output differs from the expected one.
+describe_run() {
+    local source="$1" status="$2" out="$3" err="$4"
+    {
+        echo "exit status $status$([ "$status" -eq 124 ] && echo " (timed out)")"
+        [ ! -s "$err" ] || head -n 10 "$err"
+        [ ! -f "$source.stdout" ] || diff "$source.stdout" "$out" | head -n 10
+    } > "$DETAIL"
+}
+
 runs_cleanly() {
-    local source="$1" runner="$2" program="$3" out
-    out=$(mktemp /tmp/kriol_out_XXXX)
-    timeout 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2>/dev/null && \
-        matches_stdout "$source" "$out"
-    local status=$?
-    rm -f "$out"
-    return $status
+    local source="$1" runner="$2" program="$3" out err status=0
+    out=$(mktemp /tmp/kriol_out_XXXX); err=$(mktemp /tmp/kriol_err_XXXX)
+    timeout 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2> "$err" || status=$?
+    local ok=1
+    [ "$status" -eq 0 ] && matches_stdout "$source" "$out" || ok=0
+    [ $ok -eq 1 ] || describe_run "$source" "$status" "$out" "$err"
+    rm -f "$out" "$err"
+    [ $ok -eq 1 ]
 }
 
 # Runs a compiled program that must stop with a runtime error: a non-zero exit
@@ -70,6 +86,7 @@ stops_as_expected() {
     fi
     [ -z "$expected_message" ] || grep -Fq -- "$expected_message" "$err" || ok=0
     matches_stdout "$source" "$out" || ok=0
+    [ $ok -eq 1 ] || describe_run "$source" "$status" "$out" "$err"
     rm -f "$out" "$err"
     [ $ok -eq 1 ]
 }
@@ -85,11 +102,12 @@ program_test() {
         target_args=(--target "$target")
         runner="node --no-warnings $ROOT/tests/wasm/run_wasi.mjs"
     fi
-    if "$KRIOL" "$source" "${target_args[@]}" -o "$program" >/dev/null 2>&1 && \
+    if "$KRIOL" "$source" "${target_args[@]}" -o "$program" > "$DETAIL" 2>&1 && \
        "$check" "$source" "$runner" "$program"; then
         echo " PASS"; pass=$((pass+1))
     else
         echo " FAIL"; record_failure "$label"
+        sed 's/^/      /' "$DETAIL"
     fi
     rm -f "$program"
 }

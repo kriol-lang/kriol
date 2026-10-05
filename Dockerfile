@@ -27,6 +27,7 @@ RUN apt-get update \
         liblld-${LLVM_VERSION}-dev \
         libclang-rt-${LLVM_VERSION}-dev-wasm32 \
         wasi-libc \
+        nodejs \
     && ln -sf /usr/bin/clang-${LLVM_VERSION} /usr/local/bin/clang \
     && ln -sf /usr/bin/clang++-${LLVM_VERSION} /usr/local/bin/clang++ \
     && ln -sf /usr/bin/llvm-config-${LLVM_VERSION} /usr/local/bin/llvm-config \
