@@ -1,4 +1,4 @@
-// expect: missing field 'idadi' in 'Pessoa' literal
+// expect: falta o campo 'idadi' na criação de 'Pessoa'; todos os campos têm de ter um valor
 molda Pessoa {
     textu nomi;
     int idadi;

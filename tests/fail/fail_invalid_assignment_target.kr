@@ -1,4 +1,4 @@
-// expect: invalid assignment target
+// expect: só se pode atribuir um valor a uma variável, a um elemento de um array ou a um campo de um molde
 fn identidade(int valor) int {
     divolvi valor;
 }

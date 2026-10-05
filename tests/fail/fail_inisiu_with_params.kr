@@ -1,4 +1,4 @@
-// expect: entry function 'inisiu' must not take parameters
+// expect: a função 'inisiu' não pode ter parâmetros, porque é por ela que o programa começa
 fn inisiu(int x) {
     mostran(x);
 }

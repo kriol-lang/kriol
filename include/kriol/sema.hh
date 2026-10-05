@@ -1,6 +1,7 @@
 #ifndef _KRIOL_SEMA_HEADER
 #define _KRIOL_SEMA_HEADER
 
+#include "diagnostic.hh"
 #include "ast.hh"
 #include "constants.hh"
 #include "prelude.hh"
@@ -71,11 +72,9 @@ namespace sema {
         // Source file name, used for error location prefixes
         std::string SourceFile;
 
-        // Returns "file:line: " prefix for error messages, or "file: " if line is 0.
-        std::string errLoc(int lineNum) const {
-            if (lineNum == 0) return SourceFile.empty() ? "" : SourceFile + ": ";
-            return (SourceFile.empty() ? "" : SourceFile + ":") + std::to_string(lineNum) + ": ";
-        }
+        // The "file:line: erro: " and "file:line: aviso: " message prefixes.
+        std::string errLoc(int lineNum) const { return DiagnosticPrefix(SourceFile, lineNum, "erro"); }
+        std::string warnLoc(int lineNum) const { return DiagnosticPrefix(SourceFile, lineNum, "aviso"); }
 
         // --- scope helpers ---
         void pushScope() {

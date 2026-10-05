@@ -1,4 +1,4 @@
-// expect: molda name 'Erru' is reserved and cannot be redeclared
+// expect: 'Erru' é um nome reservado do Kriol e não pode ser usado como nome de molde
 molda Erru {
     int kodi;
 }

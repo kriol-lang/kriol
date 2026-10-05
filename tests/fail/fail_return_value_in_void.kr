@@ -1,4 +1,4 @@
-// expect: returning a value from void function 'inisiu'
+// expect: a função 'inisiu' não declara um tipo de retorno, por isso 'divolvi' não pode ter um valor
 // ERROR: returning a value from a void function.
 fn inisiu() {
     divolvi 5;

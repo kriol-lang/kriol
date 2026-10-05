@@ -1,4 +1,4 @@
-// expect: duplicate field 'a' in 'P' literal
+// expect: o campo 'a' aparece repetido na criação de 'P'
 molda P { int a; }
 fn inisiu() {
     P p = P{a = 1, a = 2};

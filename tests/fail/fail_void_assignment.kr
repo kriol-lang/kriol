@@ -1,4 +1,4 @@
-// expect: cannot assign void expression to variable 'x'
+// expect: a função chamada não devolve nenhum valor que se possa guardar na variável 'x'
 fn f() {}
 fn inisiu() {
     int x = f();

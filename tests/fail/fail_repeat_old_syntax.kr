@@ -1,4 +1,4 @@
-// expect: a repeated array is written [value; count], for example [0; 3]
+// expect: um array com um valor repetido escreve-se [valor; quantidade], por exemplo [0; 3]
 fn inisiu() {
     int[3] a = [0] * 3;
     mostran(a[0]);

@@ -1,4 +1,4 @@
-// expect: variable 'x' is used in its own initializer
+// expect: a variável 'x' é usada no seu próprio valor inicial
 fn inisiu() {
     int x = x + 1;
 }

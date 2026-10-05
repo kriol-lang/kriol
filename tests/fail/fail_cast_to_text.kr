@@ -1,4 +1,4 @@
-// expect: cannot cast to 'textu'; only numbers and 'bool' are valid cast targets
+// expect: não se pode converter para 'textu' com (tipo); só se converte para números e 'bool'; para obter texto usa um texto interpolado, como f"{valor}"
 fn inisiu() {
     textu t = (textu) 5;
 }

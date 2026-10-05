@@ -142,36 +142,50 @@ static void __kriol_write_format(FILE* stream, const char* fmt, ...) {
         __kriol_write(stream, buf, (size_t)len < sizeof buf ? (size_t)len : sizeof buf - 1);
 }
 
-_Noreturn static void __kriol_fail(const char* prefix, const char* message) {
+/* The program's source file, named in its error messages. The compiler defines
+   it in every program; this default only serves code linked without it, such
+   as the runtime tests. */
+__attribute__((weak)) const char* __kriol_source_name = "kriol";
+
+/* Stops the program with "file:line: category: message", the format of the
+   compiler's own messages; the line is left out when it is 0. */
+_Noreturn static void __kriol_stop(int line, const char* category, const char* message) {
     __kriol_flush(stdout);
-    __kriol_write_text(stderr, prefix);
-    if (message && message[0] != '\0') {
-        __kriol_write_text(stderr, ": ");
-        __kriol_write_text(stderr, message);
+    __kriol_write_text(stderr, __kriol_source_name);
+    if (line > 0) {
+        char number[16];
+        snprintf(number, sizeof number, ":%d", line);
+        __kriol_write_text(stderr, number);
     }
+    __kriol_write_text(stderr, ": ");
+    __kriol_write_text(stderr, category);
+    __kriol_write_text(stderr, ": ");
+    __kriol_write_text(stderr, message ? message : "");
     __kriol_write_text(stderr, "\n");
     exit(1);
 }
 
-_Noreturn void __kriol_panic(const char* message) {
-    __kriol_fail("kriol: panic", message);
-}
+#define KRIOL_RUNTIME_ERROR "erro de execução"
+#define KRIOL_UNHANDLED_ERROR "erro não tratado"
 
-// An error that reached inisiu without being handled.
-_Noreturn void __kriol_unhandled_error(const char* message) {
-    __kriol_fail("kriol: err", message);
+_Noreturn void __kriol_panic(const char* message) {
+    __kriol_stop(0, KRIOL_RUNTIME_ERROR, message);
 }
 
 _Noreturn void __kriol_panic_at(const char* message, int line) {
-    char prefix[64];
-    snprintf(prefix, sizeof prefix, "kriol: panic at line %d", line);
-    __kriol_fail(prefix, message);
+    __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
+}
+
+/* An Erru that a call did not handle: one returned to inisiu, or one of a call
+   without 'tenta' or 'sinon'. */
+_Noreturn void __kriol_unhandled_error(const char* message, int line) {
+    __kriol_stop(line, KRIOL_UNHANDLED_ERROR, message);
 }
 
 #if !KRIOL_RUNTIME_NO_GC
 static void* __kriol_gc_out_of_memory(size_t requested_bytes) {
     (void)requested_bytes;
-    __kriol_panic("garbage-collected heap exhausted");
+    __kriol_panic("a memória do programa esgotou-se");
 }
 #endif
 
@@ -243,7 +257,7 @@ static char* __kriol_alloc_text(size_t bytes) {
 #else
     char* buf = (char*)GC_MALLOC_ATOMIC(bytes);
 #endif
-    if (!buf) __kriol_panic("out of memory while allocating memory for text data");
+    if (!buf) __kriol_panic("não há memória suficiente para guardar texto");
     return buf;
 }
 
@@ -253,7 +267,7 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
 #else
     char* buf = (char*)GC_REALLOC(old_buf, bytes);
 #endif
-    if (!buf) __kriol_panic("out of memory while allocating memory for text data");
+    if (!buf) __kriol_panic("não há memória suficiente para guardar texto");
     return buf;
 }
 
@@ -263,20 +277,20 @@ static char* __kriol_read_console_line(HANDLE console, const char** error) {
     size_t cap = 128;
     size_t len = 0;
     WCHAR* wide = (WCHAR*)malloc(cap * sizeof(WCHAR));
-    if (!wide) __kriol_panic("out of memory while reading from stdin");
+    if (!wide) __kriol_panic("não há memória suficiente para ler a entrada");
 
     for (;;) {
         if (len == cap) {
             cap *= 2;
             WCHAR* grown = (WCHAR*)realloc(wide, cap * sizeof(WCHAR));
-            if (!grown) __kriol_panic("out of memory while reading from stdin");
+            if (!grown) __kriol_panic("não há memória suficiente para ler a entrada");
             wide = grown;
         }
 
         DWORD read = 0;
         if (!ReadConsoleW(console, wide + len, (DWORD)(cap - len), &read, NULL)) {
             free(wide);
-            *error = "failed to read from stdin";
+            *error = "não foi possível ler a entrada";
             return NULL;
         }
         if (read == 0)
@@ -289,7 +303,7 @@ static char* __kriol_read_console_line(HANDLE console, const char** error) {
     /* Ctrl+Z at the start of a line is the console's end of input. */
     if (len == 0 || wide[0] == 0x1A) {
         free(wide);
-        *error = "end of input";
+        *error = "a entrada terminou e não há mais linhas para ler";
         return NULL;
     }
 
@@ -336,7 +350,7 @@ char* __kriol_read_line(const char* prompt, const char** error) {
         if (ch == '\n') break;
         if (len + 1 >= cap) {
             if (cap > ((size_t)-1) / 2)
-                __kriol_panic("input line is too large");
+                __kriol_panic("a linha lida é demasiado grande");
             cap *= 2;
             buf = __kriol_resize_text(buf, cap);
         }
@@ -344,11 +358,11 @@ char* __kriol_read_line(const char* prompt, const char** error) {
     }
 
     if (ferror(stdin)) {
-        *error = "failed to read from stdin";
+        *error = "não foi possível ler a entrada";
         return NULL;
     }
     if (!read_any) {
-        *error = "end of input";
+        *error = "a entrada terminou e não há mais linhas para ler";
         return NULL;
     }
 
@@ -377,7 +391,7 @@ char* __kriol_format(const char* fmt, ...) {
     va_end(args);
 
     if (written < 0 || written != needed)
-        __kriol_panic("failed to format text");
+        __kriol_panic("não foi possível formatar o texto");
 
     return buf;
 }
@@ -402,7 +416,7 @@ static void __kriol_builder_append(KriolTextBuilder* builder, const char* text, 
         size_t cap = builder->Cap;
         while (builder->Len + len + 1 > cap) {
             if (cap > ((size_t)-1) / 2)
-                __kriol_panic("text is too large");
+                __kriol_panic("o texto é demasiado grande");
             cap *= 2;
         }
         builder->Data = __kriol_resize_text(builder->Data, cap);
@@ -546,7 +560,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
         ++p;
     }
     if (p == end) {
-        *error = __kriol_format("invalid integer '%.*s%s'", KRIOL_QUOTE(text));
+        *error = __kriol_format("'%.*s%s' não é um número inteiro válido", KRIOL_QUOTE(text));
         return 0;
     }
 
@@ -554,7 +568,7 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
     int overflow = 0;
     for (; p < end; ++p) {
         if (*p < '0' || *p > '9') {
-            *error = __kriol_format("invalid integer '%.*s%s'", KRIOL_QUOTE(text));
+            *error = __kriol_format("'%.*s%s' não é um número inteiro válido", KRIOL_QUOTE(text));
             return 0;
         }
         unsigned digit = (unsigned)(*p - '0');
@@ -573,7 +587,13 @@ int __kriol_convert_int(const char* text, int64_t* out, int32_t bits, int32_t is
         overflow = 1;
 
     if (overflow || magnitude > limit) {
-        *error = __kriol_format("'%.*s%s' does not fit in '%c%d'", KRIOL_QUOTE(text), is_signed ? 'i' : 'u', (int)bits);
+        /* int is the name a program uses for i64. */
+        char type[8];
+        if (is_signed && bits == 64)
+            snprintf(type, sizeof type, "int");
+        else
+            snprintf(type, sizeof type, "%c%d", is_signed ? 'i' : 'u', (int)bits);
+        *error = __kriol_format("'%.*s%s' não cabe no tipo '%s'", KRIOL_QUOTE(text), type);
         return 0;
     }
 
@@ -606,13 +626,13 @@ int __kriol_convert_float(const char* text, double* out, int32_t bits, const cha
         valid = p > exponent;
     }
     if (!valid || p != end) {
-        *error = __kriol_format("invalid number '%.*s%s'", KRIOL_QUOTE(text));
+        *error = __kriol_format("'%.*s%s' não é um número válido", KRIOL_QUOTE(text));
         return 0;
     }
 
     double value = strtod(begin, NULL);
     if (isinf(value) || (bits == 32 && fabs(value) > FLT_MAX)) {
-        *error = __kriol_format("number '%.*s%s' is out of range", KRIOL_QUOTE(text));
+        *error = __kriol_format("o número '%.*s%s' é demasiado grande", KRIOL_QUOTE(text));
         return 0;
     }
     *out = value;
@@ -633,13 +653,13 @@ int __kriol_convert_bool(const char* text, int32_t* out, const char** error) {
         *out = 0;
         return 1;
     }
-    *error = __kriol_format("invalid boolean '%.*s%s' (expected sin or nau)", KRIOL_QUOTE(text));
+    *error = __kriol_format("'%.*s%s' não é um valor lógico válido; esperava-se sin ou nau", KRIOL_QUOTE(text));
     return 0;
 }
 
 void __kriol_assert_message(int cond, int line, const char* message) {
     if (!cond)
-        __kriol_panic_at(message && message[0] != '\0' ? message : "assertion failed", line);
+        __kriol_panic_at(message && message[0] != '\0' ? message : "a condição de konfirma é falsa", line);
 }
 
 void __kriol_assert(int cond, int line) {
@@ -648,27 +668,27 @@ void __kriol_assert(int cond, int line) {
 
 void __kriol_check_bounds(int64_t index, int64_t size, int line) {
     if (index < 0 || index >= size) {
-        __kriol_flush(stdout);
-        __kriol_write_format(stderr, "kriol: array index out of bounds at line %d: %lld not in [0..%lld]\n",
-                             line, (long long)index, (long long)size - 1);
-        exit(1);
+        char message[96];
+        snprintf(message, sizeof message, "o índice %lld está fora do array, que vai de 0 a %lld",
+                 (long long)index, (long long)size - 1);
+        __kriol_panic_at(message, line);
     }
 }
 
 void __kriol_check_fdiv(double divisor, int32_t line) {
     if (divisor == 0.0)
-        __kriol_panic_at("division by zero", line);
+        __kriol_panic_at("divisão por zero", line);
 }
 
 void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line) {
     if (rhs == 0)
-        __kriol_panic_at("division by zero", line);
+        __kriol_panic_at("divisão por zero", line);
 
     if (signed_bits > 0 && rhs == -1) {
         int64_t min = signed_bits >= 64
             ? INT64_MIN
             : -((int64_t)1 << (signed_bits - 1));
         if (lhs == min)
-            __kriol_panic_at("integer overflow in division", line);
+            __kriol_panic_at("o resultado da divisão não cabe no tipo do número inteiro", line);
     }
 }

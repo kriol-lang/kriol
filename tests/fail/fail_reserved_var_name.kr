@@ -1,2 +1,2 @@
-// expect: syntax error, unexpected (, expecting =
+// expect: não se esperava '(' aqui; esperava-se '='
 int mostran() = 9;

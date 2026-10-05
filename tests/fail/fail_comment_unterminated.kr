@@ -1,0 +1,5 @@
+// expect: o comentário não foi fechado; falta '*/'
+fn inisiu() {
+    /* um comentário sem fim
+    mostran(1);
+}

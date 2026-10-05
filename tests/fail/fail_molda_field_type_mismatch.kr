@@ -1,4 +1,4 @@
-// expect: field 'nomi' of 'Pessoa': expected 'textu', got 'int'
+// expect: o campo 'nomi' de 'Pessoa' tem de ser do tipo 'textu', mas é do tipo 'int'
 molda Pessoa {
     textu nomi;
     int idadi;

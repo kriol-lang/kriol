@@ -1,4 +1,4 @@
-// expect: sai() expects an integer exit code, got value of type 'textu'
+// expect: o código de saída de 'sai' tem de ser um número inteiro, mas é do tipo 'textu'
 // sai() requires an integer exit code, not a string.
 fn inisiu() {
     sai("adeus");

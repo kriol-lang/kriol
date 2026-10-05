@@ -1,4 +1,4 @@
-// expect: syntax error, unexpected end of interpolation
+// expect: falta um valor dentro de {} no texto interpolado, como em f"{x}"
 // ERROR: Empty and malformed interpolations in f-string
 fn inisiu() {
     mostra(f"{}");

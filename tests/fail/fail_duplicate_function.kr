@@ -1,4 +1,4 @@
-// expect: duplicate function declaration 'soma'
+// expect: a função 'soma' já foi declarada; cada função tem de ter um nome diferente
 fn soma(int a, int b) int {
     divolvi a + b;
 }

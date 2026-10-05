@@ -1,4 +1,4 @@
-// expect: 'continue' used outside a loop
+// expect: 'kontinua' só pode ser usado dentro de um ciclo 'pa' ou 'nkuantu'
 // ERROR: kontinua (continue) used outside any loop.
 fn inisiu() {
     kontinua;

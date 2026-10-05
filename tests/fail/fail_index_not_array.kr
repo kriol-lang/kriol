@@ -1,4 +1,4 @@
-// expect: indexed expression is not an array
+// expect: só se pode usar [índice] com arrays, e este valor não é um array
 fn inisiu() {
     int x = 1;
     mostran(x[0]);

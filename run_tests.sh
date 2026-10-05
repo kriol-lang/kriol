@@ -138,7 +138,7 @@ UNHANDLED='fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int
 
 printf "  %-44s" "unhandled error warns"
 tmpbin=$(mktemp /tmp/kriol_warn_XXXX)
-if "$KRIOL" --text "$UNHANDLED" -o "$tmpbin" 2>&1 | grep -Fq "warn:" && [ -x "$tmpbin" ]; then
+if "$KRIOL" --text "$UNHANDLED" -o "$tmpbin" 2>&1 | grep -Fq "aviso:" && [ -x "$tmpbin" ]; then
     echo " PASS"; pass=$((pass+1))
 else
     echo " FAIL"; record_failure "unhandled error warns"
@@ -200,14 +200,31 @@ rejects_with() {
 tmpdir=$(mktemp -d /tmp/kriol_cli_XXXX)
 mkdir "$tmpdir/folder.kriol"
 echo 'fn inisiu() { mostran("txt"); }' > "$tmpdir/program.txt"
-rejects_with "cli: missing input" "Provide exactly one input" -o /dev/null
-rejects_with "cli: file and --text together" "Provide exactly one input" \
+rejects_with "cli: missing input" "falta o programa a compilar" -o /dev/null
+rejects_with "cli: file and --text together" "um ficheiro ou --text" \
     "$tmpdir/program.txt" --text 'fn inisiu() {}'
-rejects_with "cli: missing file" "was not found" "$tmpdir/missing.kriol"
-rejects_with "cli: directory as input" "is not a regular file" "$tmpdir/folder.kriol"
-rejects_with "cli: unknown extension" "File format not recognized" "$tmpdir/program.txt"
-rejects_with "cli: invalid optimization level" "allowed options" --text 'fn inisiu() {}' --opt-lvl 5
-rejects_with "cli: unknown target" "allowed options" --text 'fn inisiu() {}' --target sparc
+rejects_with "cli: missing file" "não existe" "$tmpdir/missing.kriol"
+rejects_with "cli: directory as input" "não é um ficheiro" "$tmpdir/folder.kriol"
+rejects_with "cli: unknown extension" "não tem a extensão de um programa Kriol" "$tmpdir/program.txt"
+rejects_with "cli: invalid optimization level" "o nível de otimização tem de ser" --text 'fn inisiu() {}' --opt-lvl 5
+rejects_with "cli: unknown target" "não é suportado" --text 'fn inisiu() {}' --target sparc
+rejects_with "cli: unknown option" "a opção '--sem-isto' não existe" --sem-isto
+rejects_with "cli: option without a value" "falta o valor da opção '-o'" --text 'fn inisiu() {}' -o
+rejects_with "cli: two files" "está a mais" "$tmpdir/a.kriol" "$tmpdir/b.kriol"
+
+printf "  %-44s" "cli: --version"
+if "$KRIOL" --version | grep -Eq "^Kriol v[0-9]+\.[0-9]+\.[0-9]+$"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "cli: --version"
+fi
+
+printf "  %-44s" "cli: --help"
+if "$KRIOL" --help | grep -Fq "Utilização: kriol"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "cli: --help"
+fi
 
 printf "  %-44s" "cli: --ignore-extension"
 if "$KRIOL" --ignore-extension "$tmpdir/program.txt" -o "$tmpdir/program" 2>/dev/null && \

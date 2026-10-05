@@ -1,4 +1,4 @@
-// expect: duplicate field 'a' in molda 'P'
+// expect: o campo 'a' aparece repetido no molde 'P'
 molda P {
     int a;
     int a;

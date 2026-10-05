@@ -1,4 +1,4 @@
-// expect: void expression cannot be used as an operand
+// expect: uma função que não devolve nenhum valor não pode ser usada numa operação
 fn f() {}
 fn inisiu() {
     int x = f() + 1;

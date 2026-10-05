@@ -1,4 +1,4 @@
-// expect: syntax error, unexpected ::, expecting valid identifier or [
+// expect: não se esperava '::' aqui; esperava-se um nome ou '['
 fn inisiu() {
     Mesa::novu();
 }

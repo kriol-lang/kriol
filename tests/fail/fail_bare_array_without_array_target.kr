@@ -1,4 +1,4 @@
-// expect: variable 'valor' uses an array initializer without an array target; declare an array type or use an explicit '(T[])[...]' array literal where an array value is expected
+// expect: a variável 'valor' não é um array, por isso não pode receber uma lista [...]; para declarar um array, escreve o tamanho a seguir ao tipo, por exemplo 'int[3] valor = [1, 2, 3];'
 fn inisiu() {
     int valor = [1, 2];
 }

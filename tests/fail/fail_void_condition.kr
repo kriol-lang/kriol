@@ -1,4 +1,4 @@
-// expect: void expression cannot be used as a condition
+// expect: a condição chama uma função que não devolve nenhum valor
 fn f() {}
 fn inisiu() {
     si f() {

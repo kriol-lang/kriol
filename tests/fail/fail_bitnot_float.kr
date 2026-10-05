@@ -1,4 +1,4 @@
-// expect: bitwise operator '~' requires an integer operand, got 'num'
+// expect: o operador '~' só funciona com números inteiros, mas recebeu um valor do tipo 'num'
 fn inisiu() {
     num a = 1.5;
     num b = ~a;

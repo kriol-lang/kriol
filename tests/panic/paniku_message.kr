@@ -1,4 +1,4 @@
-// expect: panic at line 4: algo correu mal
+// expect: :4: erro de execução: algo correu mal
 fn inisiu() {
     mostran("antes");
     paniku("algo correu mal");

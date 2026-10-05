@@ -1,4 +1,4 @@
-// expect: return type of function 'grandi' needs 1600000 bytes of stack, over the limit of 1048576 bytes
+// expect: o valor devolvido pela função 'grandi' ocupa 1600000 bytes, mais do que o limite de 1048576 bytes
 fn grandi() int[200000] {
     divolvi [0; 200000];
 }

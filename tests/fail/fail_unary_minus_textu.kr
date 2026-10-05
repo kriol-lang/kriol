@@ -1,4 +1,4 @@
-// expect: unary operator '-' requires a numeric operand, got 'textu'
+// expect: o operador '-' só funciona com números, mas recebeu um valor do tipo 'textu'
 fn inisiu() {
     mostran(-"abc");
 }

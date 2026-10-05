@@ -49,6 +49,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 [ \t\r\n]      /* ignore */;
 "//"[^\n]*      /* single-line comment */;
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
+"/*"([^*]|\*+[^*/])*\**     { SCAN_ERROR("o comentário não foi fechado; falta '*/'"); }
 
 "fn"            return TOKENIZE(FN);
 "molda"         return TOKENIZE(MOLDA);
@@ -133,27 +134,30 @@ f["]            { yy_push_state(FSTRING_DQ); return TOKENIZE(FSTR_START); }
 f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 {STRING_DQ}     SAVE_TOKEN;   return STR_LIT;
 {STRING_SQ}     SAVE_TOKEN;   return STR_LIT;
+ /* A text without its closing quote: report it, then go on as if it were closed. */
+["]([^"\\\n]|\\.)*  { SCAN_ERROR("o texto não foi fechado; falta a aspa final \""); yylval.string = new std::string(std::string(yytext) + "\""); return STR_LIT; }
+[']([^'\\\n]|\\.)*  { SCAN_ERROR("o texto não foi fechado; falta a aspa final '"); yylval.string = new std::string(std::string(yytext) + "'"); return STR_LIT; }
 
 <FSTRING_DQ>{
     "\""                  { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { g_fstr_braces.push_back(0); yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^"{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
-    \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
-    .                     { SCAN_ERROR("unexpected character '" + std::string(yytext) + "' inside f-string"); }
+    <<EOF>>               { SCAN_ERROR("o texto interpolado não foi fechado; falta a aspa final"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    \n                    { SCAN_ERROR("o texto interpolado não pode continuar na linha seguinte; falta a aspa final?"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    .                     { SCAN_ERROR("o carácter '" + std::string(yytext) + "' não é válido neste texto interpolado"); }
 }
 
 <FSTRING_SQ>{
     "'"                   { yy_pop_state(); return TOKENIZE(FSTR_END); }
     "{"                   { g_fstr_braces.push_back(0); yy_push_state(INITIAL); return TOKENIZE(FSTR_LBRACE); }
     ([^'{\\\n]|\\.)+      { SAVE_TOKEN; return FSTR_TEXT; }
-    <<EOF>>               { SCAN_ERROR("unterminated f-string"); yy_pop_state(); return TOKENIZE(FSTR_END); }
-    \n                    { SCAN_ERROR("raw newline inside f-string (missing closing quote?)"); yy_pop_state(); return TOKENIZE(FSTR_END); }
-    .                     { SCAN_ERROR("unexpected character '" + std::string(yytext) + "' inside f-string"); }
+    <<EOF>>               { SCAN_ERROR("o texto interpolado não foi fechado; falta a aspa final"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    \n                    { SCAN_ERROR("o texto interpolado não pode continuar na linha seguinte; falta a aspa final?"); yy_pop_state(); return TOKENIZE(FSTR_END); }
+    .                     { SCAN_ERROR("o carácter '" + std::string(yytext) + "' não é válido neste texto interpolado"); }
 }
 
-[\xC0-\xFF][\x80-\xBF]* { SCAN_ERROR("unknown character '" + std::string(yytext) + "'; names and keywords use ASCII letters"); }
-.               { SCAN_ERROR("unknown token '" + std::string(yytext) + "'"); }
+[\xC0-\xFF][\x80-\xBF]* { SCAN_ERROR("o carácter '" + std::string(yytext) + "' só pode aparecer dentro de textos; os nomes usam apenas letras sem acentos"); }
+.               { SCAN_ERROR("o símbolo '" + std::string(yytext) + "' não faz parte da linguagem"); }
 
 %%
 

@@ -1,4 +1,4 @@
-// expect: cannot cast a value of type 'int[2]' to 'int'
+// expect: não se pode converter um valor do tipo 'int[2]' para 'int' com (tipo)
 molda Par {
     int[2] v;
 }

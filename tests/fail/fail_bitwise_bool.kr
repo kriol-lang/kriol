@@ -1,4 +1,4 @@
-// expect: bitwise operator '|' requires integer operands, got 'bool' and 'bool'
+// expect: o operador '|' só funciona com números inteiros, mas recebeu valores dos tipos 'bool' e 'bool'
 fn inisiu() {
     bool a = sin;
     bool b = a | nau;

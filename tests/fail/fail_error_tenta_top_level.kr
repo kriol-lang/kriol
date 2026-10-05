@@ -1,4 +1,4 @@
-// expect: 'tenta' can only be used in a function that declares an error type, such as 'fn f(...) : Erru'
+// expect: 'tenta' só pode ser usado numa função que pode falhar, declarada com ': Erru', como 'fn f(...) : Erru'
 fn valor() int : Erru {
     divolvi 1;
 }

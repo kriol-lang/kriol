@@ -1,4 +1,4 @@
-// expect: array variable 'array' initializer element 2: expected 'int', got 'textu'
+// expect: o elemento 2 do array 'array' tem de ser do tipo 'int', mas é do tipo 'textu'
 fn inisiu() {
     int[2] array = [1, "x"];
 }

@@ -1,0 +1,7 @@
+// expect: ainda não é possível comparar textos com '=='
+fn inisiu() {
+    textu a = "x";
+    si a == "x" {
+        mostran(1);
+    }
+}

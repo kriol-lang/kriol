@@ -1,4 +1,4 @@
-// expect: array variable 'array' expects 2 initializer element(s), got 1
+// expect: o array 'array' tem 2 elementos, mas a lista tem 1
 fn inisiu() {
     int[2] array = [1];
 }

@@ -1,4 +1,4 @@
-// expect: binary operator '+' requires numeric operands, got 'textu' and 'bool'
+// expect: o operador '+' só funciona com números, mas recebeu valores dos tipos 'textu' e 'bool'
 fn inisiu(u64 _tmp3, u64 y0, int _tmp1) {
     mostran('linha\n773' + sin);
 }

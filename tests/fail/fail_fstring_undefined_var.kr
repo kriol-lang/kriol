@@ -1,4 +1,4 @@
-// expect: undefined variable name 'nomi'
+// expect: a variável 'nomi' não foi declarada; declara-a antes de a usar, por exemplo 'int nomi = 0;'
 // f-string referencing an undeclared variable should be rejected.
 fn inisiu() {
     mostran(f"Hello {nomi}");

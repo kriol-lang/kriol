@@ -1,4 +1,4 @@
-// expect: cannot assign value of type 'int' to variable 'byte' of type 'u8'
+// expect: não se pode guardar um valor do tipo 'int' na variável 'byte', que é do tipo 'u8'; para converter, escreve (u8) antes do valor
 fn inisiu() {
     int value = 10;
     u8 byte = value;

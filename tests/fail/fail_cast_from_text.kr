@@ -1,4 +1,4 @@
-// expect: cannot cast a value of type 'textu' to 'int'
+// expect: não se pode converter um valor do tipo 'textu' para 'int' com (tipo); para converter texto usa 'int::konverti(texto)'
 fn inisiu() {
     int n = (int) "5";
 }

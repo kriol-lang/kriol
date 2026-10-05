@@ -1,4 +1,4 @@
-// expect: the value after 'sinon' has type 'textu', expected 'int'
+// expect: o valor depois de 'sinon' tem de ser do tipo 'int', mas é do tipo 'textu'
 fn f() int : Erru {
     divolvi 1;
 }

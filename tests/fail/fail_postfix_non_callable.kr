@@ -1,4 +1,4 @@
-// expect: expression is not callable
+// expect: só se podem chamar funções, e esta expressão não é uma função
 fn identidade(int valor) int {
     divolvi valor;
 }

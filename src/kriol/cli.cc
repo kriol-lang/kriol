@@ -3,9 +3,11 @@
 #include "../../include/kriol/codegen.hh"
 #include "../../include/kriol/sema.hh"
 #include "../../include/kriol/constants.hh"
+#include "../../include/kriol/diagnostic.hh"
 
 #include "../../include/external/argparse.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <filesystem>
@@ -51,6 +53,76 @@ static bool IsKnownTarget(const std::string& target)
     return target == "native" || target == "wasm32-wasi" || target == "x86_64-windows";
 }
 
+// The targets this build of the compiler can produce.
+static std::vector<std::string> SupportedTargets()
+{
+    std::vector<std::string> targets = {"native"};
+#if KRIOL_ENABLE_WASM
+    targets.push_back("wasm32-wasi");
+#endif
+#if KRIOL_ENABLE_WINDOWS_TARGET
+    targets.push_back("x86_64-windows");
+#endif
+    return targets;
+}
+
+static std::string JoinWords(const std::vector<std::string>& words)
+{
+    std::string joined;
+    for (std::size_t i = 0; i < words.size(); ++i)
+        joined += (i == 0 ? "" : i + 1 == words.size() ? " ou " : ", ") + words[i];
+    return joined;
+}
+
+static std::string HelpText()
+{
+    return
+        "Utilização: kriol [opções] ficheiro.kriol\n"
+        "            kriol [opções] --text 'código'\n\n"
+        "Compila um programa Kriol num executável.\n\n"
+        "Opções:\n"
+        "  -o, --output FICHEIRO  Onde escrever o resultado (por omissão, ./" KR_DEFAULT_OUT_FILE
+        ", ou ./" KR_DEFAULT_WASM_OUT_FILE " para wasm32-wasi)\n"
+        "  --text CÓDIGO          Compila o código indicado em vez de um ficheiro\n"
+        "  --target ALVO          Plataforma de destino: " + JoinWords(SupportedTargets()) +
+        " (por omissão, native)\n"
+        "  --opt-lvl N            Nível de otimização, de 0 (nenhuma) a 3 (por omissão, 2)\n"
+        "  --emit-ir              Escreve o IR do LLVM em vez do executável, no ecrã ou no ficheiro de -o\n"
+        "  --strict               Trata os avisos como erros\n"
+        "  --ignore-extension     Aceita ficheiros sem a extensão ." KR_STANDARD_FILE_EXTENSION
+        " ou ." KR_ALTERNATIVE_FILE_EXTENSION "\n"
+        "  -h, --help             Mostra esta ajuda\n"
+        "  -v, --version          Mostra a versão do compilador\n\n"
+        "Exemplos:\n"
+        "  kriol ola.kriol\n"
+        "  kriol ola.kriol -o ola\n"
+        "  kriol ola.kriol --target wasm32-wasi -o ola.wasm\n"
+        "  kriol --text 'fn inisiu() { mostran(\"Oi\"); }' --emit-ir\n";
+}
+
+// Rewrites the argument parser's own errors in Portuguese.
+static std::string ArgumentError(const std::string& error)
+{
+    const auto quoted = [&](std::size_t from) {
+        std::string value = error.substr(from);
+        if (!value.empty() && value.back() == '.') value.pop_back();
+        if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'')
+            value = value.substr(1, value.size() - 2);
+        return "'" + value + "'";
+    };
+
+    const std::string unknown = "Unknown argument: ";
+    const std::string tooFew = "Too few arguments for ";
+    const std::string tooMany = "failed to parse ";
+    if (error.rfind(unknown, 0) == 0)
+        return "a opção " + quoted(unknown.size()) + " não existe";
+    if (error.rfind(tooFew, 0) == 0)
+        return "falta o valor da opção " + quoted(tooFew.size());
+    if (const auto at = error.find(tooMany); at != std::string::npos)
+        return "só se pode compilar um ficheiro de cada vez, e " + quoted(at + tooMany.size()) + " está a mais";
+    return "argumentos inválidos (" + error + ")";
+}
+
 static ast::CodegenTarget ResolveTarget(const std::string& target)
 {
     if (target == "wasm32-wasi")
@@ -84,18 +156,16 @@ const std::string& cli::GetSourceFile() {
 }
 
 void cli::ReportParseError(int line, const std::string& message) {
-    std::string location = g_source_file.empty() ? "" : g_source_file + ":" + std::to_string(line) + ": ";
-    g_parse_errors.push_back(location + message);
+    g_parse_errors.push_back(DiagnosticPrefix(g_source_file, line, "erro") + message);
+}
+
+bool cli::HasParseErrors() {
+    return !g_parse_errors.empty();
 }
 
 void cli::PrintErr(std::string message)
 {
-    std::cerr << KR_STANDARD_COMPILER_NAME << ": err: " << message << std::endl;
-}
-
-void cli::PrintWarn(std::string message)
-{
-    std::cerr << KR_STANDARD_COMPILER_NAME << ": warn: " << message << std::endl;
+    std::cerr << KR_STANDARD_COMPILER_NAME << ": erro: " << message << std::endl;
 }
 
 void cli::PrintErr(std::string message, int exitNum)
@@ -105,78 +175,19 @@ void cli::PrintErr(std::string message, int exitNum)
 }
 
 
+// The options are documented by HelpText(), which must follow any change here.
 void cli::Compiler::DefineArgs()
 {
-    Parser->add_description(
-        "Compile one Kriol source file or inline source text."
-    );
-    Parser->add_epilog(
-        "Inputs:\n"
-        "  Provide exactly one of [file] or --text SOURCE.\n\n"
-        "Outputs:\n"
-        "  Native builds write ./" KR_DEFAULT_OUT_FILE " by default.\n"
-        "  wasm32-wasi builds write ./" KR_DEFAULT_WASM_OUT_FILE " by default.\n"
-        "  x86_64-windows builds write ./" KR_DEFAULT_WINDOWS_OUT_FILE " by default.\n"
-        "  --emit-ir prints LLVM IR to stdout unless -o is provided.\n\n"
-        "Examples:\n"
-        "  kriol hello.kriol\n"
-        "  kriol hello.kriol -o hello\n"
-        "  kriol hello.kriol --target wasm32-wasi -o hello.wasm\n"
-        "  kriol --text 'fn inisiu() { mostran(\"Oi\"); }' --emit-ir"
-    );
-    Parser->set_usage_max_line_width(100);
-
-    Parser->add_argument("file")
-        .help("Source file to compile (.kriol or .kr unless --ignore-extension is set).")
-        .metavar("[file]")
-        .nargs(ap::nargs_pattern::optional);
-
-    Parser->add_argument("--text")
-        .help("Compile inline source text instead of reading a file.")
-        .metavar("SOURCE")
-        .nargs(1);
-
-    Parser->add_argument("-o", "--output")
-        .help("Output path for the executable, wasm module, or emitted IR.")
-        .metavar("FILE")
-        .nargs(1);
-
-    Parser->add_argument("--emit-ir")
-        .help("Emit LLVM IR instead of producing native/wasm output.")
-        .default_value(false)
-        .implicit_value(true);
-
-    auto& target = Parser->add_argument("--target")
-        .help("Compilation target.")
-        .metavar("TARGET")
-        .default_value(std::string("native"))
-        .nargs(1);
-    target.add_choice("native");
-#if KRIOL_ENABLE_WASM
-    target.add_choice("wasm32-wasi");
-#endif
-#if KRIOL_ENABLE_WINDOWS_TARGET
-    target.add_choice("x86_64-windows");
-#endif
-
-    Parser->add_argument("--opt-lvl")
-        .help("Optimization level for the generated program, 0 (none) to 3.")
-        .metavar("N")
-        .default_value(std::string("2"))
-        .nargs(1)
-        .choices("0", "1", "2", "3");
-
-    Parser->add_argument("--strict")
-        .help("Treat warnings as errors.")
-        .default_value(false)
-        .implicit_value(true);
-
-    Parser->add_argument("--ignore-extension")
-        .help("Accept file inputs without a ." +
-              std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
-              std::string(KR_ALTERNATIVE_FILE_EXTENSION) + " extension.")
-        .default_value(false)
-        .implicit_value(true);
+    Parser->add_argument("file").nargs(ap::nargs_pattern::optional);
+    Parser->add_argument("--text").nargs(1);
+    Parser->add_argument("-o", "--output").nargs(1);
+    Parser->add_argument("--emit-ir").flag();
+    Parser->add_argument("--target").default_value(std::string("native")).nargs(1);
+    Parser->add_argument("--opt-lvl").default_value(std::string("2")).nargs(1);
+    Parser->add_argument("--strict").flag();
+    Parser->add_argument("--ignore-extension").flag();
+    Parser->add_argument("-h", "--help").flag();
+    Parser->add_argument("-v", "--version").flag();
 }
 
 void cli::Compiler::ParseArgs(int argc, const char* const* argv)
@@ -189,17 +200,35 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
     }
     catch (const std::exception &e)
     {
-        std::stringstream sstrm;
-
-        sstrm << *(Parser);
-
-        cli::PrintErr(std::string(e.what()) + "\n\n" + sstrm.str(), 1);
+        cli::PrintErr(ArgumentError(e.what()) + "; usa 'kriol --help' para ver as opções", 1);
     }
+
+    if (Parser->get<bool>("--help"))
+    {
+        std::cout << HelpText();
+        throw cli::FatalError("help", 0);
+    }
+    if (Parser->get<bool>("--version"))
+    {
+        std::cout << Version << std::endl;
+        throw cli::FatalError("version", 0);
+    }
+
+    const auto targets = SupportedTargets();
+    const auto target = Parser->get<std::string>("--target");
+    if (std::find(targets.begin(), targets.end(), target) == targets.end())
+        cli::PrintErr("o alvo '" + target + "' não é suportado; os alvos possíveis são " + JoinWords(targets), 1);
+
+    const auto optLevel = Parser->get<std::string>("--opt-lvl");
+    if (optLevel.size() != 1 || optLevel[0] < '0' || optLevel[0] > '3')
+        cli::PrintErr("o nível de otimização tem de ser 0, 1, 2 ou 3, mas é '" + optLevel + "'", 1);
 
     auto file = Parser->present<std::string>("file");
     auto text = Parser->present<std::string>("--text");
     if (file.has_value() == text.has_value())
-        cli::PrintErr("Provide exactly one input: a source file or --text <source>.", 1);
+        cli::PrintErr(file ? "indica o programa só de uma forma: um ficheiro ou --text 'código', não os dois"
+                           : "falta o programa a compilar; indica um ficheiro, por exemplo 'kriol ola.kriol', "
+                             "ou usa 'kriol --help' para ver as opções", 1);
 
     if (text)
     {
@@ -239,11 +268,11 @@ void cli::Compiler::SaveCodeToFile(const std::string& code, const std::string& f
 {
     std::ofstream file(PathFromUtf8(filename), std::ios::binary);
     if (!file)
-        cli::PrintErr("Couldn't create file '" + filename + "': " + std::strerror(errno), 1);
+        cli::PrintErr("não foi possível criar o ficheiro '" + filename + "': " + std::strerror(errno), 1);
 
     file.write(code.data(), static_cast<std::streamsize>(code.size()));
     if (!file)
-        cli::PrintErr("Couldn't write file '" + filename + "'.", 1);
+        cli::PrintErr("não foi possível escrever o ficheiro '" + filename + "'", 1);
 }
 
 void cli::KriolLangParserWrapper::ParseFile(
@@ -255,19 +284,19 @@ void cli::KriolLangParserWrapper::ParseFile(
 
     if (!fs::exists(path))
     {
-        cli::PrintErr("File '" + filename + "' was not found!", 1);
+        cli::PrintErr("o ficheiro '" + filename + "' não existe", 1);
     }
 
     if (!fs::is_regular_file(path))
     {
-        cli::PrintErr("Input '" + filename + "' is not a regular file.", 1);
+        cli::PrintErr("'" + filename + "' não é um ficheiro", 1);
     }
 
     FILE *file = OpenFileForRead(filename);
 
     if (file == NULL)
     {
-        cli::PrintErr("Couldn't open the file '" + filename + "': " + std::strerror(errno), 1);
+        cli::PrintErr("não foi possível abrir o ficheiro '" + filename + "': " + std::strerror(errno), 1);
     }
 
     // Skip a UTF-8 byte order mark, which Windows editors often write.
@@ -301,7 +330,7 @@ void cli::KriolLangParserWrapper::ParseText(
     kriol_scanner_reset_state();
     YY_BUFFER_STATE buffer = yy_scan_string(text.c_str());
     if (!buffer)
-        cli::PrintErr("Couldn't create scanner buffer for source text!", 1);
+        cli::PrintErr("não foi possível ler o código indicado", 1);
 
     g_parse_errors.clear();
     yylineno = 1;
@@ -319,17 +348,17 @@ void cli::KriolLangParserWrapper::ParseText(
 cli::CompileResult cli::Compile(const cli::CompileOptions& options)
 {
     if (options.input.empty())
-        throw std::invalid_argument("Compilation input cannot be empty.");
+        throw std::invalid_argument("o programa a compilar está vazio");
     if (!IsKnownTarget(options.target))
-        throw std::invalid_argument("Unknown compilation target '" + options.target + "'.");
+        throw std::invalid_argument("o alvo '" + options.target + "' não existe");
     if (options.emitIR && options.outputToMemory)
-        throw std::invalid_argument("emitIR and outputToMemory cannot be used together.");
+        throw std::invalid_argument("emitIR e outputToMemory não podem ser usados ao mesmo tempo");
     if (options.outputToMemory && !options.outfile.empty())
-        throw std::invalid_argument("outfile cannot be used with outputToMemory.");
+        throw std::invalid_argument("outfile não pode ser usado com outputToMemory");
     if (options.optLevel > 3)
-        throw std::invalid_argument("Optimization level must be between 0 and 3.");
+        throw std::invalid_argument("o nível de otimização tem de estar entre 0 e 3");
     if (options.outputToMemory && options.target != "wasm32-wasi")
-        throw std::invalid_argument("In-memory output is currently supported only for wasm32-wasi.");
+        throw std::invalid_argument("a compilação para memória só é suportada para wasm32-wasi");
 
     CompileResult result;
     std::string sourceName = options.sourceName.empty()
@@ -423,9 +452,9 @@ void cli::Compiler::ValidateInput() const
                            extension == "." + std::string(KR_ALTERNATIVE_FILE_EXTENSION);
     if (!supported)
         cli::PrintErr(
-            "File format not recognized. Expected a ." +
-            std::string(KR_STANDARD_FILE_EXTENSION) + " or ." +
-            std::string(KR_ALTERNATIVE_FILE_EXTENSION) + " source file.",
+            "'" + Args.input + "' não tem a extensão de um programa Kriol (." +
+            std::string(KR_STANDARD_FILE_EXTENSION) + " ou ." +
+            std::string(KR_ALTERNATIVE_FILE_EXTENSION) + "); para o compilar na mesma, usa --ignore-extension",
             1
         );
 }
@@ -451,14 +480,15 @@ void cli::Compiler::Run(int argc, const char* const* argv)
 
     try
     {
+        // Diagnostics already carry their "file:line: erro: " prefix.
         CompileResult result = Compile(MakeCompileOptions());
         for (const auto& warning : result.warnings)
-            cli::PrintWarn(warning);
+            std::cerr << warning << std::endl;
         if (!result.diagnostics.empty())
         {
-            for (const auto& err : result.diagnostics)
-                cli::PrintErr(err);
-            throw cli::FatalError("semantic errors", 1);
+            for (const auto& diagnostic : result.diagnostics)
+                std::cerr << diagnostic << std::endl;
+            throw cli::FatalError("o programa tem erros", 1);
         }
 
         if (Args.emitIR && Args.outfile.empty())

@@ -7,6 +7,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The compiler writes UTF-8, and the expected messages have accents.
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 $Kriol = (Resolve-Path $Kriol).Path
 $Root = (Resolve-Path $Root).Path
@@ -181,13 +183,19 @@ New-Item -ItemType Directory (Join-Path $cliDir 'folder.kriol') -Force | Out-Nul
 $txtSource = Join-Path $cliDir 'program.txt'
 Set-Content $txtSource 'fn inisiu() { mostran("txt"); }'
 $cliOut = Join-Path $cliDir 'program.exe'
-Test-RejectedWith 'cli: missing input' 'Provide exactly one input' @('-o', $cliOut)
-Test-RejectedWith 'cli: file and --text together' 'Provide exactly one input' @($txtSource, '--text', 'fn inisiu() {}')
-Test-RejectedWith 'cli: missing file' 'was not found' @((Join-Path $cliDir 'missing.kriol'))
-Test-RejectedWith 'cli: directory as input' 'is not a regular file' @((Join-Path $cliDir 'folder.kriol'))
-Test-RejectedWith 'cli: unknown extension' 'File format not recognized' @($txtSource)
-Test-RejectedWith 'cli: invalid optimization level' 'allowed options' @('--text', 'fn inisiu() {}', '--opt-lvl', '5')
-Test-RejectedWith 'cli: unknown target' 'allowed options' @('--text', 'fn inisiu() {}', '--target', 'sparc')
+Test-RejectedWith 'cli: missing input' 'falta o programa a compilar' @('-o', $cliOut)
+Test-RejectedWith 'cli: file and --text together' 'um ficheiro ou --text' @($txtSource, '--text', 'fn inisiu() {}')
+Test-RejectedWith 'cli: missing file' 'não existe' @((Join-Path $cliDir 'missing.kriol'))
+Test-RejectedWith 'cli: directory as input' 'não é um ficheiro' @((Join-Path $cliDir 'folder.kriol'))
+Test-RejectedWith 'cli: unknown extension' 'não tem a extensão de um programa Kriol' @($txtSource)
+Test-RejectedWith 'cli: invalid optimization level' 'o nível de otimização tem de ser' @('--text', 'fn inisiu() {}', '--opt-lvl', '5')
+Test-RejectedWith 'cli: unknown target' 'não é suportado' @('--text', 'fn inisiu() {}', '--target', 'sparc')
+Test-RejectedWith 'cli: unknown option' "a opção '--sem-isto' não existe" @('--sem-isto')
+Test-RejectedWith 'cli: option without a value' "falta o valor da opção '-o'" @('--text', 'fn inisiu() {}', '-o')
+Test-RejectedWith 'cli: two files' 'está a mais' @((Join-Path $cliDir 'a.kriol'), (Join-Path $cliDir 'b.kriol'))
+Write-Result 'cli: --version' ((& $Kriol --version) -match '^Kriol v\d+\.\d+\.\d+$')
+
+Write-Result 'cli: --help' (((& $Kriol --help) -join "`n").Contains('Utiliza'))
 
 $ok = Invoke-Kriol @('--ignore-extension', $txtSource, '-o', $cliOut)
 $output = if ($ok) { & $cliOut } else { $null }

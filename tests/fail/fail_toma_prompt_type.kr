@@ -1,4 +1,4 @@
-// expect: argument 1 of 'toma': expected 'textu', got 'int'
+// expect: o argumento 1 de 'toma' tem de ser do tipo 'textu', mas é do tipo 'int'
 fn inisiu() : Erru {
     textu nome = tenta toma(42);
     mostran(nome);

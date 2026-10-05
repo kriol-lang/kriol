@@ -1,4 +1,4 @@
-// expect: program must define an entry function 'fn inisiu()'
+// expect: falta a função 'inisiu', por onde o programa começa; acrescenta 'fn inisiu() { ... }'
 fn helper() int {
     divolvi 1;
 }

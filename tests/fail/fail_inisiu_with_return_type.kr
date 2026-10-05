@@ -1,4 +1,4 @@
-// expect: entry function 'inisiu' must not declare a return type
+// expect: a função 'inisiu' não pode declarar um tipo de retorno, porque é por ela que o programa começa
 fn inisiu() int {
     divolvi 0;
 }

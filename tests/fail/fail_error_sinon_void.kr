@@ -1,4 +1,4 @@
-// expect: 'sinon' needs a call that returns a value; this function returns nothing
+// expect: 'sinon' precisa de uma chamada que devolva um valor, mas esta função não devolve nenhum
 fn f() : Erru {
 }
 

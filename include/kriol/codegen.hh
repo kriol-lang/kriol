@@ -154,7 +154,7 @@ namespace ast {
         // Fails the current function with the given Erru value: returns it to
         // the caller, or reports it and exits when the function is inisiu.
         // Ends the current block with a terminator.
-        void emitFailure(llvm::Value* erruValue);
+        void emitFailure(llvm::Value* erruValue, int lineNum);
 
         // For a call whose error nobody handles: stops the program with the
         // error message if the call failed, and leaves the plain value.

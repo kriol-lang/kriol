@@ -1,4 +1,4 @@
-// expect: compound assignment operator '+=' requires a numeric target, got 'Pessoa'
+// expect: o operador '+=' só funciona com números, mas o destino é do tipo 'Pessoa'
 molda Pessoa {
     textu nomi;
     int idadi;

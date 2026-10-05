@@ -1,4 +1,4 @@
-// expect: duplicate molda declaration 'P'
+// expect: o molde 'P' já foi declarado
 molda P { int a; }
 molda P { int b; }
 fn inisiu() {}

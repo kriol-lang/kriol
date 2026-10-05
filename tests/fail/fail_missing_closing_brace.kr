@@ -1,0 +1,5 @@
+// expect: falta fechar um bloco com '}'
+fn inisiu() {
+    si sin {
+        mostran(1);
+}

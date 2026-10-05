@@ -1,4 +1,4 @@
-// expect: compound assignment operator '+=' requires a numeric target, got 'int[3]'
+// expect: o operador '+=' só funciona com números, e 'int[3]' é um array
 fn inisiu() {
     int[3] a = [1, 2, 3];
     a += 1;

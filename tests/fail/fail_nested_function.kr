@@ -1,4 +1,4 @@
-// expect: nested function declarations are not supported; declare 'inner' at the top level
+// expect: não se pode declarar a função 'inner' dentro de outra função; declara-a fora, ao nível do ficheiro
 fn inisiu() {
     fn inner() {
         mostran("inner");

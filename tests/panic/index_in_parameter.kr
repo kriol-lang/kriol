@@ -1,4 +1,4 @@
-// expect: array index out of bounds at line 4: 4 not in [0..3]
+// expect: :4: erro de execução: o índice 4 está fora do array, que vai de 0 a 3
 fn soma_ate(int[4] v, int n) int {
     int total = 0;
     pa int i = 0; i <= n; i += 1 { total += v[i]; }

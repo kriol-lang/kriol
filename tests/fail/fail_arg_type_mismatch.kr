@@ -1,4 +1,4 @@
-// expect: argument 1 of 'gritar': expected 'textu', got 'int'
+// expect: o argumento 1 de 'gritar' tem de ser do tipo 'textu', mas é do tipo 'int'
 fn gritar(textu msg) {
     mostran(msg);
 }

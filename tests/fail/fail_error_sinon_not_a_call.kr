@@ -1,4 +1,4 @@
-// expect: 'sinon' expects a call to a function that can fail
+// expect: 'sinon' tem de ser usado com a chamada de uma função que pode falhar
 fn inisiu() {
     int y = 1;
     int x = y sinon 2;

@@ -1,4 +1,4 @@
-// expect: 'lansa' expects a value of type 'Erru', got 'textu'
+// expect: 'lansa' recebe um valor do tipo 'Erru', mas este é do tipo 'textu'; por exemplo: lansa Erru{mensage = "..."};
 fn f() : Erru {
     lansa "texto";
 }

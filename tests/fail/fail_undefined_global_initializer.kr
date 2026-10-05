@@ -1,4 +1,4 @@
-// expect: undefined variable name 'h'
+// expect: a variável 'h' não foi declarada; declara-a antes de a usar, por exemplo 'int h = 0;'
 int g = h + 1;
 
 fn inisiu() {

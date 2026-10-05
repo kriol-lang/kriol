@@ -1,4 +1,4 @@
-// expect: compound assignment operator '+=' requires a numeric target, got 'textu'
+// expect: o operador '+=' só funciona com números, mas o destino é do tipo 'textu'
 fn inisiu() {
     textu nome = "Ana";
     nome += " Maria";

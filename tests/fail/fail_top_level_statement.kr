@@ -1,4 +1,4 @@
-// expect: only declarations (variables, functions, molda, imports) are allowed at the top level
+// expect: fora das funções só se podem declarar variáveis, funções e moldes; coloca esta instrução dentro de uma função, por exemplo em 'inisiu'
 mostran("no function here");
 
 fn inisiu() {

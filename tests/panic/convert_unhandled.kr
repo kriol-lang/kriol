@@ -1,4 +1,4 @@
-// expect: panic at line 3: invalid integer 'abc'
+// expect: :3: erro não tratado: 'abc' não é um número inteiro válido
 fn inisiu() {
     int n = int::konverti("abc");
     mostran(n);

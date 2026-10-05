@@ -1,4 +1,4 @@
-// expect: 'tenta' applied to a call that cannot fail
+// expect: 'tenta' só serve para chamadas que podem falhar, e esta não pode
 fn f() int {
     divolvi 1;
 }

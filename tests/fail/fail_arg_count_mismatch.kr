@@ -1,4 +1,4 @@
-// expect: function 'soma' expects 2 argument(s), got 3
+// expect: a função 'soma' recebe 2 argumentos, mas foram dados 3
 fn soma(int a, int b) int {
     divolvi a + b;
 }

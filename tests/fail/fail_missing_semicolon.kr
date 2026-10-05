@@ -1,0 +1,5 @@
+// expect: :3: erro: falta ';' no fim desta linha
+fn inisiu() {
+    int x = 1
+    mostran(x);
+}

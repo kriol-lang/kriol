@@ -1,4 +1,4 @@
-// expect: f-string interpolation: cannot format value of type 'Pessoa[1]'
+// expect: não se pode escrever um valor do tipo 'Pessoa[1]' num texto interpolado; escreve os campos do molde um a um
 molda Pessoa {
     textu nomi;
     int idadi;

@@ -1,4 +1,4 @@
-// expect: integer literal '99999999999999999999999' is out of range
+// expect: o número inteiro '99999999999999999999999' é demasiado grande
 fn inisiu() {
     int x = 99999999999999999999999;
     mostran(x);

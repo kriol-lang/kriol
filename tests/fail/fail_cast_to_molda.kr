@@ -1,4 +1,4 @@
-// expect: cannot cast to 'Pessoa'; only numbers and 'bool' are valid cast targets
+// expect: não se pode converter para 'Pessoa' com (tipo); só se converte para números e 'bool'
 molda Pessoa {
     int idadi;
 }

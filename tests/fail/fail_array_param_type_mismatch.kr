@@ -1,4 +1,4 @@
-// expect: argument 1 of 'soma': expected 'int[3]', got 'int[4]'
+// expect: o argumento 1 de 'soma' tem de ser do tipo 'int[3]', mas é do tipo 'int[4]'
 fn soma(int[3] v) int {
     divolvi v[0];
 }

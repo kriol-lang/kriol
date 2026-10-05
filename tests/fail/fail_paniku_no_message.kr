@@ -1,4 +1,4 @@
-// expect: prelude function 'paniku' expects 1 argument(s), got 0
+// expect: 'paniku' recebe 1 argumento, a mensagem de erro, mas foram dados 0
 fn inisiu() {
     paniku();
 }

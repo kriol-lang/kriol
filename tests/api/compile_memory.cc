@@ -32,7 +32,7 @@ static int checkFileCompileAfterSyntaxError() {
     options.input = bad.string();
     auto badResult = kriol::cli::Compile(options);
     if (badResult.diagnostics.empty()
-            || badResult.diagnostics[0].find(":2: syntax error") == std::string::npos) {
+            || badResult.diagnostics[0].find(":2: erro: ") == std::string::npos) {
         std::cerr << "expected a syntax error diagnostic on line 2\n";
         status = 1;
     }

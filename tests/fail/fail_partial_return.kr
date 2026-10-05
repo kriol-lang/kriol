@@ -1,4 +1,4 @@
-// expect: function 'so_un_ramu' does not return on all paths
+// expect: a função 'so_un_ramu' nem sempre devolve um valor; garante que todos os caminhos terminam com 'divolvi'
 // ERROR: non-void function where only one branch returns.
 fn so_un_ramu(num x) num {
     si x > 0 {

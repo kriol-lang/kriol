@@ -28,8 +28,8 @@ namespace kriol::cli
         int exitCode() const noexcept { return ExitCode; }
     };
 
+    // Writes "kriol: erro: <message>", for errors without a source location.
     void PrintErr(std::string message);
-    void PrintWarn(std::string message);
     void PrintErr(std::string message, int exitNum);
 
     void SetSourceFile(const std::string& filename);
@@ -37,6 +37,7 @@ namespace kriol::cli
 
     // Compile() returns the recorded errors as diagnostics after parsing.
     void ReportParseError(int line, const std::string& message);
+    bool HasParseErrors();
 
     enum class CompileInputKind
     {
@@ -97,14 +98,19 @@ namespace kriol::cli
         };
 
         std::unique_ptr<ap::ArgumentParser> Parser;
+        std::string Version;
         CommandLineOptions Args;
 
     public:
+        // The help and version options are defined by DefineArgs, so that
+        // their text is in Portuguese like the rest of the compiler.
         Compiler(std::string name, std::string version)
             : Parser(std::make_unique<ap::ArgumentParser>(
                 std::move(name),
-                std::move(version)
-            )) {}
+                version,
+                ap::default_arguments::none
+            )),
+              Version(std::move(version)) {}
 
         void Run(int argc, const char* const* argv);
         static void Cleanup();

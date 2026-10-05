@@ -136,7 +136,7 @@ llvm::Value* CodeGenVisitor::emitArrayToText(llvm::Value* storage, const Type& a
     else if (element == Type::Text())
         kind = ArrayElementKind::Text;
     else
-        throw std::runtime_error("internal error: cannot format an array of '" + element.str() + "'");
+        throw std::runtime_error("erro interno: não é possível formatar um array de '" + element.str() + "'");
 
     auto* dimsTy = llvm::ArrayType::get(i64Ty, dims.size());
     auto* dimsGlobal = new llvm::GlobalVariable(*Mod, dimsTy, /*isConstant=*/true,
@@ -228,7 +228,7 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             node.Args->Args[0]->accept(*this);
             llvm::Value* message = LastValue;
             if (!message)
-                throw std::runtime_error("internal error: failed to generate the message of paniku");
+                throw std::runtime_error("erro interno: falhou a geração da mensagem de paniku");
             llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
             Builder->CreateCall(getOrDeclarePanicAt(), {message, line});
             Builder->CreateUnreachable();

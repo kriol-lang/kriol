@@ -1,4 +1,4 @@
-// expect: undefined variable name 'i'
+// expect: a variável 'i' não foi declarada; declara-a antes de a usar, por exemplo 'int i = 0;'
 // ERROR: for-loop initializer variable must not escape the loop.
 fn inisiu() {
   pa int i = 0; i < 3; i += 1 {

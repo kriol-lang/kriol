@@ -1,4 +1,4 @@
-// expect: molda 'P' has no field 'b'
+// expect: o molde 'P' não tem o campo 'b'
 molda P { int a; }
 fn inisiu() {
     P p = P{a = 1};

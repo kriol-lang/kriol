@@ -1,4 +1,4 @@
-// expect: panic at line 4: division by zero
+// expect: :4: erro de execução: divisão por zero
 fn inisiu() {
     num a = 7;
     mostran(a / 0.0);

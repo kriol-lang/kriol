@@ -1,4 +1,4 @@
-// expect: syntax error, unexpected si, expecting valid identifier
+// expect: 'si' é uma palavra reservada do Kriol e não pode ser usada como nome
 fn si() {
 }
 

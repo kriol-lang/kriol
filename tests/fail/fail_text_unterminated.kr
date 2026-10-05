@@ -1,0 +1,4 @@
+// expect: :3: erro: o texto não foi fechado; falta a aspa final "
+fn inisiu() {
+    mostran("ola);
+}

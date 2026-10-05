@@ -1,0 +1,4 @@
+// expect: o carácter 'ç' só pode aparecer dentro de textos
+fn inisiu() {
+    int açukar = 1;
+}

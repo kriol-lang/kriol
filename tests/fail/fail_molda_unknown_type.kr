@@ -1,4 +1,4 @@
-// expect: unknown type 'Pessoa' in variable 'pessoa'
+// expect: o tipo 'Pessoa' não existe (variável 'pessoa'); os tipos novos declaram-se com 'molda'
 fn inisiu() {
     Pessoa pessoa = Pessoa{nomi = "jose", idadi = 60};
     mostra(pessoa.nomi);

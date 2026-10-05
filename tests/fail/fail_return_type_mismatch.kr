@@ -1,4 +1,4 @@
-// expect: returning 'textu' from function 'dobra' declared as 'int'
+// expect: a função 'dobra' devolve um valor do tipo 'int', mas este 'divolvi' tem um valor do tipo 'textu'
 fn dobra(int x) int {
     divolvi "nau e um int";
 }

@@ -1,4 +1,4 @@
-// expect: konfirma() expects a boolean condition, got value of type 'textu'
+// expect: a condição de 'konfirma' tem de ser um valor lógico ou um número, mas é do tipo 'textu'
 fn inisiu() {
     konfirma("x");
 }

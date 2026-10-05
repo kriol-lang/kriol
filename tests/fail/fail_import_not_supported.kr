@@ -1,4 +1,4 @@
-// expect: 'inpristan' (import) statements are not supported yet
+// expect: 'inpristan' (importar módulos) ainda não é suportado
 inpristan "std";
 
 fn inisiu() {

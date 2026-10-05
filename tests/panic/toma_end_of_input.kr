@@ -1,4 +1,4 @@
-// expect: err: end of input
+// expect: :5: erro não tratado: a entrada terminou e não há mais linhas para ler
 fn inisiu() : Erru {
     textu linha = tenta toma();
     mostran(linha);

@@ -1,4 +1,4 @@
-// expect: 'break' used outside a loop
+// expect: 'kebra' só pode ser usado dentro de um ciclo 'pa' ou 'nkuantu'
 // ERROR: kebra (break) used outside any loop.
 fn inisiu() {
     kebra;

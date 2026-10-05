@@ -1,4 +1,4 @@
-// expect: bitwise operator '&' requires integer operands, got 'num' and 'int'
+// expect: o operador '&' só funciona com números inteiros, mas recebeu valores dos tipos 'num' e 'int'
 fn inisiu() {
     num a = 1.5;
     num b = a & 1;

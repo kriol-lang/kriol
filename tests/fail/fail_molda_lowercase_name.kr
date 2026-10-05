@@ -1,4 +1,4 @@
-// expect: molda type name 'pessoa' must start with an uppercase letter
+// expect: o nome do molde 'pessoa' tem de começar por uma letra maiúscula, por exemplo 'Pessoa'
 molda pessoa {
     textu nomi;
 }

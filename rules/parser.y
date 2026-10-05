@@ -3,6 +3,8 @@
     #include "include/kriol/cli.hh"
     #include "include/kriol/constants.hh"
 
+    #include <algorithm>
+    #include <iterator>
     #include <cstdio>
     #include <cstdlib>
     #include <iostream>
@@ -18,6 +20,11 @@
     extern int yylex();
     void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
 
+    // Reads tokens through kriol_lex, which remembers the line of the token
+    // before the lookahead: the line a missing ';' belongs to.
+    static int kriol_lex();
+    #define yylex kriol_lex
+
     // YYERROR does not reclaim the failing action's own values: free them first.
 
     // Parses an array size / repeat count literal; false after reporting.
@@ -26,12 +33,12 @@
         try {
             value = std::stoull(text);
         } catch (...) {
-            kriol::cli::ReportParseError(line, "array size literal '" + text + "' is out of range");
+            kriol::cli::ReportParseError(line, "o tamanho do array '" + text + "' é demasiado grande");
             return false;
         }
         if (value > KR_MAX_ARRAY_SIZE) {
-            kriol::cli::ReportParseError(line, "array size " + text
-                + " exceeds the maximum supported size of " + std::to_string(KR_MAX_ARRAY_SIZE));
+            kriol::cli::ReportParseError(line, "o array tem " + text
+                + " elementos, mais do que o máximo de " + std::to_string(KR_MAX_ARRAY_SIZE));
             return false;
         }
         size = static_cast<std::size_t>(value);
@@ -57,8 +64,8 @@
     #define KRIOL_CHECK_DEPTH(node, line)                                           \
         do {                                                                       \
             if ((node)->Depth > KR_MAX_EXPR_DEPTH) {                               \
-                kriol::cli::ReportParseError(line, "expression is nested too deeply (limit is " \
-                    + std::to_string(KR_MAX_EXPR_DEPTH) + " levels)");             \
+                kriol::cli::ReportParseError(line, "a expressão tem demasiados níveis encadeados (o limite é " \
+                    + std::to_string(KR_MAX_EXPR_DEPTH) + "); divide-a em partes mais pequenas"); \
                 delete (node);                                                     \
                 YYERROR;                                                           \
             }                                                                      \
@@ -123,7 +130,7 @@
 
 %start program
 
-%define parse.error verbose
+%define parse.error custom
 
 %%
 
@@ -195,7 +202,7 @@ initializer : expression { $$ = $1; }
             // Only to point `[value] * N` to `[value; N]`.
             | array_initializer MUL INT_LIT {
                   kriol::cli::ReportParseError(@2.first_line,
-                      "a repeated array is written [value; count], for example [0; " + *$3 + "]");
+                      "um array com um valor repetido escreve-se [valor; quantidade], por exemplo [0; " + *$3 + "]");
                   delete $1;
                   delete $3;
                   $$ = nullptr;
@@ -428,8 +435,8 @@ iteration_statement : NKUANTU expression compound_statement { auto n = new ast::
                     | PA control_initializer_statement SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), nullptr, std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
-jump_statement : KEBRA SEMIC { auto n = new ast::JumpSttmt("break"); n->LineNum = @$.first_line; $$ = n; }
-               | CONTINUA SEMIC { auto n = new ast::JumpSttmt("continue"); n->LineNum = @$.first_line; $$ = n; }
+jump_statement : KEBRA SEMIC { auto n = new ast::JumpSttmt("kebra"); n->LineNum = @$.first_line; $$ = n; }
+               | CONTINUA SEMIC { auto n = new ast::JumpSttmt("kontinua"); n->LineNum = @$.first_line; $$ = n; }
                | DIVOLVI expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; $$ = n; }
                | DIVOLVI array_value SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; $$ = n; }
                | LANSA expression SEMIC { auto n = new ast::ReturnSttmt(std::unique_ptr<ast::Expr>($2)); n->Throws = true; n->LineNum = @$.first_line; $$ = n; }
@@ -448,10 +455,109 @@ record_field_initializers : IDENT ASSIGN initializer { auto n = new ast::RecordL
                           ;
 %%
 
+// Syntax errors are reported by yyreport_syntax_error; this is only called
+// when the parser stack is full.
 void yyerror(kriol::ast::BlockSttmt** Program, const char* err) {
-    // Bison's message for a full parser stack.
     const std::string message = std::string(err) == "memory exhausted"
-        ? "code is nested too deeply for the parser"
+        ? "o código tem demasiados blocos encadeados"
         : err;
     kriol::cli::ReportParseError(yylloc.first_line, message);
+}
+
+// How a token is named in a syntax error: keywords and punctuation between
+// quotes, the other tokens by what they are.
+static std::string kriol_describe_symbol(yysymbol_kind_t symbol) {
+    switch (symbol) {
+        case YYSYMBOL_YYEOF:        return "o fim do código";
+        case YYSYMBOL_YYUNDEF:      return "um símbolo inválido";
+        case YYSYMBOL_IDENT:        return "um nome";
+        case YYSYMBOL_TYPE_IDENT:   return "o nome de um molde";
+        case YYSYMBOL_STR_LIT:      return "um texto";
+        case YYSYMBOL_INT_LIT:      return "um número inteiro";
+        case YYSYMBOL_FLOAT_LIT:    return "um número real";
+        case YYSYMBOL_BOOL_LIT:     return "'sin' ou 'nau'";
+        case YYSYMBOL_FSTR_START:   return "um texto interpolado";
+        case YYSYMBOL_FSTR_TEXT:    return "texto";
+        case YYSYMBOL_FSTR_END:     return "o fim do texto interpolado";
+        case YYSYMBOL_FSTR_LBRACE:  return "'{'";
+        case YYSYMBOL_FSTR_RBRACE:  return "'}'";
+        case YYSYMBOL_TYPE_NUM:
+        case YYSYMBOL_TYPE_BOOL:
+        case YYSYMBOL_TYPE_INT:
+        case YYSYMBOL_TYPE_TEXTU:
+        case YYSYMBOL_TYPE_PRIMITIVE: return "um tipo";
+        default: break;
+    }
+    std::string name = yysymbol_name(symbol);
+    if (name.size() >= 2 && name.front() == '"' && name.back() == '"')
+        name = name.substr(1, name.size() - 2);
+    return "'" + name + "'";
+}
+
+static int kriol_previous_token_line = 0;
+static int kriol_token_line = 0;
+
+#undef yylex
+static int kriol_lex() {
+    const int token = yylex();
+    kriol_previous_token_line = kriol_token_line;
+    kriol_token_line = yylloc.last_line;
+    return token;
+}
+
+static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockSttmt** Program) {
+    (void) Program;
+    // An unclosed text or comment already explains what follows it.
+    if (kriol::cli::HasParseErrors())
+        return 0;
+
+    yysymbol_kind_t expected[YYNTOKENS];
+    const int count = std::max(yypcontext_expected_tokens(context, expected, YYNTOKENS), 0);
+    const auto expects = [&](yysymbol_kind_t symbol) {
+        return std::find(expected, expected + count, symbol) != expected + count;
+    };
+    const yysymbol_kind_t found = yypcontext_token(context);
+    const int line = yypcontext_location(context)->first_line;
+
+    // A statement that ends without ';' is noticed only at the next line.
+    if (expects(YYSYMBOL_SEMIC) && found != YYSYMBOL_YYEOF && kriol_previous_token_line > 0
+            && kriol_previous_token_line < line) {
+        kriol::cli::ReportParseError(kriol_previous_token_line, "falta ';' no fim desta linha");
+        return 0;
+    }
+
+    // A keyword where a name is expected, such as 'fn si()'.
+    static const yysymbol_kind_t keywords[] = {
+        YYSYMBOL_FN, YYSYMBOL_MOLDA, YYSYMBOL_SI, YYSYMBOL_SINON, YYSYMBOL_PA, YYSYMBOL_NKUANTU,
+        YYSYMBOL_KEBRA, YYSYMBOL_CONTINUA, YYSYMBOL_DIVOLVI, YYSYMBOL_TENTA, YYSYMBOL_LANSA,
+        YYSYMBOL_IMPRISTAN,
+    };
+    if (expects(YYSYMBOL_IDENT) && std::find(std::begin(keywords), std::end(keywords), found) != std::end(keywords)) {
+        kriol::cli::ReportParseError(line, kriol_describe_symbol(found)
+            + " é uma palavra reservada do Kriol e não pode ser usada como nome");
+        return 0;
+    }
+    if (found == YYSYMBOL_FSTR_RBRACE) {
+        kriol::cli::ReportParseError(line, "falta um valor dentro de {} no texto interpolado, como em f\"{x}\"");
+        return 0;
+    }
+
+    std::string message;
+    if (found == YYSYMBOL_YYEOF)
+        message = std::string("o código termina antes do esperado")
+            + (expects(YYSYMBOL_RCURLY) ? "; falta fechar um bloco com '}'"
+               : expects(YYSYMBOL_SEMIC) ? "; falta ';'" : "");
+    else
+        message = "não se esperava " + kriol_describe_symbol(found) + " aqui";
+
+    // Past a few alternatives the list stops helping.
+    if (found != YYSYMBOL_YYEOF && count > 0 && count <= 4) {
+        message += "; esperava-se ";
+        for (int i = 0; i < count; ++i) {
+            if (i > 0) message += i + 1 == count ? " ou " : ", ";
+            message += kriol_describe_symbol(expected[i]);
+        }
+    }
+    kriol::cli::ReportParseError(line, message);
+    return 0;
 }

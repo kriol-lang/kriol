@@ -1,4 +1,4 @@
-// expect: molda 'Pessoa' has no field 'peso'
+// expect: o molde 'Pessoa' não tem o campo 'peso'
 molda Pessoa {
     textu nomi;
     int idadi;

@@ -27,6 +27,40 @@ static bool startsWithUppercaseAscii(const std::string& name) {
 
 const std::string erruName = prelude::ErrorTypeName;
 
+// "o argumento 1 de 'f' tem de ser do tipo 'int', mas é do tipo 'textu'"-style
+// ending shared by the type mismatch messages.
+std::string mustBeOfType(const kriol::Type& want, const kriol::Type& got) {
+    return "tem de ser do tipo '" + want.str() + "', mas é do tipo '" + got.str() + "'";
+}
+
+// "foi dado 1" or "foram dados 3", for argument and element counts.
+std::string givenCount(std::size_t count) {
+    return count == 1 ? "foi dado 1" : "foram dados " + std::to_string(count);
+}
+
+std::string countOf(std::size_t count, const char* singular, const char* plural) {
+    return std::to_string(count) + " " + (count == 1 ? singular : plural);
+}
+
+// The hint for a value that only converts to `to` explicitly, such as an int
+// stored in a u8: a cast does it, keeping the loss of information visible.
+std::string castHint(const kriol::Type& from, const kriol::Type& to) {
+    const auto castable = [](const kriol::Type& t) { return t.isNumeric() || t == kriol::Type::Bool(); };
+    if (!castable(from) || !castable(to)) return "";
+    return "; para converter, escreve (" + to.str() + ") antes do valor";
+}
+
+// Contracts "de" or "em" with the article that starts `phrase`: "de" and
+// "o array 'a'" give "do array 'a'", "em" and "a variável 'x'" "na variável 'x'".
+std::string joined(const std::string& preposition, const std::string& phrase) {
+    const bool masculine = phrase.rfind("o ", 0) == 0;
+    const bool feminine = phrase.rfind("a ", 0) == 0;
+    if (!masculine && !feminine)
+        return preposition + " " + phrase;
+    const std::string stem = preposition == "de" ? "d" : "n";
+    return stem + phrase;
+}
+
 // Sets a member for the lifetime of the guard and restores it afterwards.
 template <typename T>
 class ScopedValue {
@@ -64,8 +98,8 @@ bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,
                                             int lineNum) {
     if (!isReservedKeyword(name)) return true;
 
-    addError(errLoc(lineNum) + kind + " name '" + name
-             + "' is reserved and cannot be redeclared");
+    addError(errLoc(lineNum) + "'" + name + "' é um nome reservado do Kriol e não pode ser usado como nome de "
+             + kind);
 
     return false;
 }
@@ -112,78 +146,80 @@ bool SemanticAnalyzer::isPrintableType(const Type& type, bool allowArray) {
 }
 
 void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
-    if (!checkDeclaredNameValid(node.Name, "function", node.LineNum)) return;
+    if (!checkDeclaredNameValid(node.Name, "função", node.LineNum)) return;
 
     if (FunctionTable.count(node.Name)) {
-        addError(errLoc(node.LineNum) + "duplicate function declaration '" + node.Name + "'");
+        addError(errLoc(node.LineNum) + "a função '" + node.Name + "' já foi declarada; cada função tem de ter um nome diferente");
         return;
     }
 
     if (node.Name == "inisiu") {
         if (node.Args && !node.Args->Args.empty())
-            addError(errLoc(node.LineNum) + "entry function 'inisiu' must not take parameters");
+            addError(errLoc(node.LineNum) + "a função 'inisiu' não pode ter parâmetros, porque é por ela que o programa começa");
         if (!node.Type.isVoid())
-            addError(errLoc(node.LineNum) + "entry function 'inisiu' must not declare a return type");
+            addError(errLoc(node.LineNum) + "a função 'inisiu' não pode declarar um tipo de retorno, porque é por ela que o programa começa");
     }
 
     FuncInfo info;
     info.retType = node.Type;
     info.canFail = node.CanFail();
     if (node.CanFail() && node.ErrorTypeName != erruName)
-        addError(errLoc(node.LineNum) + "unknown error type '" + node.ErrorTypeName
-                 + "' in function '" + node.Name + "'; only '" + erruName + "' can follow ':'");
-    validateTypeKnown(node.Type, node.LineNum, "return type of function '" + node.Name + "'");
+        addError(errLoc(node.LineNum) + "o tipo de erro '" + node.ErrorTypeName + "' da função '" + node.Name
+                 + "' não existe; depois de ':' só pode vir '" + erruName + "'");
+    validateTypeKnown(node.Type, node.LineNum, "tipo de retorno da função '" + node.Name + "'");
     if (hasEmptyDimension(node.Type))
-        addError(errLoc(node.LineNum) + "array return type of function '" + node.Name
-                 + "' must have a positive size");
+        addError(errLoc(node.LineNum) + "o array devolvido pela função '" + node.Name
+                 + "' tem de ter um tamanho maior do que zero");
     else if (node.Type.isArray() && storageBytes(node.Type) > KR_MAX_LOCAL_BYTES)
-        addError(errLoc(node.LineNum) + "return type of function '" + node.Name + "' needs "
-                 + std::to_string(storageBytes(node.Type)) + " bytes of stack, over the limit of "
+        addError(errLoc(node.LineNum) + "o valor devolvido pela função '" + node.Name + "' ocupa "
+                 + std::to_string(storageBytes(node.Type)) + " bytes, mais do que o limite de "
                  + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes");
     if (node.Args)
         for (auto& arg : node.Args->Args) {
             if (!arg) continue;
-            validateTypeKnown(arg->Type, arg->LineNum, "parameter '" + arg->Name + "'");
+            validateTypeKnown(arg->Type, arg->LineNum, "parâmetro '" + arg->Name + "'");
             info.paramTypes.push_back(arg->Type);
         }
     FunctionTable[node.Name] = std::move(info);
 }
 
 void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node, bool builtin) {
-    if (!builtin && !checkDeclaredNameValid(node.Name, "molda", node.LineNum)) return;
+    if (!builtin && !checkDeclaredNameValid(node.Name, "molde", node.LineNum)) return;
 
     if (!startsWithUppercaseAscii(node.Name)) {
-        addError(errLoc(node.LineNum) + "molda type name '" + node.Name
-                 + "' must start with an uppercase letter");
+        std::string suggestion = node.Name;
+        suggestion[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(suggestion[0])));
+        addError(errLoc(node.LineNum) + "o nome do molde '" + node.Name
+                 + "' tem de começar por uma letra maiúscula, por exemplo '" + suggestion + "'");
         return;
     }
 
     if (RecordTable.count(node.Name)) {
-        addError(errLoc(node.LineNum) + "duplicate molda declaration '" + node.Name + "'");
+        addError(errLoc(node.LineNum) + "o molde '" + node.Name + "' já foi declarado");
         return;
     }
 
     if (FunctionTable.count(node.Name))
-        addError(errLoc(node.LineNum) + "molda name '" + node.Name + "' conflicts with an existing function");
+        addError(errLoc(node.LineNum) + "o molde '" + node.Name + "' tem o mesmo nome que uma função");
 
     if (node.Fields.empty())
-        addError(errLoc(node.LineNum) + "molda '" + node.Name + "' must declare at least one field");
+        addError(errLoc(node.LineNum) + "o molde '" + node.Name + "' tem de ter pelo menos um campo");
 
     RecordInfo info;
     std::unordered_set<std::string> seenFields;
     for (auto& field : node.Fields) {
         if (!field) continue;
 
-        if (!checkDeclaredNameValid(field->Name, "field", field->LineNum))
+        if (!checkDeclaredNameValid(field->Name, "campo", field->LineNum))
             continue;
 
         if (!seenFields.insert(field->Name).second) {
-            addError(errLoc(field->LineNum) + "duplicate field '" + field->Name
-                     + "' in molda '" + node.Name + "'");
+            addError(errLoc(field->LineNum) + "o campo '" + field->Name
+                     + "' aparece repetido no molde '" + node.Name + "'");
             continue;
         }
 
-        validateTypeKnown(field->Type, field->LineNum, "field '" + field->Name + "'");
+        validateTypeKnown(field->Type, field->LineNum, "campo '" + field->Name + "'");
         info.fieldIndex[field->Name] = info.fields.size();
         info.fields.push_back(field.get());
     }
@@ -200,7 +236,8 @@ bool SemanticAnalyzer::validateTypeKnown(const Type& type,
     if (!type.isNamed()) return true;
     if (RecordTable.count(type.name())) return true;
 
-    addError(errLoc(lineNum) + "unknown type '" + type.str() + "' in " + context);
+    addError(errLoc(lineNum) + "o tipo '" + type.str() + "' não existe (" + context
+             + "); os tipos novos declaram-se com 'molda'");
     return false;
 }
 
@@ -238,7 +275,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
                                                 int lineNum,
                                                 const std::string& context) {
     if (!isArrayType(expectedType)) {
-        addError(errLoc(lineNum) + context + " requires a non-array value; use an explicit '(T[])[...]' array literal only for array targets");
+        addError(errLoc(lineNum) + context + " não é um array, por isso não pode receber uma lista [...]");
         return false;
     }
 
@@ -257,8 +294,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
         element->accept(*this);
         const Type& got = element->ResolvedType;
         if (got.valid() && !canCoerceExprTo(element, elemType)) {
-            addError(errLoc(lineNum) + what + ": expected '" + elemType.str()
-                     + "', got '" + got.str() + "'");
+            addError(errLoc(lineNum) + what + " " + mustBeOfType(elemType, got));
             return false;
         }
         return true;
@@ -266,12 +302,12 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
 
     if (initRep) {
         if (initRep->Count != expectedSize) {
-            addError(errLoc(lineNum) + context + " has size "
-                     + std::to_string(expectedSize) + " but repeat initializer [value; "
-                     + std::to_string(initRep->Count) + "] has a different count");
+            addError(errLoc(lineNum) + context + " tem " + countOf(expectedSize, "elemento", "elementos")
+                     + ", mas a repetição [valor; " + std::to_string(initRep->Count) + "] tem "
+                     + std::to_string(initRep->Count));
             return false;
         }
-        if (!checkElement(initRep->Fill.get(), context + " repeat initializer"))
+        if (!checkElement(initRep->Fill.get(), "o valor repetido " + joined("em", context)))
             return false;
         initRep->ResolvedType = expectedType;
         return true;
@@ -281,8 +317,8 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
         initLit->accept(*this);
         if (initLit->ExplicitElementType != elemType
                 && !isWideningCoercion(initLit->ExplicitElementType, elemType)) {
-            addError(errLoc(lineNum) + context + " expects array element type '"
-                     + elemType.str() + "', got explicit array literal element type '"
+            addError(errLoc(lineNum) + "os elementos " + joined("de", context) + " têm de ser do tipo '"
+                     + elemType.str() + "', mas a lista foi escrita com o tipo '"
                      + initLit->ExplicitElementType.str() + "'");
             return false;
         }
@@ -290,20 +326,18 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
 
     const std::size_t got = initLit->Elements.size();
     if (got != expectedSize) {
-        addError(errLoc(lineNum) + context + " expects "
-                 + std::to_string(expectedSize) + " initializer element(s), got "
-                 + std::to_string(got));
+        addError(errLoc(lineNum) + context + " tem " + countOf(expectedSize, "elemento", "elementos")
+                 + ", mas a lista tem " + std::to_string(got));
         return false;
     }
 
     bool ok = true;
     for (std::size_t i = 0; i < initLit->Elements.size(); ++i) {
-        const std::string what = context + " initializer element " + std::to_string(i + 1);
+        const std::string what = "o elemento " + std::to_string(i + 1) + " " + joined("de", context);
         if (initLit->ExplicitElementType.valid()) {
             const Type& gotType = initLit->Elements[i]->ResolvedType;
             if (gotType.valid() && !canCoerceExprTo(initLit->Elements[i].get(), elemType)) {
-                addError(errLoc(lineNum) + what + ": expected '" + elemType.str()
-                         + "', got '" + gotType.str() + "'");
+                addError(errLoc(lineNum) + what + " " + mustBeOfType(elemType, gotType));
                 ok = false;
             }
         } else if (!checkElement(initLit->Elements[i].get(), what)) {
@@ -324,8 +358,7 @@ bool SemanticAnalyzer::visitArrayValue(ast::Expr* value, const Type& expected, i
     value->accept(*this);
     const Type& got = value->ResolvedType;
     if (got.valid() && got != expected) {
-        addError(errLoc(lineNum) + context + ": expected '" + expected.str()
-                 + "', got '" + got.str() + "'");
+        addError(errLoc(lineNum) + context + " " + mustBeOfType(expected, got));
         return false;
     }
     return true;
@@ -344,7 +377,7 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
         if (auto* exprSttmt = dynamic_cast<ExprSttmt*>(s.get()))
             if (!exprSttmt->Expression) continue; // bare ';'
         addError(errLoc(s->LineNum)
-                 + "only declarations (variables, functions, molda, imports) are allowed at the top level");
+                 + "fora das funções só se podem declarar variáveis, funções e moldes; coloca esta instrução dentro de uma função, por exemplo em 'inisiu'");
     }
 
     registerRecord(*ErrorTypeDecl, true);
@@ -361,7 +394,7 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
     }
 
     if (!FunctionTable.count("inisiu"))
-        addError(errLoc(0) + "program must define an entry function 'fn inisiu()'");
+        addError(errLoc(0) + "falta a função 'inisiu', por onde o programa começa; acrescenta 'fn inisiu() { ... }'");
 
     // Second pass: full semantic walk.
     pushScope();
@@ -411,11 +444,12 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     ScopedValue<std::string> initializing(InitializingVar, node.Name);
-    const std::string kind = node.IsParam ? "parameter" : "variable";
+    const std::string kind = node.IsParam ? "parâmetro" : "variável";
+    const std::string named = (node.IsParam ? "o parâmetro '" : "a variável '") + node.Name + "'";
     bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
 
     if (node.IsArray && hasEmptyDimension(node.Type)) {
-        addError(errLoc(node.LineNum) + "array " + kind + " '" + node.Name + "' must have a positive size");
+        addError(errLoc(node.LineNum) + "o array '" + node.Name + "' tem de ter um tamanho maior do que zero");
         canDeclare = false;
     }
 
@@ -425,23 +459,23 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     if (canDeclare && FunctionDepth > 0) {
         const std::size_t bytes = storageBytes(node.Type);
         if (bytes > KR_MAX_LOCAL_BYTES) {
-            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' needs "
-                     + std::to_string(bytes) + " bytes of stack, over the limit of "
-                     + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes"
-                     + (node.IsParam ? "" : "; declare it at the top level instead"));
+            addError(errLoc(node.LineNum) + named + " ocupa "
+                     + std::to_string(bytes) + " bytes, mais do que o limite de "
+                     + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes dentro de uma função"
+                     + (node.IsParam ? "" : "; declara-a fora das funções"));
             canDeclare = false;
         }
     }
 
     if (node.IsArray && node.Value
-            && !visitArrayValue(node.Value.get(), node.Type, node.LineNum, "array variable '" + node.Name + "'"))
+            && !visitArrayValue(node.Value.get(), node.Type, node.LineNum, "o array '" + node.Name + "'"))
         canDeclare = false;
 
     // Check for duplicate in the innermost scope only.
     if (!SymbolScopes.empty()) {
         auto& cur = SymbolScopes.back();
         if (cur.count(node.Name)) {
-            addError(errLoc(node.LineNum) + kind + " '" + node.Name + "' already declared in this scope");
+            addError(errLoc(node.LineNum) + "o nome '" + node.Name + "' já foi declarado neste bloco");
             canDeclare = false;
         }
     }
@@ -452,19 +486,20 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
 
     if (node.Value && !node.IsArray) {
         if (dynamic_cast<ArrayLiteralExpr*>(node.Value.get()) || dynamic_cast<ArrayRepeatExpr*>(node.Value.get())) {
-            addError(errLoc(node.LineNum) + kind + " '" + node.Name
-                     + "' uses an array initializer without an array target; declare an array type or use an explicit '(T[])[...]' array literal where an array value is expected");
+            addError(errLoc(node.LineNum) + named + " não é um array, por isso não pode receber uma lista [...]; "
+                     "para declarar um array, escreve o tamanho a seguir ao tipo, por exemplo 'int[3] "
+                     + node.Name + " = [1, 2, 3];'");
             return;
         }
 
         node.Value->accept(*this);
         if (node.Value->ResolvedType.isVoid())
-            addError(errLoc(node.LineNum) + "cannot assign void expression to variable '" + node.Name + "'");
-        if (!node.IsArray && node.Value->ResolvedType.valid()
-                && !canCoerceExprTo(node.Value.get(), node.Type))
-            addError(errLoc(node.LineNum) + "cannot assign value of type '"
-                     + node.Value->ResolvedType.str() + "' to variable '" + node.Name
-                     + "' of type '" + node.Type.str() + "'");
+            addError(errLoc(node.LineNum) + "a função chamada não devolve nenhum valor que se possa guardar "
+                     + joined("em", named));
+        else if (node.Value->ResolvedType.valid() && !canCoerceExprTo(node.Value.get(), node.Type))
+            addError(errLoc(node.LineNum) + "não se pode guardar um valor do tipo '"
+                     + node.Value->ResolvedType.str() + "' " + joined("em", named) + ", que é do tipo '"
+                     + node.Type.str() + "'" + castHint(node.Value->ResolvedType, node.Type));
     }
 }
 
@@ -489,8 +524,8 @@ void SemanticAnalyzer::visit(FuncArgs& node) {
 void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     // Nested functions are not supported.
     if (FunctionDepth > 0) {
-        addError(errLoc(node.LineNum) + "nested function declarations are not supported; declare '"
-                 + node.Name + "' at the top level");
+        addError(errLoc(node.LineNum) + "não se pode declarar a função '" + node.Name
+                 + "' dentro de outra função; declara-a fora, ao nível do ficheiro");
         return;
     }
 
@@ -525,7 +560,8 @@ void SemanticAnalyzer::visit(FuncDeclSttmt& node) {
     bool isEntry = (node.Name == "inisiu");
     bool isVoid  = node.Type.isVoid();
     if (!isEntry && !isVoid && !blockDefinitelyReturns(node.Body.get()))
-        addError(errLoc(node.LineNum) + "function '" + node.Name + "' does not return on all paths");
+        addError(errLoc(node.LineNum) + "a função '" + node.Name + "' nem sempre devolve um valor; "
+                 "garante que todos os caminhos terminam com 'divolvi'");
 
     popScope();
     CurrFuncRetType = savedRetType;
@@ -539,11 +575,11 @@ void SemanticAnalyzer::checkConditionType(const ast::Expr* cond, int lineNum) {
     const Type& t = cond->ResolvedType;
     if (!t.valid()) return;
     if (t.isVoid()) {
-        addError(errLoc(lineNum) + "void expression cannot be used as a condition");
+        addError(errLoc(lineNum) + "a condição chama uma função que não devolve nenhum valor");
         return;
     }
     if (t != Type::Bool() && !t.isNumeric())
-        addError(errLoc(lineNum) + "condition must be a boolean or numeric value, got '"
+        addError(errLoc(lineNum) + "a condição tem de ser um valor lógico ou um número, mas é do tipo '"
                  + t.str() + "'");
 }
 
@@ -572,14 +608,14 @@ void SemanticAnalyzer::visit(WhileSttmt& node) {
 void SemanticAnalyzer::visit(JumpSttmt& node) {
     // ReturnSttmt overrides this, so here we only see break/continue
     if (LoopDepth == 0)
-        addError(errLoc(node.LineNum) + "'" + node.Name + "' used outside a loop");
+        addError(errLoc(node.LineNum) + "'" + node.Name + "' só pode ser usado dentro de um ciclo 'pa' ou 'nkuantu'");
 }
 
 void SemanticAnalyzer::requireFallibleFunction(const std::string& keyword, int lineNum) {
     if (CurrFuncCanFail) return;
     const std::string example = CurrFuncName.empty() ? "f" : CurrFuncName;
-    addError(errLoc(lineNum) + "'" + keyword + "' can only be used in a function that declares an "
-             "error type, such as 'fn " + example + "(...) : " + erruName + "'");
+    addError(errLoc(lineNum) + "'" + keyword + "' só pode ser usado numa função que pode falhar, "
+             "declarada com ': " + erruName + "', como 'fn " + example + "(...) : " + erruName + "'");
 }
 
 void SemanticAnalyzer::visit(ReturnSttmt& node) {
@@ -591,28 +627,30 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
             node.ReturnValue->accept(*this);
             const Type& got = node.ReturnValue->ResolvedType;
             if (got.valid() && got != Type::Named(erruName))
-                addError(loc + "'lansa' expects a value of type '" + erruName + "', got '" + got.str() + "'");
+                addError(loc + "'lansa' recebe um valor do tipo '" + erruName + "', mas este é do tipo '"
+                         + got.str() + "'; por exemplo: lansa " + erruName + "{mensage = \"...\"};");
         }
         return;
     }
 
     if (CurrFuncRetType.valid() && CurrFuncRetType.isVoid() && node.ReturnValue)
-        addError(loc + "returning a value from void function '" + CurrFuncName + "'");
+        addError(loc + "a função '" + CurrFuncName + "' não declara um tipo de retorno, por isso 'divolvi' não pode ter um valor");
 
     if (CurrFuncRetType.valid() && !CurrFuncRetType.isVoid() && !node.ReturnValue)
-        addError(loc + "missing return value in non-void function '" + CurrFuncName + "'");
+        addError(loc + "a função '" + CurrFuncName + "' devolve um valor do tipo '" + CurrFuncRetType.str()
+                 + "', mas este 'divolvi' não tem valor");
 
     if (node.ReturnValue && CurrFuncRetType.isArray()) {
         visitArrayValue(node.ReturnValue.get(), CurrFuncRetType, node.LineNum,
-                        "return value of '" + CurrFuncName + "'");
+                        "o valor devolvido por '" + CurrFuncName + "'");
     } else if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         const Type& got = node.ReturnValue->ResolvedType;
         if (got.valid() && CurrFuncRetType.valid()
                 && !CurrFuncRetType.isVoid()
                 && !canCoerceExprTo(node.ReturnValue.get(), CurrFuncRetType))
-            addError(loc + "returning '" + got.str() + "' from function '" + CurrFuncName
-                     + "' declared as '" + CurrFuncRetType.str() + "'");
+            addError(loc + "a função '" + CurrFuncName + "' devolve um valor do tipo '" + CurrFuncRetType.str()
+                     + "', mas este 'divolvi' tem um valor do tipo '" + got.str() + "'");
     }
 }
 
@@ -630,8 +668,8 @@ void SemanticAnalyzer::expectArgType(FunCallExpr& node, std::size_t index, const
                                      const std::string& callee) {
     const Type& got = node.Args->Args[index]->ResolvedType;
     if (got.valid() && got != expected)
-        addError(errLoc(node.LineNum) + "argument " + std::to_string(index + 1) + " of '" + callee
-                 + "': expected '" + expected.str() + "', got '" + got.str() + "'");
+        addError(errLoc(node.LineNum) + "o argumento " + std::to_string(index + 1) + " de '" + callee
+                 + "' " + mustBeOfType(expected, got));
 }
 
 void SemanticAnalyzer::visit(TypeCallExpr& node) {
@@ -642,19 +680,20 @@ void SemanticAnalyzer::visit(TypeCallExpr& node) {
     visitArgs(node);
 
     if (node.Function != "konverti") {
-        addError(loc + "unknown function '" + callee + "'; the only function of a type is '<type>::konverti'");
+        addError(loc + "a função '" + callee + "' não existe; a única função de um tipo é 'konverti', "
+                 "como em '" + node.OwnerType.str() + "::konverti(texto)'");
         return;
     }
 
     if (!node.OwnerType.isNumeric() && node.OwnerType != Type::Bool()) {
-        addError(loc + "cannot convert text to '" + node.OwnerType.str()
-                 + "'; only numbers and 'bool' can be converted");
+        addError(loc + "não se pode converter texto em '" + node.OwnerType.str()
+                 + "'; 'konverti' só converte texto em números e em 'bool'");
         return;
     }
 
     const size_t got = node.Args ? node.Args->Args.size() : 0;
     if (got != 1)
-        addError(loc + "'" + callee + "' expects 1 argument(s), got " + std::to_string(got));
+        addError(loc + "'" + callee + "' recebe 1 argumento, o texto a converter, mas " + givenCount(got));
     else
         expectArgType(node, 0, Type::Text(), callee);
 
@@ -668,7 +707,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     if (!callee) {
         visitArgs(node);
         if (node.Callee) node.Callee->accept(*this);
-        addError(errLoc(node.LineNum) + "expression is not callable");
+        addError(errLoc(node.LineNum) + "só se podem chamar funções, e esta expressão não é uma função");
         return;
     }
 
@@ -684,7 +723,8 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
                     arg->accept(*this);
                     const Type& t = arg->ResolvedType;
                     if (t.valid() && !isPrintableType(t, true))
-                        addError(loc + "cannot print value of type '" + t.str() + "'");
+                        addError(loc + "não se pode escrever um valor do tipo '" + t.str()
+                                 + "' de uma só vez; escreve os campos do molde um a um");
                 }
             }
             node.ResolvedType = Type::Void();
@@ -696,8 +736,8 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             visitArgs(node);
             node.ResolvedType = Type::Text();
             if (got > 1)
-                addError(loc + "prelude function 'toma' expects 0 or 1 argument(s), got "
-                         + std::to_string(got));
+                addError(loc + "'toma' recebe no máximo 1 argumento, a mensagem a mostrar, mas "
+                         + givenCount(got));
             else if (got == 1)
                 expectArgType(node, 0, Type::Text(), "toma");
             return;
@@ -705,15 +745,16 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
         case prelude::Builtin::Sai:
             visitArgs(node);
             if (got > 1) {
-                addError(loc + "prelude function 'sai' expects 0 or 1 argument(s), got "
-                         + std::to_string(got));
+                addError(loc + "'sai' recebe no máximo 1 argumento, o código de saída, mas "
+                         + givenCount(got));
                 node.ResolvedType = Type::Void();
                 return;
             }
             if (got == 1) {
                 const Type& t = node.Args->Args[0]->ResolvedType;
                 if (t.valid() && !t.isInteger())
-                    addError(loc + "sai() expects an integer exit code, got value of type '" + t.str() + "'");
+                    addError(loc + "o código de saída de 'sai' tem de ser um número inteiro, mas é do tipo '"
+                             + t.str() + "'");
             }
             node.ResolvedType = Type::Void();
             return;
@@ -722,13 +763,14 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             visitArgs(node);
             node.ResolvedType = Type::Void();
             if (got < 1 || got > 2) {
-                addError(loc + "prelude function 'konfirma' expects 1 or 2 argument(s), got "
-                         + std::to_string(got));
+                addError(loc + "'konfirma' recebe 1 ou 2 argumentos, a condição e uma mensagem opcional, mas "
+                         + givenCount(got));
                 return;
             }
             const Type& cond = node.Args->Args[0]->ResolvedType;
             if (cond.valid() && cond != Type::Bool() && !cond.isInteger() && !cond.isFloat())
-                addError(loc + "konfirma() expects a boolean condition, got value of type '" + cond.str() + "'");
+                addError(loc + "a condição de 'konfirma' tem de ser um valor lógico ou um número, mas é do tipo '"
+                         + cond.str() + "'");
             if (got == 2)
                 expectArgType(node, 1, Type::Text(), "konfirma");
             return;
@@ -738,8 +780,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             visitArgs(node);
             node.ResolvedType = Type::Void();
             if (got != 1)
-                addError(loc + "prelude function 'paniku' expects 1 argument(s), got "
-                         + std::to_string(got));
+                addError(loc + "'paniku' recebe 1 argumento, a mensagem de erro, mas " + givenCount(got));
             else
                 expectArgType(node, 0, Type::Text(), "paniku");
             return;
@@ -751,7 +792,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     auto it = FunctionTable.find(callee->Name);
     if (it == FunctionTable.end()) {
         visitArgs(node);
-        addError(errLoc(node.LineNum) + "undeclared function '" + callee->Name + "'");
+        addError(errLoc(node.LineNum) + "a função '" + callee->Name + "' não foi declarada");
         return;
     }
 
@@ -762,7 +803,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             if (!arg) continue;
             if (i < it->second.paramTypes.size() && it->second.paramTypes[i].isArray())
                 visitArrayValue(arg.get(), it->second.paramTypes[i], node.LineNum,
-                                "argument " + std::to_string(i + 1) + " of '" + callee->Name + "'");
+                                "o argumento " + std::to_string(i + 1) + " de '" + callee->Name + "'");
             else
                 arg->accept(*this);
         }
@@ -775,14 +816,14 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     // T::konverti() also stops the program on failure, but silently, to keep
     // simple programs simple.
     if (info.canFail && !handled)
-        addWarning(errLoc(node.LineNum) + "the error of '" + callee->Name + "' is not handled, so the "
-                   "program stops if it fails; use 'tenta' or 'sinon'");
+        addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso o "
+                   "programa termina se a função falhar; usa 'tenta' ou 'sinon'");
 
     size_t want = info.paramTypes.size();
 
     if (got != want) {
-        addError(loc + "function '" + callee->Name + "' expects " + std::to_string(want)
-                 + " argument(s), got " + std::to_string(got));
+        addError(loc + "a função '" + callee->Name + "' recebe " + countOf(want, "argumento", "argumentos")
+                 + ", mas " + givenCount(got));
         return; // type checks make no sense if counts differ
     }
 
@@ -792,8 +833,8 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             const Type& paramType = info.paramTypes[i];
             if (paramType.isArray()) continue;  // checked by visitArrayValue
             if (argType.valid() && !canCoerceExprTo(node.Args->Args[i].get(), paramType))
-                addError(loc + "argument " + std::to_string(i + 1) + " of '" + callee->Name
-                         + "': expected '" + paramType.str() + "', got '" + argType.str() + "'");
+                addError(loc + "o argumento " + std::to_string(i + 1) + " de '" + callee->Name
+                         + "' " + mustBeOfType(paramType, argType));
         }
     }
 }
@@ -808,7 +849,7 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
     auto* call = unwrapCallExpr(operand);
     if (!call) {
         if (operand) operand->accept(*this);
-        addError(errLoc(lineNum) + "'" + keyword + "' expects a call to a function that can fail");
+        addError(errLoc(lineNum) + "'" + keyword + "' tem de ser usado com a chamada de uma função que pode falhar");
         return false;
     }
 
@@ -817,7 +858,7 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
         operand->accept(*this);
     }
     if (!call->Fallible) {
-        addError(errLoc(lineNum) + "'" + keyword + "' applied to a call that cannot fail");
+        addError(errLoc(lineNum) + "'" + keyword + "' só serve para chamadas que podem falhar, e esta não pode");
         return false;
     }
     return true;
@@ -828,7 +869,7 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         const bool valid = visitFallibleOperand(node.LHS.get(), "sinon", node.LineNum);
         const Type& valueType = node.LHS->ResolvedType;
         if (valid && valueType.isArray()) {
-            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "the value after 'sinon'");
+            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "o valor depois de 'sinon'");
             node.ResolvedType = valueType;
             return;
         }
@@ -836,15 +877,15 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         if (!valid) { node.ResolvedType = Type::Invalid(); return; }
 
         if (valueType.isVoid()) {
-            addError(errLoc(node.LineNum) + "'sinon' needs a call that returns a value; "
-                     "this function returns nothing");
+            addError(errLoc(node.LineNum) + "'sinon' precisa de uma chamada que devolva um valor, "
+                     "mas esta função não devolve nenhum");
             node.ResolvedType = Type::Invalid();
             return;
         }
         if (node.RHS && node.RHS->ResolvedType.valid()
                 && !canCoerceExprTo(node.RHS.get(), valueType))
-            addError(errLoc(node.LineNum) + "the value after 'sinon' has type '"
-                     + node.RHS->ResolvedType.str() + "', expected '" + valueType.str() + "'");
+            addError(errLoc(node.LineNum) + "o valor depois de 'sinon' "
+                     + mustBeOfType(valueType, node.RHS->ResolvedType));
         node.ResolvedType = valueType;
         return;
     }
@@ -855,10 +896,11 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     const Type lt = node.LHS ? node.LHS->ResolvedType : Type::Invalid();
     const Type rt = node.RHS ? node.RHS->ResolvedType : Type::Invalid();
 
-    if (lt.isVoid())
-        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
-    if (rt.isVoid())
-        addError(errLoc(node.LineNum) + "void expression cannot be used as an operand");
+    if (lt.isVoid() || rt.isVoid()) {
+        addError(errLoc(node.LineNum) + "uma função que não devolve nenhum valor não pode ser usada numa operação");
+        node.ResolvedType = Type::Invalid();
+        return;
+    }
 
     static const std::unordered_set<std::string> equalityOps = {
         "==", "!="
@@ -871,8 +913,9 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         // As in a condition, a number is true when it is not zero.
         for (const Type* operand : {&lt, &rt})
             if (operand->valid() && *operand != Type::Bool() && !operand->isNumeric())
-                addError(errLoc(node.LineNum) + "logical operator '" + node.Op
-                         + "' requires boolean or numeric operands, got '" + operand->str() + "'");
+                addError(errLoc(node.LineNum) + "o operador '" + node.Op
+                         + "' precisa de valores lógicos ou de números, mas recebeu um valor do tipo '"
+                         + operand->str() + "'");
         node.ResolvedType = Type::Bool();
         return;
     }
@@ -884,9 +927,9 @@ void SemanticAnalyzer::visit(BinExpr& node) {
 
     if (isBitwiseOp(node.Op)) {
         if (lt.valid() && rt.valid() && (!lt.isInteger() || !rt.isInteger()))
-            addError(errLoc(node.LineNum) + "bitwise operator '" + node.Op
-                     + "' requires integer operands, got '" + lt.str()
-                     + "' and '" + rt.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '" + node.Op
+                     + "' só funciona com números inteiros, mas recebeu valores dos tipos '" + lt.str()
+                     + "' e '" + rt.str() + "'");
         node.ResolvedType = lt.isInteger() && rt.isInteger()
             ? promotedNumericTypeForExpr(node.LHS.get(), node.RHS.get(), lt, rt)
             : Type::Invalid();
@@ -894,10 +937,12 @@ void SemanticAnalyzer::visit(BinExpr& node) {
     }
 
     if (!lt.isNumeric() || !rt.isNumeric()) {
-        if (lt.valid() && rt.valid())
-            addError(errLoc(node.LineNum) + "binary operator '" + node.Op
-                     + "' requires numeric operands, got '" + lt.str()
-                     + "' and '" + rt.str() + "'");
+        if (equalityOps.count(node.Op) && lt == Type::Text() && rt == Type::Text())
+            addError(errLoc(node.LineNum) + "ainda não é possível comparar textos com '" + node.Op + "'");
+        else if (lt.valid() && rt.valid())
+            addError(errLoc(node.LineNum) + "o operador '" + node.Op
+                     + "' só funciona com números, mas recebeu valores dos tipos '" + lt.str()
+                     + "' e '" + rt.str() + "'");
         node.ResolvedType = (equalityOps.count(node.Op) || relationalOps.count(node.Op))
             ? Type::Bool()
             : Type::Invalid();
@@ -920,16 +965,16 @@ void SemanticAnalyzer::validateLiteralRange(ast::LiteralExpr& node) {
         try {
             (void)std::stoll(node.Value);
         } catch (...) {
-            addError(errLoc(node.LineNum) + "integer literal '" + node.Value
-                     + "' is out of range");
+            addError(errLoc(node.LineNum) + "o número inteiro '" + node.Value
+                     + "' é demasiado grande");
             node.ResolvedType = Type::Invalid();
         }
     } else if (node.Type.isFloat()) {
         try {
             (void)std::stod(node.Value);
         } catch (...) {
-            addError(errLoc(node.LineNum) + "floating-point literal '" + node.Value
-                     + "' is out of range");
+            addError(errLoc(node.LineNum) + "o número real '" + node.Value
+                     + "' é demasiado grande");
             node.ResolvedType = Type::Invalid();
         }
     }
@@ -950,7 +995,8 @@ void SemanticAnalyzer::visit(ExprSttmt& node) {
 void SemanticAnalyzer::visit(IdentExpr& node) {
     auto t = lookupVar(node.Name);
     if (!t) {
-        addError(errLoc(node.LineNum) + "undefined variable name '" + node.Name + "'");
+        addError(errLoc(node.LineNum) + "a variável '" + node.Name + "' não foi declarada; "
+                 "declara-a antes de a usar, por exemplo 'int " + node.Name + " = 0;'");
         return;
     }
 
@@ -970,7 +1016,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
         node.Index->accept(*this);
         const Type& indexType = node.Index->ResolvedType;
         if (indexType.valid() && !indexType.isInteger())
-            addError(errLoc(node.LineNum) + "array index must be an integer");
+            addError(errLoc(node.LineNum) + "o índice de um array tem de ser um número inteiro");
     }
 
     auto* baseIdent = unwrapIdentExpr(node.Base.get());
@@ -978,7 +1024,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     if (baseIdent) {
         auto found = lookupVar(baseIdent->Name);
         if (!found) {
-            addError(errLoc(node.LineNum) + "undefined array name '" + baseIdent->Name + "'");
+            addError(errLoc(node.LineNum) + "o array '" + baseIdent->Name + "' não foi declarado");
             return;
         }
         checkNotSelfInitialized(baseIdent->Name, node.LineNum);
@@ -990,7 +1036,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
     }
 
     if (!isArrayType(arrayType)) {
-        addError(errLoc(node.LineNum) + "indexed expression is not an array");
+        addError(errLoc(node.LineNum) + "só se pode usar [índice] com arrays, e este valor não é um array");
         return;
     }
 
@@ -998,7 +1044,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
 
     auto firstDim = firstArrayDim(arrayType);
     if (!firstDim || *firstDim == 0) {
-        addError(errLoc(node.LineNum) + "array has invalid size metadata");
+        addError(errLoc(node.LineNum) + "erro interno: o tamanho do array é inválido");
     }
 }
 
@@ -1008,21 +1054,21 @@ void SemanticAnalyzer::visit(MemberAccessExpr& node) {
     if (!baseType.valid()) return;
 
     if (!baseType.isNamed()) {
-        addError(errLoc(node.LineNum) + "member access requires a molda value");
+        addError(errLoc(node.LineNum) + "só os moldes têm campos, e este valor não é um molde");
         return;
     }
 
     auto recordIt = RecordTable.find(baseType.name());
     if (recordIt == RecordTable.end()) {
-        addError(errLoc(node.LineNum) + "unknown molda type '" + baseType.str() + "'");
+        addError(errLoc(node.LineNum) + "o molde '" + baseType.str() + "' não existe");
         return;
     }
 
     const auto& fields = recordIt->second;
     auto fieldIt = fields.fieldIndex.find(node.Member);
     if (fieldIt == fields.fieldIndex.end()) {
-        addError(errLoc(node.LineNum) + "molda '" + baseType.str()
-                 + "' has no field '" + node.Member + "'");
+        addError(errLoc(node.LineNum) + "o molde '" + baseType.str()
+                 + "' não tem o campo '" + node.Member + "'");
         return;
     }
 
@@ -1030,7 +1076,7 @@ void SemanticAnalyzer::visit(MemberAccessExpr& node) {
 }
 
 void SemanticAnalyzer::visit(QualifiedAccessExpr& node) {
-    addError(errLoc(node.LineNum) + "qualified item access is not supported yet");
+    addError(errLoc(node.LineNum) + "o acesso com '::' ainda não é suportado");
 }
 
 void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
@@ -1043,14 +1089,12 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
         return;
     }
 
-    validateTypeKnown(node.ExplicitElementType, node.LineNum, "array literal element type");
+    validateTypeKnown(node.ExplicitElementType, node.LineNum, "tipo dos elementos da lista");
     for (std::size_t i = 0; i < node.Elements.size(); ++i) {
         const Type& got = node.Elements[i]->ResolvedType;
         if (got.valid() && !canCoerceExprTo(node.Elements[i].get(), node.ExplicitElementType)) {
-            addError(errLoc(node.LineNum) + "array literal element "
-                     + std::to_string(i + 1) + ": expected '"
-                     + node.ExplicitElementType.str() + "', got '"
-                     + got.str() + "'");
+            addError(errLoc(node.LineNum) + "o elemento " + std::to_string(i + 1) + " da lista "
+                     + mustBeOfType(node.ExplicitElementType, got));
         }
     }
     node.ResolvedType = Type::FixedArray(node.ExplicitElementType, node.Elements.size());
@@ -1064,7 +1108,7 @@ void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
 void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
     auto recordIt = RecordTable.find(node.TypeName);
     if (recordIt == RecordTable.end()) {
-        addError(errLoc(node.LineNum) + "unknown molda type '" + node.TypeName + "'");
+        addError(errLoc(node.LineNum) + "o molde '" + node.TypeName + "' não existe");
         return;
     }
 
@@ -1074,15 +1118,15 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
 
     for (auto& field : node.Fields) {
         if (!seen.insert(field.Name).second) {
-            addError(errLoc(node.LineNum) + "duplicate field '" + field.Name
-                     + "' in '" + node.TypeName + "' literal");
+            addError(errLoc(node.LineNum) + "o campo '" + field.Name
+                     + "' aparece repetido na criação de '" + node.TypeName + "'");
             continue;
         }
 
         auto indexIt = info.fieldIndex.find(field.Name);
         if (indexIt == info.fieldIndex.end()) {
-            addError(errLoc(node.LineNum) + "molda '" + node.TypeName
-                     + "' has no field '" + field.Name + "'");
+            addError(errLoc(node.LineNum) + "o molde '" + node.TypeName
+                     + "' não tem o campo '" + field.Name + "'");
             if (field.Value) field.Value->accept(*this);
             continue;
         }
@@ -1093,7 +1137,7 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
                 || dynamic_cast<ArrayRepeatExpr*>(field.Value.get());
             if (isArrayInit) {
                 validateArrayInitializer(want, field.Value.get(), node.LineNum,
-                                         "field '" + field.Name + "' of '" + node.TypeName + "'");
+                                         "o campo '" + field.Name + "' de '" + node.TypeName + "'");
             } else {
                 field.Value->accept(*this);
             }
@@ -1101,16 +1145,15 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
 
         const Type& got = field.Value ? field.Value->ResolvedType : Type::Invalid();
         if (got.valid() && !canCoerceExprTo(field.Value.get(), want))
-            addError(errLoc(node.LineNum) + "field '" + field.Name + "' of '"
-                     + node.TypeName + "': expected '" + want.str()
-                     + "', got '" + got.str() + "'");
+            addError(errLoc(node.LineNum) + "o campo '" + field.Name + "' de '"
+                     + node.TypeName + "' " + mustBeOfType(want, got));
         initialized[indexIt->second] = true;
     }
 
     for (std::size_t i = 0; i < info.fields.size(); ++i) {
         if (!initialized[i])
-            addError(errLoc(node.LineNum) + "missing field '" + info.fields[i]->Name
-                     + "' in '" + node.TypeName + "' literal");
+            addError(errLoc(node.LineNum) + "falta o campo '" + info.fields[i]->Name
+                     + "' na criação de '" + node.TypeName + "'; todos os campos têm de ter um valor");
     }
 
     node.ResolvedType = Type::Named(node.TypeName);
@@ -1122,7 +1165,8 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
     if (auto* ident = dynamic_cast<IdentExpr*>(expr)) {
         auto t = lookupVar(ident->Name);
         if (!t) {
-            addError(errLoc(lineNum) + "undefined variable name '" + ident->Name + "'");
+            addError(errLoc(lineNum) + "a variável '" + ident->Name + "' não foi declarada; "
+                     "declara-a antes de a usar, por exemplo 'int " + ident->Name + " = 0;'");
             return Type::Invalid();
         }
         checkNotSelfInitialized(ident->Name, lineNum);
@@ -1137,11 +1181,11 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
         if (arr->Index) {
             arr->Index->accept(*this);
             if (arr->Index->ResolvedType.valid() && !arr->Index->ResolvedType.isInteger())
-                addError(errLoc(lineNum) + "array index must be an integer");
+                addError(errLoc(lineNum) + "o índice de um array tem de ser um número inteiro");
         }
 
         if (!isArrayType(baseType)) {
-            addError(errLoc(lineNum) + "indexed assignment target is not an array");
+            addError(errLoc(lineNum) + "só se pode usar [índice] com arrays, e este valor não é um array");
             return Type::Invalid();
         }
 
@@ -1154,20 +1198,20 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
         if (!baseType.valid()) return Type::Invalid();
 
         if (!baseType.isNamed()) {
-            addError(errLoc(lineNum) + "member assignment target requires a molda value");
+            addError(errLoc(lineNum) + "só os moldes têm campos, e este valor não é um molde");
             return Type::Invalid();
         }
 
         auto recordIt = RecordTable.find(baseType.name());
         if (recordIt == RecordTable.end()) {
-            addError(errLoc(lineNum) + "unknown molda type '" + baseType.str() + "'");
+            addError(errLoc(lineNum) + "o molde '" + baseType.str() + "' não existe");
             return Type::Invalid();
         }
 
         auto fieldIt = recordIt->second.fieldIndex.find(member->Member);
         if (fieldIt == recordIt->second.fieldIndex.end()) {
-            addError(errLoc(lineNum) + "molda '" + baseType.str()
-                     + "' has no field '" + member->Member + "'");
+            addError(errLoc(lineNum) + "o molde '" + baseType.str()
+                     + "' não tem o campo '" + member->Member + "'");
             return Type::Invalid();
         }
 
@@ -1176,7 +1220,8 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
     }
 
     expr->accept(*this);
-    addError(errLoc(lineNum) + "invalid assignment target");
+    addError(errLoc(lineNum) + "só se pode atribuir um valor a uma variável, a um elemento de um array "
+             "ou a um campo de um molde");
     return Type::Invalid();
 }
 
@@ -1187,11 +1232,11 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
 
     if (assigneeType.valid() && isArrayType(assigneeType)) {
         if (node.AssignOp != "=") {
-            addError(errLoc(node.LineNum) + "compound assignment operator '" + node.AssignOp
-                     + "' requires a numeric target, got '" + assigneeType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '" + node.AssignOp
+                     + "' só funciona com números, e '" + assigneeType.str() + "' é um array");
             node.Assigned->accept(*this);
         } else {
-            visitArrayValue(node.Assigned.get(), assigneeType, node.LineNum, "assignment");
+            visitArrayValue(node.Assigned.get(), assigneeType, node.LineNum, "o valor atribuído");
         }
         node.ResolvedType = assigneeType;
         return;
@@ -1203,24 +1248,22 @@ void SemanticAnalyzer::visit(AssignExpr& node) {
 
     if (node.AssignOp != "=" && assigneeType.valid()) {
         const bool bitwise = isBitwiseOp(std::string_view(node.AssignOp).substr(0, node.AssignOp.size() - 1));
-        const char* required = bitwise ? "an integer" : "a numeric";
+        const char* required = bitwise ? "números inteiros" : "números";
         const bool targetOk = bitwise ? assigneeType.isInteger() : assigneeType.isNumeric();
         const bool valueOk = bitwise ? valueType.isInteger() : valueType.isNumeric();
 
         if (!targetOk)
-            addError(errLoc(node.LineNum) + "compound assignment operator '"
-                     + node.AssignOp + "' requires " + required + " target, got '"
-                     + assigneeType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '" + node.AssignOp + "' só funciona com "
+                     + required + ", mas o destino é do tipo '" + assigneeType.str() + "'");
         if (valueType.valid() && !valueOk)
-            addError(errLoc(node.LineNum) + "compound assignment operator '"
-                     + node.AssignOp + "' requires " + required + " value, got '"
-                     + valueType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '" + node.AssignOp + "' só funciona com "
+                     + required + ", mas o valor é do tipo '" + valueType.str() + "'");
     }
 
     if (assigneeType.valid() && valueType.valid()
             && !canCoerceExprTo(node.Assigned.get(), assigneeType))
-        addError(errLoc(node.LineNum) + "cannot assign value of type '" + valueType.str()
-                 + "' to target of type '" + assigneeType.str() + "'");
+        addError(errLoc(node.LineNum) + "não se pode guardar um valor do tipo '" + valueType.str()
+                 + "' num destino do tipo '" + assigneeType.str() + "'" + castHint(valueType, assigneeType));
 }
 
 void SemanticAnalyzer::visit(ForSttmt& node) {
@@ -1238,7 +1281,7 @@ void SemanticAnalyzer::visit(ForSttmt& node) {
 }
 
 void SemanticAnalyzer::visit(ImportSttmt& node) {
-    addError(errLoc(node.LineNum) + "'inpristan' (import) statements are not supported yet");
+    addError(errLoc(node.LineNum) + "'inpristan' (importar módulos) ainda não é suportado");
 }
 
 void SemanticAnalyzer::visit(FStringExpr& node) {
@@ -1247,7 +1290,8 @@ void SemanticAnalyzer::visit(FStringExpr& node) {
         seg.expr->accept(*this);
         const Type& t = seg.expr->ResolvedType;
         if (t.valid() && !isPrintableType(t, true))
-            addError(errLoc(node.LineNum) + "f-string interpolation: cannot format value of type '" + t.str() + "'");
+            addError(errLoc(node.LineNum) + "não se pode escrever um valor do tipo '" + t.str()
+                     + "' num texto interpolado; escreve os campos do molde um a um");
     }
     node.ResolvedType = Type::Text();
 }
@@ -1263,12 +1307,14 @@ void SemanticAnalyzer::visit(CastExpr& node) {
     const auto castable = [](const Type& t) { return t.isNumeric() || t == Type::Bool(); };
 
     if (!castable(to)) {
-        addError(loc + "cannot cast to '" + to.str() + "'; only numbers and 'bool' are valid cast targets");
+        addError(loc + "não se pode converter para '" + to.str() + "' com (tipo); só se converte para números e 'bool'"
+                 + (to == Type::Text() ? "; para obter texto usa um texto interpolado, como f\"{valor}\"" : ""));
         return;
     }
     if (!from.valid()) return;
     if (!castable(from)) {
-        addError(loc + "cannot cast a value of type '" + from.str() + "' to '" + to.str() + "'");
+        addError(loc + "não se pode converter um valor do tipo '" + from.str() + "' para '" + to.str() + "' com (tipo)"
+                 + (from == Type::Text() ? "; para converter texto usa '" + to.str() + "::konverti(texto)'" : ""));
         return;
     }
     node.ResolvedType = to;
@@ -1276,7 +1322,7 @@ void SemanticAnalyzer::visit(CastExpr& node) {
 
 void SemanticAnalyzer::checkNotSelfInitialized(const std::string& name, int lineNum) {
     if (name == InitializingVar)
-        addError(errLoc(lineNum) + "variable '" + name + "' is used in its own initializer");
+        addError(errLoc(lineNum) + "a variável '" + name + "' é usada no seu próprio valor inicial");
 }
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {
@@ -1293,18 +1339,18 @@ void SemanticAnalyzer::visit(UnaryExpr& node) {
     if (node.Op == "!") {
         // As in a condition, a number is true when it is not zero.
         if (opType.valid() && opType != Type::Bool() && !opType.isNumeric())
-            addError(errLoc(node.LineNum) + "logical operator '!' requires a boolean or numeric operand, got '"
-                     + opType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '!' precisa de um valor lógico ou de um número, "
+                     "mas recebeu um valor do tipo '" + opType.str() + "'");
         node.ResolvedType = Type::Bool();
     } else if (node.Op == "~") {
         if (opType.valid() && !opType.isInteger())
-            addError(errLoc(node.LineNum) + "bitwise operator '~' requires an integer operand, got '"
-                     + opType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '~' só funciona com números inteiros, "
+                     "mas recebeu um valor do tipo '" + opType.str() + "'");
         node.ResolvedType = opType.isInteger() ? opType : Type::Invalid();
     } else { // "-" (numeric negation) keeps operand type
         if (opType.valid() && !opType.isNumeric())
-            addError(errLoc(node.LineNum) + "unary operator '-' requires a numeric operand, got '"
-                     + opType.str() + "'");
+            addError(errLoc(node.LineNum) + "o operador '-' só funciona com números, "
+                     "mas recebeu um valor do tipo '" + opType.str() + "'");
         node.ResolvedType = opType.isNumeric() ? opType : Type::Invalid();
     }
 }

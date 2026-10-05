@@ -1,4 +1,4 @@
-// expect: function 'sen_retornu' does not return on all paths
+// expect: a função 'sen_retornu' nem sempre devolve um valor; garante que todos os caminhos terminam com 'divolvi'
 // ERROR: non-void function that never returns.
 fn sen_retornu() num {
     int x = 42;

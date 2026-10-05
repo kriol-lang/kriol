@@ -1,4 +1,4 @@
-// expect: member access requires a molda value
+// expect: só os moldes têm campos, e este valor não é um molde
 fn inisiu() {
     int valor = 1;
     mostra(valor.campo);

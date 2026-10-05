@@ -174,7 +174,7 @@ static std::string findProgram(std::initializer_list<const char*> names,
         auto path = llvm::sys::findProgramByName(name);
         if (path) return *path;
     }
-    throw std::runtime_error("The " + description + " could not be found in the system.");
+    throw std::runtime_error("não foi encontrado o " + description + ", necessário para gerar o executável; instala-o ou acrescenta-o ao PATH");
 }
 
 #if KRIOL_USE_EMBEDDED_LLD
@@ -193,12 +193,12 @@ static std::string writeTempBlob(const char* stem,
     llvm::SmallString<128> tempPath;
     std::error_code ec = llvm::sys::fs::createTemporaryFile(stem, suffix, tempPath);
     if (ec) {
-        throw std::runtime_error("Failed to allocate temporary file: " + ec.message());
+        throw std::runtime_error("não foi possível criar um ficheiro temporário: " + ec.message());
     }
 
     llvm::raw_fd_ostream out(tempPath, ec, llvm::sys::fs::OF_None);
     if (ec) {
-        throw std::runtime_error("Failed to open temporary file: " + ec.message());
+        throw std::runtime_error("não foi possível abrir um ficheiro temporário: " + ec.message());
     }
 
     out.write(reinterpret_cast<const char*>(blob.Data), blob.Len);
@@ -234,7 +234,7 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
 #else
     std::string wasmLdPath = findProgram(
         {"wasm-ld-20", "wasm-ld-19", "wasm-ld"},
-        "WASI linker 'wasm-ld-20', 'wasm-ld-19', or 'wasm-ld'"
+        "linker de WASI 'wasm-ld-20', 'wasm-ld-19' ou 'wasm-ld'"
     );
     std::string linkerArg0 = wasmLdPath;
 #endif
@@ -268,8 +268,8 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
 
 static void linkWasmWithWasmLd(const WasiLinkPlan& plan) {
     if (plan.LinkerPath.empty())
-        throw std::runtime_error("The WASI linker fallback is not available.");
-    runProgram(plan.LinkerPath, plan.Args, "Failure in the final WASI linkage: ");
+        throw std::runtime_error("o linker de WASI não está disponível");
+    runProgram(plan.LinkerPath, plan.Args, "a ligação do módulo WASI falhou: ");
 }
 
 #if KRIOL_USE_EMBEDDED_LLD
@@ -295,7 +295,7 @@ static void linkWasmWithEmbeddedLld(const WasiLinkPlan& plan) {
         std::string detail = stderrText.empty() ? stdoutText : stderrText;
         if (!result.canRunAgain && detail.empty())
             detail = "LLD reported that it cannot be called again.";
-        throw std::runtime_error("Failure in the embedded WASI linkage: " + detail);
+        throw std::runtime_error("a ligação do módulo WASI falhou: " + detail);
     }
 }
 #endif
@@ -363,7 +363,7 @@ static TargetResources selectTargetResources(CodegenTarget target) {
             };
 #endif
 #else
-            throw std::runtime_error("This build of the compiler was built without the experimental 'wasm32-wasi' support.");
+            throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'wasm32-wasi'");
 #endif
         case CodegenTarget::X86_64Windows:
 #if KRIOL_ENABLE_WINDOWS_TARGET
@@ -373,11 +373,11 @@ static TargetResources selectTargetResources(CodegenTarget target) {
                 EmbeddedBlob{libgc_x86_64_windows_o, libgc_x86_64_windows_o_len}
             };
 #else
-            throw std::runtime_error("This build of the compiler was built without 'x86_64-windows' support.");
+            throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'x86_64-windows'");
 #endif
     }
 
-    throw std::runtime_error("Unsupported codegen target.");
+    throw std::runtime_error("erro interno: alvo de compilação desconhecido");
 }
 
 static void linkRuntimeBitcode(llvm::Module& module,
@@ -389,12 +389,12 @@ static void linkRuntimeBitcode(llvm::Module& module,
     auto expectedMod = llvm::parseBitcodeFile(*memBuf, context);
     if (!expectedMod) {
         std::string errDetail = llvm::toString(expectedMod.takeError());
-        throw std::runtime_error("Failed to parse runtime bitcode: " + errDetail);
+        throw std::runtime_error("erro interno: não foi possível ler o runtime: " + errDetail);
     }
 
     bool linkErr = llvm::Linker::linkModules(module, std::move(expectedMod.get()));
     if (linkErr)
-        throw std::runtime_error("Failed to merge runtime bitcode into the main module.");
+        throw std::runtime_error("erro interno: não foi possível juntar o runtime ao programa");
 
     // clang tags the runtime with its baseline CPU attributes, which kriol's
     // functions lack, and LLVM never inlines across differing target
@@ -437,7 +437,7 @@ static void emitObjectFile(llvm::Module& module,
     std::string Error;
     auto Target = llvm::TargetRegistry::lookupTarget(targetTriple, Error);
     if (!Target)
-        throw std::runtime_error("Failed to find Target: " + Error);
+        throw std::runtime_error("o LLVM não suporta o alvo de compilação: " + Error);
 
     auto CPU = "generic";
     auto Features = "";
@@ -458,12 +458,12 @@ static void emitObjectFile(llvm::Module& module,
     std::error_code EC;
     llvm::raw_fd_ostream dest(objPath, EC, llvm::sys::fs::OF_None);
     if (EC)
-        throw std::runtime_error("The object file could not be opened: " + EC.message());
+        throw std::runtime_error("não foi possível criar o ficheiro objeto: " + EC.message());
 
     llvm::legacy::PassManager pass;
     auto FileType = llvm::CodeGenFileType::ObjectFile;
     if (TargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType))
-        throw std::runtime_error("The TargetMachine cannot output a file of such type.");
+        throw std::runtime_error("erro interno: o LLVM não consegue gerar código objeto para este alvo");
 
     pass.run(module);
     dest.flush();
@@ -493,7 +493,7 @@ static void linkNativeExecutable(const std::string& objPath,
                                  const std::string& outputPath,
                                  const std::string& targetTriple) {
     const bool windows = isWindowsTriple(targetTriple);
-    std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' or 'cc'");
+    std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' ou 'cc'");
     std::vector<std::string> linkArgs = {ccPath};
     if (!windows)
         linkArgs.push_back("-no-pie");
@@ -504,7 +504,7 @@ static void linkNativeExecutable(const std::string& objPath,
     linkArgs.push_back(outputPath);
     if (!windows)
         linkArgs.push_back("-lm");
-    runProgram(ccPath, linkArgs, "Failure in the final linkage: ");
+    runProgram(ccPath, linkArgs, "a ligação do executável falhou: ");
 }
 
 #if KRIOL_ENABLE_WINDOWS_TARGET
@@ -557,7 +557,7 @@ static std::string findMingwLinker() {
 
     return findProgram(
         {"ld.lld-20", "ld.lld-19", "ld.lld"},
-        "linker 'ld.lld' (place it next to kriol or on PATH)"
+        "linker 'ld.lld' (que deve estar ao lado do kriol)"
     );
 }
 
@@ -579,7 +579,7 @@ static void linkMingwExecutable(const std::string& objPath,
     linkArgs.insert(linkArgs.end(), inputs.Libraries.begin(), inputs.Libraries.end());
 
     try {
-        runProgram(linkerPath, linkArgs, "Failure in the final Windows linkage: ");
+        runProgram(linkerPath, linkArgs, "a ligação do executável para Windows falhou: ");
     } catch (...) {
         removeMingwInputs(inputs);
         throw;
@@ -624,6 +624,12 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
       Builder(std::make_unique<llvm::IRBuilder<>>(Context))
 {
     initializeTargets();
+
+    // The runtime names the source file in its error messages; its own
+    // definition is weak, so this one wins when the runtime is linked in.
+    auto* name = Builder->CreateGlobalString(moduleName, "kriol.source_name", 0, Mod.get());
+    new llvm::GlobalVariable(*Mod, llvm::PointerType::getUnqual(Context), true,
+                             llvm::GlobalValue::ExternalLinkage, name, "__kriol_source_name");
 }
 
 llvm::Type* CodeGenVisitor::mapType(const Type& t) {
@@ -646,7 +652,7 @@ llvm::Type* CodeGenVisitor::mapType(const Type& t) {
 llvm::StructType* CodeGenVisitor::getOrCreateRecordType(const std::string& name) {
     auto it = Records.find(name);
     if (it == Records.end())
-        throw std::runtime_error("unknown molda type '" + name + "'");
+        throw std::runtime_error("erro interno: molde desconhecido '" + name + "'");
 
     RecordInfo& info = it->second;
     if (info.llvmType && !info.llvmType->isOpaque())
@@ -709,7 +715,7 @@ llvm::Value* CodeGenVisitor::coerce(llvm::Value* v, llvm::Type* targetTy) {
     if (srcTy->isIntegerTy() && targetTy->isIntegerTy())
         return Builder->CreateSExtOrTrunc(v, targetTy, "conv");
 
-    throw std::runtime_error("Unsupported implicit type conversion");
+    throw std::runtime_error("erro interno: conversão implícita não suportada");
 }
 
 llvm::Value* CodeGenVisitor::coerceToType(llvm::Value* v,
@@ -754,7 +760,7 @@ llvm::Value* CodeGenVisitor::coerceToType(llvm::Value* v,
 
 llvm::Value* CodeGenVisitor::toBool(llvm::Value* v) {
     if (v->getType()->isPointerTy())
-        throw std::runtime_error("Cannot use non truthy value as a condition");
+        throw std::runtime_error("erro interno: condição sem valor lógico");
     if (v->getType()->isIntegerTy(1)) return v;
     if (v->getType()->isFloatingPointTy())
         return Builder->CreateFCmpONE(
@@ -778,7 +784,7 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
         outputPath
     );
     if (ec)
-        throw std::runtime_error("Failed to allocate temporary output file: " + ec.message());
+        throw std::runtime_error("não foi possível criar um ficheiro temporário: " + ec.message());
 
     std::string outputPathStr(outputPath.str());
     try {
@@ -786,7 +792,7 @@ std::vector<unsigned char> CodeGenVisitor::emitToMemory(const EmitOptions& optio
 
         auto outputBuffer = llvm::MemoryBuffer::getFile(outputPathStr);
         if (!outputBuffer)
-            throw std::runtime_error("Failed to read compiler output: " + outputBuffer.getError().message());
+            throw std::runtime_error("não foi possível ler o resultado da compilação: " + outputBuffer.getError().message());
 
         llvm::StringRef bytes = outputBuffer.get()->getBuffer();
         std::vector<unsigned char> result(bytes.bytes_begin(), bytes.bytes_end());
@@ -812,7 +818,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
         std::error_code ec = llvm::sys::fs::createTemporaryFile(
             "kriol_object", isWindowsTriple(resources.Triple) ? "obj" : "o", objPathBuf);
         if (ec)
-            throw std::runtime_error("Failed to allocate temporary object file: " + ec.message());
+            throw std::runtime_error("não foi possível criar um ficheiro temporário: " + ec.message());
         const std::string objPath(objPathBuf.str());
         tempFiles.push_back(objPath);
 
@@ -831,13 +837,13 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
             });
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
-            throw std::runtime_error("kriol was built without wasm32-wasi support.");
+            throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'wasm32-wasi'");
 #endif
         } else if (options.Target == CodegenTarget::X86_64Windows) {
 #if KRIOL_ENABLE_WINDOWS_TARGET
             linkMingwExecutable(objPath, tempLibGc, outputPath);
 #else
-            throw std::runtime_error("kriol was built without x86_64-windows support.");
+            throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'x86_64-windows'");
 #endif
         } else {
             linkNativeExecutable(objPath, tempLibGc, outputPath, resources.Triple);
@@ -971,7 +977,7 @@ void CodeGenVisitor::emitArrayInitializer(llvm::Value* storage,
             Builder->CreateStore(fill, element);
         });
     } else {
-        throw std::runtime_error("internal error: array requires an array literal or repeat initializer");
+        throw std::runtime_error("erro interno: o array precisa de uma lista ou de uma repetição");
     }
     LastValue = nullptr;
 }
@@ -1232,7 +1238,7 @@ llvm::Value* CodeGenVisitor::emitAggregateAddress(ast::Expr* expr, const Type& t
     }
     expr->accept(*this);
     if (!LastValue)
-        throw std::runtime_error("internal error: failed to generate an aggregate value");
+        throw std::runtime_error("erro interno: falhou a geração de um valor composto");
     return LastValue;
 }
 
@@ -1277,16 +1283,18 @@ llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Val
 static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMContext& Context) {
     if (auto* fn = Mod.getFunction("__kriol_unhandled_error")) return fn;
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy}, false);
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
+                                          {ptrTy, llvm::Type::getInt32Ty(Context)}, false);
     auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage,
                                       "__kriol_unhandled_error", Mod);
     fn->addFnAttr(llvm::Attribute::NoReturn);
     return fn;
 }
 
-void CodeGenVisitor::emitFailure(llvm::Value* erruValue) {
+void CodeGenVisitor::emitFailure(llvm::Value* erruValue, int lineNum) {
     if (CurrentIsMain) {
-        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context), {erruMessage(erruValue)});
+        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
+                            {erruMessage(erruValue), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), lineNum)});
         Builder->CreateUnreachable();
         return;
     }
@@ -1306,7 +1314,7 @@ void CodeGenVisitor::emitConversionCall(TypeCallExpr& node) {
     node.Args->Args[0]->accept(*this);
     llvm::Value* text = LastValue;
     if (!text)
-        throw std::runtime_error("internal error: failed to generate the text to convert");
+        throw std::runtime_error("erro interno: falhou a geração do texto a converter");
 
     auto declare = [&](const char* name, std::vector<llvm::Type*> params) {
         if (auto* fn = Mod->getFunction(name)) return fn;
@@ -1369,7 +1377,7 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 
     Builder->SetInsertPoint(failBB);
     llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
-    Builder->CreateCall(getOrDeclarePanicAt(),
+    Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
                         {erruMessage(error), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
     Builder->CreateUnreachable();
 
@@ -1381,7 +1389,7 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     node.Operand->accept(*this);
     llvm::Value* result = LastValue;
     if (!result)
-        throw std::runtime_error("internal error: failed to generate the call after 'tenta'");
+        throw std::runtime_error("erro interno: falhou a geração da chamada depois de 'tenta'");
 
     auto* resultTy = llvm::cast<llvm::StructType>(result->getType());
     auto* fn = Builder->GetInsertBlock()->getParent();
@@ -1391,7 +1399,7 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     Builder->CreateCondBr(failed, failBB, okBB);
 
     Builder->SetInsertPoint(failBB);
-    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"));
+    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"), node.LineNum);
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
@@ -1401,7 +1409,7 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     node.LHS->accept(*this);
     llvm::Value* result = LastValue;
     if (!result)
-        throw std::runtime_error("internal error: failed to generate the call before 'sinon'");
+        throw std::runtime_error("erro interno: falhou a geração da chamada antes de 'sinon'");
 
     auto* fn = Builder->GetInsertBlock()->getParent();
     auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinon.fallback", fn);
@@ -1415,7 +1423,7 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     Builder->SetInsertPoint(fallbackBB);
     node.RHS->accept(*this);
     if (!LastValue)
-        throw std::runtime_error("internal error: failed to generate the value after 'sinon'");
+        throw std::runtime_error("erro interno: falhou a geração do valor depois de 'sinon'");
     llvm::Value* fallback = isAggregate(node.ResolvedType)
         ? LastValue
         : coerceToType(LastValue, node.RHS->ResolvedType, node.ResolvedType);
@@ -1607,21 +1615,21 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
         else if (node.CanFail() && node.Type.isVoid())
             Builder->CreateRet(llvm::ConstantAggregateZero::get(llvm::cast<llvm::StructType>(retTy)));
         else
-            throw std::runtime_error("Non-void function '" + node.Name + "' has no return statement");
+            throw std::runtime_error("erro interno: a função '" + node.Name + "' não tem 'divolvi'");
     }
 
     auto verificationFailed = llvm::verifyFunction(*fn);
 
     if (verificationFailed) {
         fn->print(llvm::errs());
-        throw std::runtime_error("Function verification failed for '" + node.Name + "'");
+        throw std::runtime_error("erro interno: o código gerado para a função '" + node.Name + "' é inválido");
     }
 
     if (isMain && CurrentTarget == CodegenTarget::Wasm32Wasi) {
         auto* wrapper = emitWasiMainWrapper(*Mod, Context, *Builder, fn);
         if (llvm::verifyFunction(*wrapper)) {
             wrapper->print(llvm::errs());
-            throw std::runtime_error("WASI main wrapper verification failed");
+            throw std::runtime_error("erro interno: o código gerado para o início do módulo WASI é inválido");
         }
     }
 
@@ -1696,10 +1704,10 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
 }
 
 void CodeGenVisitor::visit(JumpSttmt& node) {
-    if (node.Name == "break" && LoopExit) {
+    if (node.Name == "kebra" && LoopExit) {
         Builder->CreateBr(LoopExit);
         startDeadBlock();
-    } else if (node.Name == "continue" && LoopContinue) {
+    } else if (node.Name == "kontinua" && LoopContinue) {
         Builder->CreateBr(LoopContinue);
         startDeadBlock();
     }
@@ -1709,7 +1717,7 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.Throws) {
         llvm::Value* erru = emitAggregateAddress(node.ReturnValue.get(), node.ReturnValue->ResolvedType);
-        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"));
+        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"), node.LineNum);
     } else if (isAggregate(CurrentReturnType)) {
         emitAggregateStore(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
         if (CurrentCanFail) {
@@ -1780,8 +1788,8 @@ void CodeGenVisitor::visit(FunCallExpr& node) {
             }
             arg->accept(*this);
             if (!LastValue)
-                throw std::runtime_error("internal error: failed to generate argument "
-                                         + std::to_string(i + 1) + " of call to '" + callee->Name + "'");
+                throw std::runtime_error("erro interno: falhou a geração do argumento "
+                                         + std::to_string(i + 1) + " da chamada a '" + callee->Name + "'");
             if (firstParam + i < fn->arg_size()) {
                 // Coerce argument to the declared parameter type when they differ
                 llvm::Type* paramTy = fn->getArg(firstParam + i)->getType();
@@ -1824,7 +1832,7 @@ void CodeGenVisitor::emitShortCircuit(BinExpr& node) {
     Builder->SetInsertPoint(rhsBB);
     node.RHS->accept(*this);
     if (!LastValue)
-        throw std::runtime_error("internal error: failed to generate right operand of '" + node.Op + "'");
+        throw std::runtime_error("erro interno: falhou a geração do operando direito de '" + node.Op + "'");
     llvm::Value* rhs = toBool(LastValue);
     llvm::BasicBlock* rhsEndBB = Builder->GetInsertBlock();
     Builder->CreateBr(mergeBB);
@@ -1882,7 +1890,7 @@ llvm::Value* CodeGenVisitor::emitArithmetic(const std::string& op, llvm::Value* 
     if (op == "&") return Builder->CreateAnd(lhs, rhs);
     if (op == "|") return Builder->CreateOr(lhs, rhs);
     if (op == "^") return Builder->CreateXor(lhs, rhs);
-    throw std::runtime_error("internal error: unknown arithmetic operator '" + op + "'");
+    throw std::runtime_error("erro interno: operador aritmético desconhecido '" + op + "'");
 }
 
 void CodeGenVisitor::visit(LiteralExpr& node) {

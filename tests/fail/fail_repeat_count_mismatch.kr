@@ -1,4 +1,4 @@
-// expect: array variable 'a' has size 3 but repeat initializer [value; 4] has a different count
+// expect: o array 'a' tem 3 elementos, mas a repetição [valor; 4] tem 4
 fn inisiu() {
     int[3] a = [0; 4];
     mostran(a[0]);

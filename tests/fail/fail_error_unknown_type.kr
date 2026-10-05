@@ -1,4 +1,4 @@
-// expect: unknown error type 'Falha' in function 'f'; only 'Erru' can follow ':'
+// expect: o tipo de erro 'Falha' da função 'f' não existe; depois de ':' só pode vir 'Erru'
 fn f() int : Falha {
     divolvi 1;
 }

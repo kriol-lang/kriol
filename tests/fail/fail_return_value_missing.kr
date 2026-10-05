@@ -1,4 +1,4 @@
-// expect: missing return value in non-void function 'f'
+// expect: a função 'f' devolve um valor do tipo 'int', mas este 'divolvi' não tem valor
 fn f() int {
     divolvi;
 }
