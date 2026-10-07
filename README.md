@@ -21,6 +21,14 @@ fn inisiu() {
 }
 ```
 
+### Presentation video
+
+A four-minute video that presents the language:
+
+<a href="https://www.youtube.com/watch?v=dkrlfSyyHy0">
+  <img src="https://img.youtube.com/vi/dkrlfSyyHy0/maxresdefault.jpg" alt="Kriol: Linguagem di Programason Kabuverdianu, on YouTube" width="640">
+</a>
+
 ### Description
 
 The syntax of this programming language was initially based on C, Go, and Rust, but other programming languages such as Liquid played a good role in the initial design.
