@@ -1,0 +1,7 @@
+// expect: o molde 'A' não pode ter um campo do seu próprio tipo ('a')
+molda A {
+    A a;
+}
+fn inisiu() {
+    A x = A{a = 0};
+}

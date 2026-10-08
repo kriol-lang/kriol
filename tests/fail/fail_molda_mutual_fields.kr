@@ -1,0 +1,10 @@
+// expect: o tipo 'B' não existe (campo 'b'); os tipos novos declaram-se com 'molda'
+molda A {
+    B b;
+}
+molda B {
+    A a;
+}
+fn inisiu() {
+    A x = A{b = B{a = 0}};
+}

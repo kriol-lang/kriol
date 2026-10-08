@@ -219,7 +219,17 @@ void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node, bool builtin) {
             continue;
         }
 
-        validateTypeKnown(field->Type, field->LineNum, "campo '" + field->Name + "'");
+        Type innermostType = field->Type;
+        while (innermostType.isArray())
+            innermostType = innermostType.elementType();
+        if (innermostType.isNamed() && innermostType.name() == node.Name) {
+            addError(errLoc(field->LineNum) + "o molde '" + node.Name
+                     + "' não pode ter um campo do seu próprio tipo ('" + field->Name + "')");
+            continue;
+        }
+
+        if (!validateTypeKnown(field->Type, field->LineNum, "campo '" + field->Name + "'"))
+            continue;
         info.fieldIndex[field->Name] = info.fields.size();
         info.fields.push_back(field.get());
     }
