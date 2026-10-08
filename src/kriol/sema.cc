@@ -21,6 +21,8 @@ using kriol::typeutils::hasEmptyDimension;
 using kriol::typeutils::isArrayType;
 using namespace kriol::typerules;
 
+constexpr std::size_t saturatedBytes = static_cast<std::size_t>(-1);
+
 static bool startsWithUppercaseAscii(const std::string& name) {
     return !name.empty() && std::isupper(static_cast<unsigned char>(name[0]));
 }
@@ -234,6 +236,15 @@ void SemanticAnalyzer::registerRecord(MoldaDeclSttmt& node, bool builtin) {
         info.fields.push_back(field.get());
     }
 
+    for (const auto* field : info.fields) {
+        const std::size_t bytes = storageBytes(field->Type);
+        if (bytes > saturatedBytes - info.storageBytes) {
+            info.storageBytes = saturatedBytes;
+            break;
+        }
+        info.storageBytes += bytes;
+    }
+
     RecordTable[node.Name] = std::move(info);
 }
 
@@ -252,12 +263,10 @@ bool SemanticAnalyzer::validateTypeKnown(const Type& type,
 }
 
 std::size_t SemanticAnalyzer::storageBytes(const Type& type) const {
-    constexpr std::size_t saturated = static_cast<std::size_t>(-1);
-
     if (type.isArray()) {
         const std::size_t element = storageBytes(type.elementType());
-        if (element != 0 && type.arraySize() > saturated / element)
-            return saturated;
+        if (element != 0 && type.arraySize() > saturatedBytes / element)
+            return saturatedBytes;
         return element * type.arraySize();
     }
     if (type.isInteger() || type.isFloat())
@@ -266,16 +275,7 @@ std::size_t SemanticAnalyzer::storageBytes(const Type& type) const {
         return 1;
     if (type.isNamed()) {
         auto recordIt = RecordTable.find(type.name());
-        if (recordIt == RecordTable.end())
-            return 0;
-        std::size_t total = 0;
-        for (const auto* field : recordIt->second.fields) {
-            const std::size_t bytes = storageBytes(field->Type);
-            if (bytes > saturated - total)
-                return saturated;
-            total += bytes;
-        }
-        return total;
+        return recordIt == RecordTable.end() ? 0 : recordIt->second.storageBytes;
     }
     return 8; // textu: a pointer, counted at its 64-bit size on every target
 }

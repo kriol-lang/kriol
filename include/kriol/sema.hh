@@ -25,6 +25,7 @@ namespace sema {
         struct RecordInfo {
             std::vector<ast::VarDeclSttmt*> fields;
             std::unordered_map<std::string, std::size_t> fieldIndex;
+            std::size_t storageBytes = 0;
         };
 
         // Signature record for a user-defined function
