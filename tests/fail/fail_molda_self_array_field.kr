@@ -1,0 +1,6 @@
+// expect: o molde 'A' não pode ter um campo do seu próprio tipo ('lista')
+molda A {
+    A[2] lista;
+}
+fn f(A p) {}
+fn inisiu() {}
