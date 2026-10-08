@@ -127,6 +127,7 @@ jobs:
           if (Get-Command ld.lld -ErrorAction SilentlyContinue) { throw 'ld.lld is still on PATH' }
 
           .\run_tests.ps1 "$env:STAGE\kriol.exe" .
+          if (-not $?) { exit 1 }
 
           & "$env:STAGE\kriol.exe" examples\hello_world.kriol -o hello
           dumpbin /nologo /dependents hello.exe
