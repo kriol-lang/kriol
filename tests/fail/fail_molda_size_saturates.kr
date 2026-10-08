@@ -1,0 +1,258 @@
+// expect: o parâmetro 'v' ocupa 18446744073709551615 bytes, mais do que o limite de 1048576 bytes dentro de uma função
+molda R0 {
+    i32 x;
+}
+molda R1 {
+    R0 a;
+    R0 b;
+}
+molda R2 {
+    R1 a;
+    R1 b;
+}
+molda R3 {
+    R2 a;
+    R2 b;
+}
+molda R4 {
+    R3 a;
+    R3 b;
+}
+molda R5 {
+    R4 a;
+    R4 b;
+}
+molda R6 {
+    R5 a;
+    R5 b;
+}
+molda R7 {
+    R6 a;
+    R6 b;
+}
+molda R8 {
+    R7 a;
+    R7 b;
+}
+molda R9 {
+    R8 a;
+    R8 b;
+}
+molda R10 {
+    R9 a;
+    R9 b;
+}
+molda R11 {
+    R10 a;
+    R10 b;
+}
+molda R12 {
+    R11 a;
+    R11 b;
+}
+molda R13 {
+    R12 a;
+    R12 b;
+}
+molda R14 {
+    R13 a;
+    R13 b;
+}
+molda R15 {
+    R14 a;
+    R14 b;
+}
+molda R16 {
+    R15 a;
+    R15 b;
+}
+molda R17 {
+    R16 a;
+    R16 b;
+}
+molda R18 {
+    R17 a;
+    R17 b;
+}
+molda R19 {
+    R18 a;
+    R18 b;
+}
+molda R20 {
+    R19 a;
+    R19 b;
+}
+molda R21 {
+    R20 a;
+    R20 b;
+}
+molda R22 {
+    R21 a;
+    R21 b;
+}
+molda R23 {
+    R22 a;
+    R22 b;
+}
+molda R24 {
+    R23 a;
+    R23 b;
+}
+molda R25 {
+    R24 a;
+    R24 b;
+}
+molda R26 {
+    R25 a;
+    R25 b;
+}
+molda R27 {
+    R26 a;
+    R26 b;
+}
+molda R28 {
+    R27 a;
+    R27 b;
+}
+molda R29 {
+    R28 a;
+    R28 b;
+}
+molda R30 {
+    R29 a;
+    R29 b;
+}
+molda R31 {
+    R30 a;
+    R30 b;
+}
+molda R32 {
+    R31 a;
+    R31 b;
+}
+molda R33 {
+    R32 a;
+    R32 b;
+}
+molda R34 {
+    R33 a;
+    R33 b;
+}
+molda R35 {
+    R34 a;
+    R34 b;
+}
+molda R36 {
+    R35 a;
+    R35 b;
+}
+molda R37 {
+    R36 a;
+    R36 b;
+}
+molda R38 {
+    R37 a;
+    R37 b;
+}
+molda R39 {
+    R38 a;
+    R38 b;
+}
+molda R40 {
+    R39 a;
+    R39 b;
+}
+molda R41 {
+    R40 a;
+    R40 b;
+}
+molda R42 {
+    R41 a;
+    R41 b;
+}
+molda R43 {
+    R42 a;
+    R42 b;
+}
+molda R44 {
+    R43 a;
+    R43 b;
+}
+molda R45 {
+    R44 a;
+    R44 b;
+}
+molda R46 {
+    R45 a;
+    R45 b;
+}
+molda R47 {
+    R46 a;
+    R46 b;
+}
+molda R48 {
+    R47 a;
+    R47 b;
+}
+molda R49 {
+    R48 a;
+    R48 b;
+}
+molda R50 {
+    R49 a;
+    R49 b;
+}
+molda R51 {
+    R50 a;
+    R50 b;
+}
+molda R52 {
+    R51 a;
+    R51 b;
+}
+molda R53 {
+    R52 a;
+    R52 b;
+}
+molda R54 {
+    R53 a;
+    R53 b;
+}
+molda R55 {
+    R54 a;
+    R54 b;
+}
+molda R56 {
+    R55 a;
+    R55 b;
+}
+molda R57 {
+    R56 a;
+    R56 b;
+}
+molda R58 {
+    R57 a;
+    R57 b;
+}
+molda R59 {
+    R58 a;
+    R58 b;
+}
+molda R60 {
+    R59 a;
+    R59 b;
+}
+molda R61 {
+    R60 a;
+    R60 b;
+}
+molda R62 {
+    R61 a;
+    R61 b;
+}
+
+fn usa(R62 v) {
+}
+
+fn inisiu() {
+}

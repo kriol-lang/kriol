@@ -1,0 +1,10 @@
+// expect: o parâmetro 'v' ocupa 1600000 bytes, mais do que o limite de 1048576 bytes dentro de uma função
+molda Medi {
+    int[100000] xs;
+}
+
+fn usa(Medi[2] v) {
+}
+
+fn inisiu() {
+}
