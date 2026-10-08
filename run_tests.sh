@@ -270,7 +270,7 @@ if [ -d "$ROOT/tests/fail" ]; then
         tmpbin=$(mktemp /tmp/kriol_fail_bin_XXXX)
         expected=$(sed -n 's|^// expect: ||p' "$f" | head -n 1)
 
-        if output=$("$KRIOL" "$f" -o "$tmpbin" 2>&1); then
+        if output=$(timeout 10 "$KRIOL" "$f" -o "$tmpbin" 2>&1); then
             echo " FAIL (should have been rejected)"
             record_failure "$f"
         elif [ -n "$expected" ] && ! printf '%s' "$output" | grep -Fq -- "$expected"; then
