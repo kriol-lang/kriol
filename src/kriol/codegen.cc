@@ -627,7 +627,7 @@ CodeGenVisitor::CodeGenVisitor(const std::string& moduleName)
 
     // The runtime names the source file in its error messages; its own
     // definition is weak, so this one wins when the runtime is linked in.
-    auto* name = Builder->CreateGlobalString(moduleName, "kriol.source_name", 0, Mod.get());
+    auto* name = Builder->CreateGlobalString(moduleName, "__kriol.source_name", 0, Mod.get());
     new llvm::GlobalVariable(*Mod, llvm::PointerType::getUnqual(Context), true,
                              llvm::GlobalValue::ExternalLinkage, name, "__kriol_source_name");
 }

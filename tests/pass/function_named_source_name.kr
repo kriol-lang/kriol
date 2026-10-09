@@ -1,0 +1,7 @@
+fn source_name() int {
+    divolvi 1;
+}
+
+fn inisiu() {
+    mostran(source_name());
+}
