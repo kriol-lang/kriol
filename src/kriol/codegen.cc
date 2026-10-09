@@ -604,11 +604,15 @@ static bool isReachableFromEntry(llvm::BasicBlock* target) {
     return false;
 }
 
-// User functions get a "kriol." prefix and internal linkage, so no Kriol name
-// (exit, free, main, ...) can clash with a C library or runtime symbol. Only
-// inisiu is exported, as the C entry point.
+// User functions get a "kriol." prefix and globals a "kriol.g." prefix, both with
+// internal linkage, so no Kriol name (exit, free, main, ...) can clash with a C
+// library or runtime symbol. Only inisiu is exported, as the C entry point.
 static std::string llvmFunctionName(const std::string& kriolName) {
     return kriolName == "inisiu" ? "main" : "kriol." + kriolName;
+}
+
+static std::string llvmGlobalName(const std::string& kriolName) {
+    return "kriol.g." + kriolName;
 }
 
 static llvm::GlobalValue::LinkageTypes functionLinkage(const std::string& kriolName) {
@@ -870,7 +874,7 @@ void CodeGenVisitor::visit(VarDeclSttmt& node) {
             /*isConstant=*/false,
             llvm::GlobalValue::InternalLinkage,
             init,
-            node.Name
+            llvmGlobalName(node.Name)
         );
 
         GlobalVars[node.Name] = gv;
