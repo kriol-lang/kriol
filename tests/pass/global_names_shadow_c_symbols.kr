@@ -1,0 +1,27 @@
+int exit = 3;
+int __kriol_check_bounds = 4;
+textu printf = "kriol";
+int __kriol_println_string = 7;
+int main = 5;
+int dobru = 6;
+
+fn dobru(int n) int {
+    divolvi n * 2;
+}
+
+fn inisiu() {
+    int[3] nums = [10, 20, 30];
+    int i = 2;
+
+    konfirma(exit == 3);
+    konfirma(__kriol_check_bounds == 4);
+    konfirma(__kriol_println_string == 7);
+    konfirma(main == 5);
+    konfirma(dobru(dobru) == 12);
+    konfirma(nums[i] == 30);
+
+    mostran(printf);
+    mostran(f"{exit} {__kriol_check_bounds} {main} {nums[i]}");
+
+    sai(0);
+}
