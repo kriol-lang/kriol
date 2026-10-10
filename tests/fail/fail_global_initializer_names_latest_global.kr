@@ -1,0 +1,12 @@
+// expect: o valor inicial de 'a' chama 'soma', que usa a variável 'c' antes de ela receber o seu valor inicial; as variáveis fora das funções recebem o valor pela ordem em que são declaradas, por isso declara 'c' antes de 'a'
+int a = soma();
+int b = 1;
+int c = 2;
+
+fn soma() int {
+    divolvi b + c;
+}
+
+fn inisiu() {
+    mostran(a);
+}

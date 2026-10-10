@@ -1,0 +1,18 @@
+// expect: o valor inicial de 'a' chama 'par', que chama 'impar', que usa a variável 'b' antes de ela receber o seu valor inicial
+int a = par(4);
+int b = 1;
+
+fn par(int n) int {
+    si n == 0 {
+        divolvi 0;
+    }
+    divolvi impar(n - 1);
+}
+
+fn impar(int n) int {
+    divolvi par(n) + b;
+}
+
+fn inisiu() {
+    mostran(a);
+}

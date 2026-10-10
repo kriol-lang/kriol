@@ -5,6 +5,7 @@
 #include "ast.hh"
 #include "constants.hh"
 #include "prelude.hh"
+#include "global_init_order.hh"
 
 #include <memory>
 #include <string>
@@ -63,6 +64,8 @@ namespace sema {
         // The variable whose initializer is being analysed, which must not
         // read the variable itself.
         std::string InitializingVar;
+
+        GlobalInitOrder InitOrder;
 
         // Collected errors
         std::vector<std::string> Errors;
@@ -127,6 +130,11 @@ namespace sema {
         // Reports an error if `name` is the variable whose initializer is
         // being analysed.
         void checkNotSelfInitialized(const std::string& name, int lineNum);
+
+        bool atModuleScope() const { return FunctionDepth == 0 && SymbolScopes.size() == 1; }
+        bool isGlobalName(const std::string& name) const;
+        void noteVarUse(const std::string& name, int lineNum);
+        void noteUserCall(const std::string& callee, int lineNum);
 
         // The call under any parentheses, or null if `expr` is not a call.
         static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);

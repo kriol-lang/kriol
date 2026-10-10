@@ -1,0 +1,12 @@
+// expect: fail_global_initializer_reads_later_global.kr:3: erro: o valor inicial de 'a' chama 'le', que usa a variável 'b' antes de ela receber o seu valor inicial; as variáveis fora das funções recebem o valor pela ordem em que são declaradas, por isso declara 'b' antes de 'a'
+int a =
+    le();
+int b = 5;
+
+fn le() int {
+    divolvi b;
+}
+
+fn inisiu() {
+    mostran(a);
+}
