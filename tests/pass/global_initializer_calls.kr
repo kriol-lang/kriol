@@ -1,0 +1,21 @@
+int b = 5;
+int a = le();
+int c = sombra();
+int d = 7;
+
+fn le() int {
+    divolvi b * 2;
+}
+
+fn sombra() int {
+    int d = 1;
+    divolvi d + nada();
+}
+
+fn nada() int {
+    divolvi 0;
+}
+
+fn inisiu() {
+    mostran(f"{a} {c} {d}");
+}

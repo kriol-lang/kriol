@@ -411,6 +411,9 @@ void SemanticAnalyzer::Check(BlockSttmt* program) {
     for (auto& s : program->SttmtList)
         if (s) s->accept(*this);
     popScope();
+
+    for (const auto& violation : InitOrder.violations())
+        addError(errLoc(violation.lineNum) + violation.message);
 }
 
 
@@ -454,6 +457,8 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     ScopedValue<std::string> initializing(InitializingVar, node.Name);
+    if (FunctionDepth == 0 && SymbolScopes.size() == 1)
+        InitOrder.declareGlobal(node.Name);
     const std::string kind = node.IsParam ? "parâmetro" : "variável";
     const std::string named = (node.IsParam ? "o parâmetro '" : "a variável '") + node.Name + "'";
     bool canDeclare = checkDeclaredNameValid(node.Name, kind, node.LineNum);
@@ -805,6 +810,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
         addError(errLoc(node.LineNum) + "a função '" + callee->Name + "' não foi declarada");
         return;
     }
+    noteUserCall(callee->Name, node.LineNum);
 
     // An array parameter takes an array initializer checked against its type.
     if (node.Args)
@@ -1010,7 +1016,7 @@ void SemanticAnalyzer::visit(IdentExpr& node) {
         return;
     }
 
-    checkNotSelfInitialized(node.Name, node.LineNum);
+    noteVarUse(node.Name, node.LineNum);
     node.ResolvedType = *t;
 }
 
@@ -1037,7 +1043,7 @@ void SemanticAnalyzer::visit(ArrayAccessExpr& node) {
             addError(errLoc(node.LineNum) + "o array '" + baseIdent->Name + "' não foi declarado");
             return;
         }
-        checkNotSelfInitialized(baseIdent->Name, node.LineNum);
+        noteVarUse(baseIdent->Name, node.LineNum);
         arrayType = *found;
         baseIdent->ResolvedType = arrayType;
     } else if (node.Base) {
@@ -1179,7 +1185,7 @@ Type SemanticAnalyzer::resolveAssignableType(ast::Expr* expr, int lineNum) {
                      "declara-a antes de a usar, por exemplo 'int " + ident->Name + " = 0;'");
             return Type::Invalid();
         }
-        checkNotSelfInitialized(ident->Name, lineNum);
+        noteVarUse(ident->Name, lineNum);
         ident->ResolvedType = *t;
         expr->ResolvedType = *t;
         return *t;
@@ -1333,6 +1339,27 @@ void SemanticAnalyzer::visit(CastExpr& node) {
 void SemanticAnalyzer::checkNotSelfInitialized(const std::string& name, int lineNum) {
     if (name == InitializingVar)
         addError(errLoc(lineNum) + "a variável '" + name + "' é usada no seu próprio valor inicial");
+}
+
+bool SemanticAnalyzer::isGlobalName(const std::string& name) const {
+    for (std::size_t level = SymbolScopes.size(); level-- > 1;)
+        if (SymbolScopes[level].count(name)) return false;
+    return !SymbolScopes.empty() && SymbolScopes.front().count(name);
+}
+
+void SemanticAnalyzer::noteVarUse(const std::string& name, int lineNum) {
+    checkNotSelfInitialized(name, lineNum);
+    if (FunctionDepth > 0 && isGlobalName(name))
+        InitOrder.noteGlobalUse(CurrFuncName, name);
+}
+
+void SemanticAnalyzer::noteUserCall(const std::string& callee, int lineNum) {
+    if (FunctionDepth > 0) {
+        InitOrder.noteCall(CurrFuncName, callee);
+        return;
+    }
+    if (!InitializingVar.empty())
+        InitOrder.noteInitializerCall(InitializingVar, callee, lineNum);
 }
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {

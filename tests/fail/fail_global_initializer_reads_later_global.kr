@@ -1,0 +1,11 @@
+// expect: o valor inicial de 'a' chama 'le', que usa a variável 'b' antes de ela receber o seu valor inicial
+int a = le();
+int b = 5;
+
+fn le() int {
+    divolvi b;
+}
+
+fn inisiu() {
+    mostran(a);
+}

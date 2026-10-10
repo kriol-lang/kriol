@@ -1,0 +1,15 @@
+// expect: o valor inicial de 'a' chama 'primeru', que chama 'segundu', que usa a variável 'b' antes de ela receber o seu valor inicial
+int a = primeru() + 1;
+int[2] b = [1, 2];
+
+fn segundu() int {
+    divolvi b[1];
+}
+
+fn primeru() int {
+    divolvi segundu();
+}
+
+fn inisiu() {
+    mostran(a);
+}

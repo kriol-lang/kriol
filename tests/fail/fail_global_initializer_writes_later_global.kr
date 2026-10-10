@@ -1,0 +1,12 @@
+// expect: o valor inicial de 'a' chama 'muda', que usa a variável 'b' antes de ela receber o seu valor inicial
+int a = muda();
+int b = 5;
+
+fn muda() int {
+    b = 9;
+    divolvi 1;
+}
+
+fn inisiu() {
+    mostran(b);
+}

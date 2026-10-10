@@ -254,6 +254,7 @@ endif()
 
 set(KRIOL_CORE_SOURCES
     src/kriol/sema.cc
+    src/kriol/global_init_order.cc
     src/kriol/type_rules.cc
     ${PARSER_SRC}
     ${SCANNER_SRC}
