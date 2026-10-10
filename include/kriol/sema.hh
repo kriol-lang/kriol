@@ -131,6 +131,7 @@ namespace sema {
         // being analysed.
         void checkNotSelfInitialized(const std::string& name, int lineNum);
 
+        bool atModuleScope() const { return FunctionDepth == 0 && SymbolScopes.size() == 1; }
         bool isGlobalName(const std::string& name) const;
         void noteVarUse(const std::string& name, int lineNum);
         void noteUserCall(const std::string& callee, int lineNum);

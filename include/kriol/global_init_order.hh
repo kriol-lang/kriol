@@ -2,6 +2,7 @@
 #define KRIOL_GLOBAL_INIT_ORDER_HEADER
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,6 +30,14 @@ private:
         std::string callee;
         int lineNum;
     };
+
+    struct LatestUse {
+        std::size_t order;
+        std::string global;
+        std::vector<std::string> path;
+    };
+
+    std::optional<LatestUse> latestUseReachedFrom(const std::string& root) const;
 
     std::unordered_map<std::string, std::size_t> DeclarationOrder;
     std::unordered_map<std::string, std::vector<std::string>> GlobalUses;

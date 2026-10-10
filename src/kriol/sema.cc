@@ -457,7 +457,7 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
 
 void SemanticAnalyzer::visit(VarDeclSttmt& node) {
     ScopedValue<std::string> initializing(InitializingVar, node.Name);
-    if (FunctionDepth == 0 && SymbolScopes.size() == 1)
+    if (atModuleScope())
         InitOrder.declareGlobal(node.Name);
     const std::string kind = node.IsParam ? "parâmetro" : "variável";
     const std::string named = (node.IsParam ? "o parâmetro '" : "a variável '") + node.Name + "'";
@@ -1358,7 +1358,7 @@ void SemanticAnalyzer::noteUserCall(const std::string& callee, int lineNum) {
         InitOrder.noteCall(CurrFuncName, callee);
         return;
     }
-    if (!InitializingVar.empty())
+    if (atModuleScope() && !InitializingVar.empty())
         InitOrder.noteInitializerCall(InitializingVar, callee, lineNum);
 }
 

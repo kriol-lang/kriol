@@ -1,7 +1,12 @@
 int b = 5;
 int a = le();
 int c = sombra();
+int e = dobra(2);
+int f = conta(b);
+int s = primeru();
 int d = 7;
+int x = 9;
+int[2] v = [1, 2];
 
 fn le() int {
     divolvi b * 2;
@@ -16,6 +21,33 @@ fn nada() int {
     divolvi 0;
 }
 
+fn dobra(int x) int {
+    divolvi x * 2;
+}
+
+fn conta(int n) int {
+    si n == 0 {
+        divolvi 0;
+    }
+    divolvi conta(n - 1) + 1;
+}
+
+fn primeru() int {
+    int[2] v = [3, 4];
+    divolvi v[0] + segundu(1);
+}
+
+fn segundu(int n) int {
+    si n == 0 {
+        divolvi 0;
+    }
+    divolvi terceru(n - 1);
+}
+
+fn terceru(int n) int {
+    divolvi segundu(n);
+}
+
 fn inisiu() {
-    mostran(f"{a} {c} {d}");
+    mostran(f"{a} {c} {e} {f} {s} {d} {x} {v[1]}");
 }

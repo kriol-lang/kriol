@@ -60,32 +60,50 @@ void GlobalInitOrder::noteInitializerCall(const std::string& global, const std::
     InitializerCalls.push_back({global, callee, lineNum});
 }
 
+std::optional<GlobalInitOrder::LatestUse> GlobalInitOrder::latestUseReachedFrom(
+        const std::string& root) const {
+    std::optional<LatestUse> latest;
+    std::string latestFunction;
+    std::unordered_map<std::string, std::string> caller{{root, ""}};
+    std::queue<std::string> pending;
+    pending.push(root);
+
+    while (!pending.empty()) {
+        const std::string function = pending.front();
+        pending.pop();
+
+        for (const auto& used : entriesOf(GlobalUses, function)) {
+            auto order = DeclarationOrder.find(used);
+            if (order == DeclarationOrder.end() || (latest && order->second <= latest->order)) continue;
+            latest = LatestUse{order->second, used, {}};
+            latestFunction = function;
+        }
+
+        for (const auto& next : entriesOf(Callees, function))
+            if (caller.emplace(next, function).second) pending.push(next);
+    }
+
+    if (latest) latest->path = callPath(caller, latestFunction);
+    return latest;
+}
+
 std::vector<GlobalInitOrder::Violation> GlobalInitOrder::violations() const {
     std::vector<Violation> found;
     std::unordered_set<std::string> reported;
+    std::unordered_map<std::string, std::optional<LatestUse>> latestByCallee;
 
     for (const auto& call : InitializerCalls) {
         auto initializing = DeclarationOrder.find(call.global);
-        if (initializing == DeclarationOrder.end()) continue;
+        if (initializing == DeclarationOrder.end() || reported.count(call.global)) continue;
 
-        std::unordered_map<std::string, std::string> caller{{call.callee, ""}};
-        std::queue<std::string> pending;
-        pending.push(call.callee);
+        auto cached = latestByCallee.find(call.callee);
+        if (cached == latestByCallee.end())
+            cached = latestByCallee.emplace(call.callee, latestUseReachedFrom(call.callee)).first;
 
-        while (!pending.empty()) {
-            const std::string function = pending.front();
-            pending.pop();
-
-            for (const auto& used : entriesOf(GlobalUses, function)) {
-                auto order = DeclarationOrder.find(used);
-                if (order == DeclarationOrder.end() || order->second < initializing->second) continue;
-                if (!reported.insert(call.global + '\n' + used).second) continue;
-                found.push_back({call.lineNum, describe(call.global, callPath(caller, function), used)});
-            }
-
-            for (const auto& next : entriesOf(Callees, function))
-                if (caller.emplace(next, function).second) pending.push(next);
-        }
+        const auto& latest = cached->second;
+        if (!latest || latest->order < initializing->second) continue;
+        reported.insert(call.global);
+        found.push_back({call.lineNum, describe(call.global, latest->path, latest->global)});
     }
     return found;
 }
