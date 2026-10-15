@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 # Usage: run_tests.sh <path-to-kriol-binary> <project-root>
 
 set -e

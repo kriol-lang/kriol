@@ -1,0 +1,50 @@
+name: macOS
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  STAGE: kriol-macos-arm64
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: brew install llvm@20 flex bison cmake zstd
+
+      - name: Add LLVM 20, bison and flex to PATH
+        run: |
+          echo "$(brew --prefix llvm@20)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
+          echo "$(brew --prefix flex)/bin" >> $GITHUB_PATH
+
+      - name: Build and test
+        run: |
+          cmake -B build/release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_BINDIR=. \
+            -DCMAKE_INSTALL_DOCDIR=.
+
+          cmake --build build/release --target check
+
+      - name: Stage artifact
+        run: cmake --install build/release --prefix "$STAGE"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: kriol-macos-arm64
+          path: ${{ env.STAGE }}
