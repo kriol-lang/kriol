@@ -172,7 +172,7 @@ void SemanticAnalyzer::registerFuncSignature(FuncDeclSttmt& node) {
     if (hasEmptyDimension(node.Type))
         addError(errLoc(node.LineNum) + "o array devolvido pela função '" + node.Name
                  + "' tem de ter um tamanho maior do que zero");
-    else if (node.Type.isArray() && storageBytes(node.Type) > KR_MAX_LOCAL_BYTES)
+    if (storageBytes(node.Type) > KR_MAX_LOCAL_BYTES)
         addError(errLoc(node.LineNum) + "o valor devolvido pela função '" + node.Name + "' ocupa "
                  + std::to_string(storageBytes(node.Type)) + " bytes, mais do que o limite de "
                  + std::to_string(KR_MAX_LOCAL_BYTES) + " bytes");
@@ -280,6 +280,15 @@ std::size_t SemanticAnalyzer::storageBytes(const Type& type) const {
     return 8; // textu: a pointer, counted at its 64-bit size on every target
 }
 
+void SemanticAnalyzer::rejectLargeTemporary(const Expr& literal, const Type& type, int lineNum) {
+    if (InPlaceLiterals.count(&literal)) return;
+    const std::size_t bytes = storageBytes(type);
+    if (bytes > KR_MAX_LOCAL_BYTES)
+        addError(errLoc(lineNum) + "o valor temporário ocupa " + std::to_string(bytes)
+                 + " bytes, mais do que o limite de " + std::to_string(KR_MAX_LOCAL_BYTES)
+                 + " bytes; guarda-o numa variável declarada fora das funções");
+}
+
 bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
                                                 ast::Expr* init,
                                                 int lineNum,
@@ -292,6 +301,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
     auto* initLit = dynamic_cast<ArrayLiteralExpr*>(init);
     auto* initRep = dynamic_cast<ArrayRepeatExpr*>(init);
     if (!initLit && !initRep) return false;
+    rejectLargeTemporary(*init, expectedType, lineNum);
 
     const std::size_t expectedSize = expectedType.arraySize();
     const Type elemType = arrayElementType(expectedType);
@@ -299,6 +309,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
     // A row of a multi-dimensional array may itself be an array initializer.
     auto checkElement = [&](ast::Expr* element, const std::string& what) {
         if (!element) return false;
+        markInPlace(element);
         if (dynamic_cast<ArrayLiteralExpr*>(element) || dynamic_cast<ArrayRepeatExpr*>(element))
             return validateArrayInitializer(elemType, element, lineNum, what);
         element->accept(*this);
@@ -324,6 +335,7 @@ bool SemanticAnalyzer::validateArrayInitializer(const Type& expectedType,
     }
 
     if (initLit->ExplicitElementType.valid()) {
+        markInPlace(initLit);
         initLit->accept(*this);
         if (initLit->ExplicitElementType != elemType
                 && !isWideningCoercion(initLit->ExplicitElementType, elemType)) {
@@ -482,6 +494,7 @@ void SemanticAnalyzer::visit(VarDeclSttmt& node) {
         }
     }
 
+    markInPlace(node.Value.get());
     if (node.IsArray && node.Value
             && !visitArrayValue(node.Value.get(), node.Type, node.LineNum, "o array '" + node.Name + "'"))
         canDeclare = false;
@@ -655,6 +668,7 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
         addError(loc + "a função '" + CurrFuncName + "' devolve um valor do tipo '" + CurrFuncRetType.str()
                  + "', mas este 'divolvi' não tem valor");
 
+    markInPlace(node.ReturnValue.get());
     if (node.ReturnValue && CurrFuncRetType.isArray()) {
         visitArrayValue(node.ReturnValue.get(), CurrFuncRetType, node.LineNum,
                         "o valor devolvido por '" + CurrFuncName + "'");
@@ -1101,7 +1115,9 @@ void SemanticAnalyzer::visit(QualifiedAccessExpr& node) {
 
 void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
     for (auto& element : node.Elements) {
-        if (element) element->accept(*this);
+        if (!element) continue;
+        markInPlace(element.get());
+        element->accept(*this);
     }
 
     if (!node.ExplicitElementType.valid()) {
@@ -1118,6 +1134,7 @@ void SemanticAnalyzer::visit(ArrayLiteralExpr& node) {
         }
     }
     node.ResolvedType = Type::FixedArray(node.ExplicitElementType, node.Elements.size());
+    rejectLargeTemporary(node, node.ResolvedType, node.LineNum);
 }
 
 void SemanticAnalyzer::visit(ArrayRepeatExpr& node) {
@@ -1131,6 +1148,8 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
         addError(errLoc(node.LineNum) + "o molde '" + node.TypeName + "' não existe");
         return;
     }
+
+    rejectLargeTemporary(node, Type::Named(node.TypeName), node.LineNum);
 
     const RecordInfo& info = recordIt->second;
     std::unordered_set<std::string> seen;
@@ -1153,6 +1172,7 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
 
         const Type& want = info.fields[indexIt->second]->Type;
         if (field.Value) {
+            markInPlace(field.Value.get());
             const bool isArrayInit = dynamic_cast<ArrayLiteralExpr*>(field.Value.get())
                 || dynamic_cast<ArrayRepeatExpr*>(field.Value.get());
             if (isArrayInit) {

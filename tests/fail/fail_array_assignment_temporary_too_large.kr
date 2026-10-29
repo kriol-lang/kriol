@@ -1,0 +1,6 @@
+// expect: o valor temporário ocupa 1600000 bytes, mais do que o limite de 1048576 bytes; guarda-o numa variável declarada fora das funções
+int[200000] global = [0; 200000];
+
+fn inisiu() {
+    global = [1; 200000];
+}

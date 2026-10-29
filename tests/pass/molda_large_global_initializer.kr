@@ -1,0 +1,27 @@
+// A molda larger than the stack limit can still be built straight into a
+// global, and copied between globals, because neither needs a temporary.
+molda Grandi {
+    int[200000] v;
+}
+
+molda Par {
+    Grandi a;
+    int[200000] b;
+}
+
+Grandi global = Grandi{v = [3; 200000]};
+Par par = Par{a = Grandi{v = [5; 200000]}, b = [7; 200000]};
+int[200000] uns = [1; 200000];
+Grandi[2] lista = [Grandi{v = [2; 200000]}, Grandi{v = [4; 200000]}];
+Grandi[2] repetidos = [Grandi{v = [6; 200000]}; 2];
+Grandi[2] tipados = (Grandi[]) [Grandi{v = [8; 200000]}, Grandi{v = [9; 200000]}];
+int[2][200000] linhas = [[10; 200000]; 2];
+
+fn inisiu() {
+    global.v = uns;
+    par.a = global;
+    konfirma(par.a.v[199999] == 1 && par.b[0] == 7);
+    konfirma(lista[1].v[199999] == 4 && repetidos[1].v[0] == 6 && tipados[1].v[5] == 9);
+    konfirma(linhas[1][199999] == 10);
+    mostran(global.v[0] + par.a.v[0] + par.b[199999]);
+}
