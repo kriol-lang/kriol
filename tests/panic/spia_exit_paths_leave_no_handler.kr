@@ -1,11 +1,10 @@
-// expect: :65: erro de execução: divisão por zero
+// expect: :64: erro de execução: divisão por zero
 fn do_corpo() int {
     spia {
         divolvi 1;
     } sempri {
         mostran("sempri");
     }
-    divolvi 0;
 }
 
 fn do_oops() int {

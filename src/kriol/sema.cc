@@ -464,7 +464,7 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
         }
 
         if (auto* spia = dynamic_cast<SpiaSttmt*>(stmt.get()))
-            if (blockDefinitelyReturns(spia->Body.get()) && blockDefinitelyReturns(spia->Oops.get()))
+            if (blockDefinitelyReturns(spia->Body.get()) && (!spia->Oops || blockDefinitelyReturns(spia->Oops.get())))
                 return true;
     }
     return false;

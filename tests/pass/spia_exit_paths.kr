@@ -7,7 +7,6 @@ fn divolvi_do_corpo() int {
         mostran(f"sempri do corpo viu {x}");
         x = 20;
     }
-    divolvi x;
 }
 
 fn divolvi_textu() textu {
@@ -17,7 +16,6 @@ fn divolvi_textu() textu {
     } sempri {
         s = "depois";
     }
-    divolvi s;
 }
 
 fn divolvi_do_oops() int : Erru {
@@ -113,7 +111,6 @@ fn ciclo_no_sempri() int {
             mostran(f"sempri ciclo {i}");
         }
     }
-    divolvi 0;
 }
 
 fn sempri_ve_o_seu_ambito() int {
@@ -124,7 +121,6 @@ fn sempri_ve_o_seu_ambito() int {
     } sempri {
         mostran(f"sempri do corpo vê {err}");
     }
-    divolvi 0;
 }
 
 fn sempri_fora_do_oops() int : Erru {
@@ -157,7 +153,6 @@ fn sempri_substitui_o_valor() int : Erru {
     } sempri {
         lansa Erru{mensage = "do sempri"};
     }
-    divolvi 2;
 }
 
 fn sempri_falha_para_o_exterior() int {
@@ -187,7 +182,6 @@ fn divolvi_array() int[2] {
         v[0] = 99;
         v[1] = 98;
     }
-    divolvi [0, 0];
 }
 
 fn divolvi_molda() Pontu {
@@ -198,7 +192,6 @@ fn divolvi_molda() Pontu {
         p.x = 99;
         p.y = 98;
     }
-    divolvi Pontu{x = 0, y = 0};
 }
 
 fn inisiu() {
