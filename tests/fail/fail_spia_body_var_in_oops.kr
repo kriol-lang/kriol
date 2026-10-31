@@ -1,0 +1,9 @@
+// expect: a variável 'contador' não foi declarada
+fn inisiu() {
+    spia {
+        int contador = 1;
+        lansa Erru{mensage = "x"};
+    } oops (err) {
+        mostran(contador);
+    }
+}

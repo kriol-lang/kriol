@@ -1,0 +1,13 @@
+// expect: 'divolvi' não pode sair de um bloco 'sempri', que corre sempre até ao fim
+fn valor() int {
+    spia {
+        divolvi 1;
+    } sempri {
+        divolvi 2;
+    }
+    divolvi 3;
+}
+
+fn inisiu() {
+    mostran(valor());
+}

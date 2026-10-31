@@ -43,6 +43,82 @@ llvm::Value* CodeGenVisitor::emitSetjmp(llvm::Value* frame)
     return call;
 }
 
+void CodeGenVisitor::emitSpiaPop()
+{
+    auto* fn = Mod->getFunction("__kriol_spia_pop");
+    if (!fn)
+        fn = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false),
+                                    llvm::Function::ExternalLinkage, "__kriol_spia_pop", *Mod);
+    Builder->CreateCall(fn);
+}
+
+void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine)
+{
+    const SpiaFrame frame = SpiaFrames.back();
+    if (!frame.InOops) {
+        Builder->CreateStore(erruValue, frame.ErrSlot);
+        Builder->CreateStore(callLine, frame.LineSlot);
+        if (frame.RuntimeHandlerPushed)
+            emitSpiaPop();
+        Builder->CreateBr(frame.CatchBB);
+        return;
+    }
+
+    SpiaFrames.pop_back();
+    emitSempriThenFail(frame.Sempri, erruValue, callLine);
+    SpiaFrames.push_back(frame);
+}
+
+void CodeGenVisitor::emitSempriThenFail(ast::BlockSttmt* sempri, llvm::Value* erruValue, llvm::Value* callLine)
+{
+    if (sempri)
+        sempri->accept(*this);
+    if (Builder->GetInsertBlock()->getTerminator())
+        startDeadBlock();
+    emitFailure(erruValue, callLine);
+}
+
+void CodeGenVisitor::visit(SpiaSttmt& node)
+{
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* erruTy = getOrCreateRecordType(prelude::ErrorTypeName);
+    auto* errSlot = createEntryAlloca(fn, node.Oops ? node.ErrName : "spia.error", erruTy);
+    auto* lineSlot = createEntryAlloca(fn, "spia.line", llvm::Type::getInt32Ty(Context));
+    Builder->CreateStore(Builder->getInt32(node.LineNum), lineSlot);
+    auto* catchBB = llvm::BasicBlock::Create(Context, node.Oops ? "spia.oops" : "spia.escape", fn);
+    auto* endBB = llvm::BasicBlock::Create(Context, "spia.end", fn);
+    const auto branchToEnd = [&] {
+        if (!Builder->GetInsertBlock()->getTerminator())
+            Builder->CreateBr(endBB);
+    };
+
+    SpiaFrames.push_back({catchBB, errSlot, lineSlot, node.Sempri.get()});
+    node.Body->accept(*this);
+    SpiaFrames.pop_back();
+    branchToEnd();
+
+    Builder->SetInsertPoint(catchBB);
+    if (node.Oops) {
+        SpiaFrame oops{catchBB, errSlot, lineSlot, node.Sempri.get()};
+        oops.InOops = true;
+        SpiaFrames.push_back(oops);
+        pushScope();
+        declareVar(node.ErrName, errSlot);
+        node.Oops->accept(*this);
+        popScope();
+        SpiaFrames.pop_back();
+        branchToEnd();
+    } else {
+        emitSempriThenFail(node.Sempri.get(), Builder->CreateLoad(erruTy, errSlot, "spia.error"),
+                           Builder->CreateLoad(Builder->getInt32Ty(), lineSlot, "spia.line"));
+    }
+
+    Builder->SetInsertPoint(endBB);
+    if (node.Sempri)
+        node.Sempri->accept(*this);
+    LastValue = nullptr;
+}
+
 namespace {
 
 void redirectCalls(llvm::Function& from, llvm::Function& to, bool dropKind)

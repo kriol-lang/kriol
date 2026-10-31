@@ -1352,18 +1352,22 @@ static llvm::Function* getOrDeclareRaise(llvm::Module& Mod, llvm::LLVMContext& C
     return fn;
 }
 
-void CodeGenVisitor::emitRaise(llvm::Value* erru, int callLine) {
+void CodeGenVisitor::emitRaise(llvm::Value* erru, llvm::Value* callLine) {
     auto* i32Ty = llvm::Type::getInt32Ty(Context);
     auto* originLine = Builder->CreateTrunc(erruField(erru, prelude::ErrorLineField), i32Ty, "error.origin");
     Builder->CreateCall(getOrDeclareRaise(*Mod, Context),
                         {erruField(erru, prelude::ErrorMessageField), erruField(erru, prelude::ErrorKindField),
-                         originLine, llvm::ConstantInt::get(i32Ty, callLine)});
+                         originLine, callLine});
     Builder->CreateUnreachable();
 }
 
-void CodeGenVisitor::emitFailure(llvm::Value* erruValue, int lineNum) {
-    if (CurrentIsMain) {
-        emitRaise(erruValue, lineNum);
+void CodeGenVisitor::emitFailure(llvm::Value* erruValue, llvm::Value* callLine) {
+    if (!SpiaFrames.empty()) {
+        emitFailureToSpia(erruValue, callLine);
+        return;
+    }
+    if (!CurrentCanFail || CurrentIsMain) {
+        emitRaise(erruValue, callLine);
         return;
     }
 
@@ -1446,7 +1450,10 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 
     Builder->SetInsertPoint(failBB);
     llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
-    emitRaise(error, node.LineNum);
+    if (SpiaFrames.empty())
+        emitRaise(error, Builder->getInt32(node.LineNum));
+    else
+        emitFailure(error, Builder->getInt32(node.LineNum));
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
@@ -1466,7 +1473,8 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     Builder->CreateCondBr(failed, failBB, okBB);
 
     Builder->SetInsertPoint(failBB);
-    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"), node.LineNum);
+    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"),
+                Builder->getInt32(node.LineNum));
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
@@ -1784,7 +1792,8 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.Throws) {
         llvm::Value* erru = emitAggregateAddress(node.ReturnValue.get(), node.ReturnValue->ResolvedType);
-        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"), node.LineNum);
+        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"),
+                    Builder->getInt32(node.LineNum));
     } else if (isAggregate(CurrentReturnType)) {
         emitAggregateStore(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
         if (CurrentCanFail) {

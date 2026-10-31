@@ -1,0 +1,12 @@
+// expect: 'kontinua' não pode sair de um bloco 'sempri', que corre sempre até ao fim
+fn inisiu() {
+    pa int i = 0; i < 3; i += 1 {
+        spia {
+            mostran(i);
+        } oops (err) {
+            mostran(err.mensage);
+        } sempri {
+            kontinua;
+        }
+    }
+}

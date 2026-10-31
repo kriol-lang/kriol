@@ -51,6 +51,17 @@ namespace ast {
         // Where a function returning an array writes it: its hidden first argument.
         llvm::Value* CurrentReturnSlot = nullptr;
 
+        struct SpiaFrame {
+            llvm::BasicBlock* CatchBB;   // oops, or the escape block when there is none
+            llvm::AllocaInst* ErrSlot;   // Erru
+            llvm::AllocaInst* LineSlot;  // i32 line an escaping error is reported at
+            ast::BlockSttmt* Sempri;     // may be null
+            bool InOops = false;
+            bool RuntimeHandlerPushed = false;
+        };
+        // The spia blocks enclosing the code being emitted, innermost last.
+        std::vector<SpiaFrame> SpiaFrames;
+
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
         llvm::BasicBlock* LoopContinue = nullptr;
@@ -110,6 +121,7 @@ namespace ast {
         llvm::Function*      getOrDeclareKriolCheckFloatDiv();
         llvm::Function*      getOrDeclareFailAt();
         llvm::Value*         emitSetjmp(llvm::Value* frame);
+        void                 emitSpiaPop();
 
         // After emitting a block terminator (break/continue/return/sai) moves
         // the insert point into a fresh unreachable block so that any further
@@ -157,12 +169,15 @@ namespace ast {
         llvm::Value* erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback);
         llvm::Value* makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line);
         // Reports `erru` as unhandled, or throws it to an active spia, and ends the block.
-        void emitRaise(llvm::Value* erru, int callLine);
+        // `callLine` is an i32, as are the lines of emitFailure.
+        void emitRaise(llvm::Value* erru, llvm::Value* callLine);
 
-        // Fails the current function with the given Erru value: returns it to
-        // the caller, or reports it and exits when the function is inisiu.
-        // Ends the current block with a terminator.
-        void emitFailure(llvm::Value* erruValue, int lineNum);
+        // Sends the given Erru to the innermost enclosing oops, running the
+        // sempri of each oops it leaves; without one, returns it to the caller
+        // of a fallible function or raises it. Ends the current block.
+        void emitFailure(llvm::Value* erruValue, llvm::Value* callLine);
+        void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine);
+        void emitSempriThenFail(ast::BlockSttmt* sempri, llvm::Value* erruValue, llvm::Value* callLine);
 
         // For a call whose error nobody handles: stops the program with the
         // error message if the call failed, and leaves the plain value.
@@ -261,6 +276,7 @@ namespace ast {
         void visit(UnaryExpr&         node) override;
         void visit(CastExpr&          node) override;
         void visit(TypeCallExpr&      node) override;
+        void visit(SpiaSttmt&         node) override;
     };
 
 } // namespace ast

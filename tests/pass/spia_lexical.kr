@@ -1,0 +1,107 @@
+fn falha(textu mensage) int : Erru {
+    lansa Erru{mensage = mensage};
+}
+
+fn lansa_direto() {
+    spia {
+        mostran("antes do lansa");
+        lansa Erru{mensage = "direto"};
+        mostran("nunca");
+    } oops (err) {
+        mostran(err.mensage);
+        konfirma(err.linha == 8);
+    }
+}
+
+fn tenta_no_spia() int : Erru {
+    spia {
+        int x = tenta falha("tenta");
+        mostran(x);
+    } oops (err) {
+        mostran(f"oops do tenta: {err.mensage}");
+    }
+    divolvi 7;
+}
+
+fn chamada_sem_tenta() {
+    spia {
+        int x = falha("sem tenta");
+        mostran(x);
+    } oops (err) {
+        mostran(f"oops sem tenta: {err.mensage}");
+    }
+}
+
+fn relansa() int : Erru {
+    spia {
+        lansa Erru{mensage = "relansado"};
+    } oops (err) {
+        lansa err;
+    }
+    divolvi 1;
+}
+
+fn aninhado() {
+    spia {
+        spia {
+            lansa Erru{mensage = "interior"};
+        } oops (err) {
+            mostran(f"interior apanhou {err.mensage}");
+            lansa Erru{mensage = "do oops interior"};
+        }
+        mostran("nunca");
+    } oops (err) {
+        mostran(f"exterior apanhou {err.mensage}");
+    }
+}
+
+fn com_sempri(bool falhar) {
+    spia {
+        si falhar {
+            lansa Erru{mensage = "falhou"};
+        }
+        mostran("corpo terminou");
+    } oops (err) {
+        mostran(f"oops: {err.mensage}");
+    } sempri {
+        mostran("sempri");
+    }
+}
+
+fn sempri_substitui() {
+    spia {
+        spia {
+            lansa Erru{mensage = "original"};
+        } sempri {
+            mostran("sempri interior");
+            lansa Erru{mensage = "do sempri"};
+        }
+    } oops (err) {
+        mostran(f"exterior viu {err.mensage}");
+    }
+}
+
+fn ciclo_no_sempri() {
+    spia {
+        mostran("corpo");
+    } sempri {
+        pa int i = 0; i < 5; i += 1 {
+            si i == 2 {
+                kebra;
+            }
+            mostran(i);
+        }
+    }
+}
+
+fn inisiu() {
+    lansa_direto();
+    mostran(tenta_no_spia() sinon 0);
+    chamada_sem_tenta();
+    mostran(relansa() sinon -1);
+    aninhado();
+    com_sempri(nau);
+    com_sempri(sin);
+    sempri_substitui();
+    ciclo_no_sempri();
+}

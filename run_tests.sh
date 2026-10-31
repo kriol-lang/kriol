@@ -198,6 +198,17 @@ else
 fi
 rm -f "$tmpbin"
 
+for program in spia_lexical spia_value_error_from_callee; do
+    printf "  %-44s" "--strict accepts $program"
+    tmpbin=$(mktemp /tmp/kriol_strict_XXXX)
+    if "$KRIOL" --strict "$ROOT/tests/pass/$program.kr" -o "$tmpbin" >/dev/null 2>&1; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "--strict accepts $program"
+    fi
+    rm -f "$tmpbin"
+done
+
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)

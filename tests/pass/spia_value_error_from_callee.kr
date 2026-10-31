@@ -1,0 +1,40 @@
+fn divide(int a, int b) int : Erru {
+    si b == 0 {
+        lansa Erru{mensage = "b é zero"};
+    }
+    divolvi a / b;
+}
+
+fn passa(int a, int b) int : Erru {
+    divolvi tenta divide(a, b);
+}
+
+fn chamador(int b) {
+    spia {
+        int q = divide(10, b);
+        mostran(f"quociente {q}");
+        int r = passa(10, b);
+        mostran(f"outra vez {r}");
+    } oops (err) {
+        mostran(f"oops: {err.mensage}");
+        mostran(err.tipu);
+        konfirma(err.linha == 3);
+    }
+}
+
+fn chamador_falivel(int b) int : Erru {
+    spia {
+        int r = passa(10, b);
+        divolvi r;
+    } oops (err) {
+        mostran(f"oops falível: {err.mensage}");
+    }
+    divolvi -1;
+}
+
+fn inisiu() {
+    chamador(2);
+    chamador(0);
+    mostran(chamador_falivel(5) sinon 99);
+    mostran(chamador_falivel(0) sinon 99);
+}

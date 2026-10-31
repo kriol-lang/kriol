@@ -1,0 +1,8 @@
+// expect: fora das funções só se podem declarar variáveis, funções e moldes
+spia {
+    int x = 1;
+} oops (err) {
+}
+
+fn inisiu() {
+}

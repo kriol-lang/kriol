@@ -1,0 +1,9 @@
+// expect: a variável 'err' não foi declarada
+fn inisiu() {
+    spia {
+        mostran("x");
+    } oops (err) {
+        mostran(err.mensage);
+    }
+    mostran(err.mensage);
+}

@@ -1,0 +1,14 @@
+// expect: :8: erro não tratado: boom
+fn falha() int : Erru {
+    lansa Erru{mensage = "boom"};
+}
+
+fn inisiu() {
+    spia {
+        int x = falha();
+        mostran(x);
+    } sempri {
+        mostran("sempri");
+    }
+    mostran("nunca");
+}

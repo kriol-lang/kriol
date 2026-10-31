@@ -1,0 +1,4 @@
+// expect: 'spia' é uma palavra reservada do Kriol e não pode ser usada como nome
+fn inisiu() {
+    int spia = 1;
+}
