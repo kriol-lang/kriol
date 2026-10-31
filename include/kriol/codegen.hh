@@ -151,8 +151,13 @@ namespace ast {
         // The failable result of a built-in call: `message` is the runtime's
         // error text, read only when `failed` is true.
         llvm::Value* makeFailableResult(const Type& valueType, llvm::Value* failed,
-                                        llvm::Value* value, llvm::Value* message);
-        llvm::Value* erruMessage(llvm::Value* erru);
+                                        llvm::Value* value, llvm::Value* message,
+                                        const char* kind, int lineNum);
+        llvm::Value* erruField(llvm::Value* erru, const char* field);
+        llvm::Value* erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback);
+        llvm::Value* makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line);
+        // Reports `erru` as unhandled, or throws it to an active spia, and ends the block.
+        void emitRaise(llvm::Value* erru, int callLine);
 
         // Fails the current function with the given Erru value: returns it to
         // the caller, or reports it and exits when the function is inisiu.

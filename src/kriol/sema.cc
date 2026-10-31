@@ -1191,7 +1191,9 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
     }
 
     for (std::size_t i = 0; i < info.fields.size(); ++i) {
-        if (!initialized[i])
+        const bool filledByCompiler = node.TypeName == erruName
+            && prelude::isErrorFilledField(info.fields[i]->Name);
+        if (!initialized[i] && !filledByCompiler)
             addError(errLoc(node.LineNum) + "falta o campo '" + info.fields[i]->Name
                      + "' na criação de '" + node.TypeName + "'; todos os campos têm de ter um valor");
     }

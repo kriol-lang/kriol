@@ -179,7 +179,7 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
                                                     {prompt, errorSlot}, "toma");
             llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "toma.message");
             LastValue = makeFailableResult(Type::Text(), Builder->CreateIsNull(line, "toma.failed"),
-                                           line, message);
+                                           line, message, "toma", node.LineNum);
             return true;
         }
 

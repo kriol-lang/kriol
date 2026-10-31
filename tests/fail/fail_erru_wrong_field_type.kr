@@ -1,0 +1,5 @@
+// expect: o campo 'linha' de 'Erru'
+fn inisiu() {
+    Erru e = Erru{mensage = "x", linha = "a"};
+    mostra(e.mensage);
+}

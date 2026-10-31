@@ -1225,7 +1225,10 @@ void CodeGenVisitor::emitRecordLiteral(llvm::Value* dest, RecordLiteralExpr& nod
     for (std::size_t i = 0; i < initialized.size(); ++i) {
         if (initialized[i]) continue;
         llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(i));
-        Builder->CreateStore(llvm::Constant::getNullValue(fieldTy),
+        llvm::Value* fieldValue = llvm::Constant::getNullValue(fieldTy);
+        if (node.TypeName == prelude::ErrorTypeName)
+            fieldValue = erruDefaultField(recordIt->second.fields[i]->Name, node.LineNum, fieldValue);
+        Builder->CreateStore(fieldValue,
                              Builder->CreateStructGEP(structTy, dest, static_cast<unsigned>(i), "field.ptr"));
     }
     LastValue = nullptr;
@@ -1295,20 +1298,42 @@ void CodeGenVisitor::emitAggregateCopy(llvm::Value* dest, llvm::Value* src, cons
                            llvm::ConstantExpr::getSizeOf(mapType(type)));
 }
 
-llvm::Value* CodeGenVisitor::erruMessage(llvm::Value* erru) {
+llvm::Value* CodeGenVisitor::erruField(llvm::Value* erru, const char* field) {
     const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
-    const unsigned index = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
-    return Builder->CreateExtractValue(erru, {index}, "error.message");
+    const unsigned index = static_cast<unsigned>(fields.at(field));
+    return Builder->CreateExtractValue(erru, {index}, std::string("error.") + field);
+}
+
+llvm::Value* CodeGenVisitor::erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback) {
+    if (name == prelude::ErrorKindField)
+        return Builder->CreateGlobalString("lansa");
+    if (name == prelude::ErrorFileField)
+        return Builder->CreateLoad(llvm::PointerType::getUnqual(Context), Mod->getNamedGlobal("__kriol_source_name"),
+                                   "error.file");
+    if (name == prelude::ErrorLineField)
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), lineNum);
+    return fallback;
+}
+
+llvm::Value* CodeGenVisitor::makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line) {
+    auto* erruTy = getOrCreateRecordType(prelude::ErrorTypeName);
+    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
+    auto* source = Builder->CreateLoad(llvm::PointerType::getUnqual(Context),
+                                       Mod->getNamedGlobal("__kriol_source_name"), "error.file");
+    llvm::Value* erru = llvm::ConstantAggregateZero::get(erruTy);
+    erru = Builder->CreateInsertValue(erru, message, {static_cast<unsigned>(fields.at(prelude::ErrorMessageField))});
+    erru = Builder->CreateInsertValue(erru, kind, {static_cast<unsigned>(fields.at(prelude::ErrorKindField))});
+    erru = Builder->CreateInsertValue(erru, source, {static_cast<unsigned>(fields.at(prelude::ErrorFileField))});
+    return Builder->CreateInsertValue(erru, line, {static_cast<unsigned>(fields.at(prelude::ErrorLineField))});
 }
 
 llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Value* failed,
-                                                llvm::Value* value, llvm::Value* message) {
+                                                llvm::Value* value, llvm::Value* message,
+                                                const char* kind, int lineNum) {
     auto* resultTy = failableResultType(valueType);
     const unsigned erruIndex = resultTy->getNumElements() - 1;
-    auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(erruIndex));
-    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
-    const unsigned messageIndex = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
-    llvm::Value* erru = Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+    llvm::Value* erru = makeErru(message, Builder->CreateGlobalString(kind),
+                                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), lineNum));
 
     llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
     result = Builder->CreateInsertValue(result, failed, {0u});
@@ -1317,22 +1342,28 @@ llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Val
     return Builder->CreateInsertValue(result, erru, {erruIndex}, "result");
 }
 
-static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMContext& Context) {
-    if (auto* fn = Mod.getFunction("__kriol_unhandled_error")) return fn;
+static llvm::Function* getOrDeclareRaise(llvm::Module& Mod, llvm::LLVMContext& Context) {
+    if (auto* fn = Mod.getFunction("__kriol_raise")) return fn;
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
-                                          {ptrTy, llvm::Type::getInt32Ty(Context)}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage,
-                                      "__kriol_unhandled_error", Mod);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy, ptrTy, i32Ty, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_raise", Mod);
     fn->addFnAttr(llvm::Attribute::NoReturn);
     return fn;
 }
 
+void CodeGenVisitor::emitRaise(llvm::Value* erru, int callLine) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* originLine = Builder->CreateTrunc(erruField(erru, prelude::ErrorLineField), i32Ty, "error.origin");
+    Builder->CreateCall(getOrDeclareRaise(*Mod, Context),
+                        {erruField(erru, prelude::ErrorMessageField), erruField(erru, prelude::ErrorKindField),
+                         originLine, llvm::ConstantInt::get(i32Ty, callLine)});
+    Builder->CreateUnreachable();
+}
+
 void CodeGenVisitor::emitFailure(llvm::Value* erruValue, int lineNum) {
     if (CurrentIsMain) {
-        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
-                            {erruMessage(erruValue), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), lineNum)});
-        Builder->CreateUnreachable();
+        emitRaise(erruValue, lineNum);
         return;
     }
 
@@ -1394,7 +1425,8 @@ void CodeGenVisitor::emitConversionCall(TypeCallExpr& node) {
         value = Builder->CreateICmpNE(raw, llvm::ConstantInt::get(i32Ty, 0), "konverti.bool");
 
     llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "konverti.message");
-    LastValue = makeFailableResult(target, Builder->CreateIsNull(ok, "konverti.failed"), value, message);
+    LastValue = makeFailableResult(target, Builder->CreateIsNull(ok, "konverti.failed"), value, message,
+                                   "konverti", node.LineNum);
 }
 
 void CodeGenVisitor::visit(TypeCallExpr& node) {
@@ -1414,9 +1446,7 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 
     Builder->SetInsertPoint(failBB);
     llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
-    Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
-                        {erruMessage(error), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
-    Builder->CreateUnreachable();
+    emitRaise(error, node.LineNum);
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
