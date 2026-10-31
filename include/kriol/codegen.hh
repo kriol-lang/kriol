@@ -56,6 +56,7 @@ namespace ast {
             llvm::AllocaInst* ErrSlot;   // Erru
             llvm::AllocaInst* LineSlot;  // i32 line an escaping error is reported at
             ast::BlockSttmt* Sempri;     // may be null
+            llvm::AllocaInst* RuntimeSlot = nullptr; // i1: the escape block was entered by a runtime error
             bool InOops = false;
             bool RuntimeHandlerPushed = false;
             size_t ScopeDepth = 0;       // the scopes the sempri sees
@@ -184,8 +185,9 @@ namespace ast {
         // sempri of each oops it leaves; without one, returns it to the caller
         // of a fallible function or raises it. Ends the current block.
         void emitFailure(llvm::Value* erruValue, llvm::Value* callLine);
-        void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine);
-        void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine);
+        // A true i1 `cameThroughRuntime` raises the error instead of returning it.
+        void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime = nullptr);
+        void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime);
         void emitSempri(const SpiaFrame& frame);
         // Leaves every spia but the outermost `keep`, popping its handler and running its sempri.
         void emitSpiaExits(size_t keep);

@@ -1,0 +1,20 @@
+// expect: :11: erro de execução: divisão por zero
+fn zero() int {
+    divolvi 0;
+}
+
+fn oops_ku_sempri() int : Erru {
+    spia {
+        lansa Erru{mensage = "x"};
+    } oops (err) {
+        mostran(f"oops apanhou {err.tipu}");
+        divolvi 1 / zero();
+    } sempri {
+        mostran("sempri");
+    }
+}
+
+fn inisiu() {
+    mostran(oops_ku_sempri() sinon 42);
+    mostran("nunca");
+}

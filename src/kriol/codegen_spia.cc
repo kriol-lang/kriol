@@ -70,17 +70,21 @@ void CodeGenVisitor::emitCaughtRuntimeError(const SpiaFrame& frame)
     auto* kind = Builder->CreateCall(format, {asText, getter("__kriol_spia_kind", ptrTy)}, "spia.kind");
     auto* line = getter("__kriol_spia_line", i32Ty);
     emitSpiaPop();
+    if (frame.RuntimeSlot)
+        Builder->CreateStore(Builder->getTrue(), frame.RuntimeSlot);
     Builder->CreateStore(makeErru(message, kind, Builder->CreateSExt(line, Builder->getInt64Ty())), frame.ErrSlot);
     Builder->CreateStore(line, frame.LineSlot);
     Builder->CreateBr(frame.CatchBB);
 }
 
-void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine)
+void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime)
 {
     const SpiaFrame frame = SpiaFrames.back();
     if (!frame.InOops) {
         Builder->CreateStore(erruValue, frame.ErrSlot);
         Builder->CreateStore(callLine, frame.LineSlot);
+        if (cameThroughRuntime && frame.RuntimeSlot)
+            Builder->CreateStore(cameThroughRuntime, frame.RuntimeSlot);
         if (frame.RuntimeHandlerPushed)
             emitSpiaPop();
         Builder->CreateBr(frame.CatchBB);
@@ -90,13 +94,29 @@ void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* call
     SpiaFrames.pop_back();
     if (frame.RuntimeHandlerPushed)
         emitSpiaPop();
-    emitSempriThenFail(frame, erruValue, callLine);
+    emitSempriThenFail(frame, erruValue, callLine, cameThroughRuntime);
     SpiaFrames.push_back(frame);
 }
 
-void CodeGenVisitor::emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine)
+void CodeGenVisitor::emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine,
+                                        llvm::Value* cameThroughRuntime)
 {
     emitSempri(frame);
+    if (!cameThroughRuntime) {
+        emitFailure(erruValue, callLine);
+        return;
+    }
+    if (!SpiaFrames.empty()) {
+        emitFailureToSpia(erruValue, callLine, cameThroughRuntime);
+        return;
+    }
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto* raiseBB = llvm::BasicBlock::Create(Context, "spia.raise", fn);
+    auto* failBB = llvm::BasicBlock::Create(Context, "spia.fail", fn);
+    Builder->CreateCondBr(cameThroughRuntime, raiseBB, failBB);
+    Builder->SetInsertPoint(raiseBB);
+    emitRaise(erruValue, callLine);
+    Builder->SetInsertPoint(failBB);
     emitFailure(erruValue, callLine);
 }
 
@@ -159,6 +179,11 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
     auto* errSlot = createEntryAlloca(fn, node.Oops ? node.ErrName : "spia.error", erruTy);
     auto* lineSlot = createEntryAlloca(fn, "spia.line", llvm::Type::getInt32Ty(Context));
     Builder->CreateStore(Builder->getInt32(node.LineNum), lineSlot);
+    llvm::AllocaInst* runtimeSlot = nullptr;
+    if (!node.Oops || node.Sempri) {
+        runtimeSlot = createEntryAlloca(fn, "spia.runtime", Builder->getInt1Ty());
+        Builder->CreateStore(Builder->getFalse(), runtimeSlot);
+    }
     auto* catchBB = llvm::BasicBlock::Create(Context, node.Oops ? "spia.oops" : "spia.escape", fn);
     auto* endBB = llvm::BasicBlock::Create(Context, "spia.end", fn);
     const auto leaveGuarded = [&](const SpiaFrame& frame) {
@@ -169,7 +194,7 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
         Builder->CreateBr(endBB);
     };
 
-    SpiaFrame body{catchBB, errSlot, lineSlot, node.Sempri.get()};
+    SpiaFrame body{catchBB, errSlot, lineSlot, node.Sempri.get(), runtimeSlot};
     body.RuntimeHandlerPushed = true;
     body.ScopeDepth = Scopes.size();
     emitSpiaHandler(body);
@@ -187,7 +212,7 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
         llvm::BasicBlock* oopsEscapeBB = nullptr;
         if (oops.RuntimeHandlerPushed) {
             oopsEscapeBB = llvm::BasicBlock::Create(Context, "spia.oops.escape", fn);
-            emitSpiaHandler({oopsEscapeBB, errSlot, lineSlot, nullptr});
+            emitSpiaHandler({oopsEscapeBB, errSlot, lineSlot, nullptr, runtimeSlot});
         }
         SpiaFrames.push_back(oops);
         pushScope();
@@ -201,7 +226,8 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
     }
     if (!node.Oops || node.Sempri)
         emitSempriThenFail(body, Builder->CreateLoad(erruTy, errSlot, "spia.error"),
-                           Builder->CreateLoad(Builder->getInt32Ty(), lineSlot, "spia.line"));
+                           Builder->CreateLoad(Builder->getInt32Ty(), lineSlot, "spia.line"),
+                           Builder->CreateLoad(Builder->getInt1Ty(), runtimeSlot, "spia.runtime"));
 
     Builder->SetInsertPoint(endBB);
     if (node.Sempri)
