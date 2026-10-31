@@ -27,6 +27,8 @@ namespace ast {
         X86_64Windows
     };
 
+    void removeUnreachableSpiaThrow(llvm::Module& module);
+
     struct EmitOptions {
         CodegenTarget Target = CodegenTarget::Native;
         unsigned OptLevel = 2;

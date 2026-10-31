@@ -339,13 +339,17 @@ _Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t li
     __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
 }
 
-_Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
-    if (__kriol_spia_active())
-        __kriol_spia_throw(kind, message, origin_line);
+_Noreturn void __kriol_report_escaped(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
     if (strcmp(kind, "divizon") == 0 || strcmp(kind, "indisi") == 0 ||
         strcmp(kind, "konfirma") == 0 || strcmp(kind, "paniku") == 0)
         __kriol_stop(origin_line, KRIOL_RUNTIME_ERROR, message);
     __kriol_stop(call_line, KRIOL_UNHANDLED_ERROR, message);
+}
+
+_Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
+    if (__kriol_spia_active())
+        __kriol_spia_throw(kind, message, origin_line);
+    __kriol_report_escaped(message, kind, origin_line, call_line);
 }
 
 #ifdef _WIN32

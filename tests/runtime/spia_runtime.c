@@ -184,42 +184,77 @@ static void runtime_checks_throw_with_their_kind(void) {
     CHECK(!__kriol_spia_active());
 }
 
-static int exit_status_of_child(void (*body)(void)) {
+typedef struct {
+    int status;
+    char stderr_text[256];
+} ChildResult;
+
+static ChildResult run_child(void (*body)(const char*), const char* kind) {
+    ChildResult result = {-1, ""};
+    int fds[2];
+    CHECK(pipe(fds) == 0);
     fflush(NULL);
     pid_t pid = fork();
     CHECK(pid >= 0);
     if (pid == 0) {
-        freopen("/dev/null", "w", stderr);
-        body();
+        close(fds[0]);
+        dup2(fds[1], STDERR_FILENO);
+        body(kind);
         _exit(99);
     }
+    close(fds[1]);
+    size_t used = 0;
+    ssize_t got;
+    while (used < sizeof result.stderr_text - 1 &&
+           (got = read(fds[0], result.stderr_text + used, sizeof result.stderr_text - 1 - used)) > 0)
+        used += (size_t)got;
+    close(fds[0]);
     int status = 0;
     CHECK(waitpid(pid, &status, 0) == pid);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    result.status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return result;
 }
 
-static void child_exit_out_of_range(void) {
+static void child_exit_out_of_range(const char* kind) {
+    (void)kind;
     KriolSpiaFrame* frame = __kriol_spia_push();
     if (setjmp(*frame_jump(frame)) == 0)
         __kriol_exit(300, 1, 1);
     _exit(99);
 }
 
-static void child_panic(void) {
+static void child_panic(const char* kind) {
+    (void)kind;
     KriolSpiaFrame* frame = __kriol_spia_push();
     if (setjmp(*frame_jump(frame)) == 0)
         __kriol_panic("x");
     _exit(99);
 }
 
-static void child_raise_unhandled(void) { __kriol_raise("falhou", "lansa", 11, 12); }
-static void child_raise_runtime(void) { __kriol_raise("falhou", "indisi", 11, 12); }
+static void child_raise_without_handler(const char* kind) {
+    __kriol_raise("falhou", kind, 11, 12);
+}
+
+static void expect_child(void (*body)(const char*), const char* kind, const char* expected_stderr) {
+    ChildResult result = run_child(body, kind);
+    CHECK(result.status == 1);
+    CHECK(strcmp(result.stderr_text, expected_stderr) == 0);
+}
 
 static void uncatchable_errors_still_terminate(void) {
-    CHECK(exit_status_of_child(child_exit_out_of_range) == 1);
-    CHECK(exit_status_of_child(child_panic) == 1);
-    CHECK(exit_status_of_child(child_raise_unhandled) == 1);
-    CHECK(exit_status_of_child(child_raise_runtime) == 1);
+    expect_child(child_exit_out_of_range, "",
+                 "kriol:1: erro de execução: o código de saída de 'sai' tem de estar entre 0 e 255, mas é 300\n");
+    expect_child(child_panic, "", "kriol: erro de execução: x\n");
+}
+
+static void raise_without_a_handler_reports_by_kind(void) {
+    const char* runtime_kinds[] = {"divizon", "indisi", "konfirma", "paniku"};
+    for (size_t i = 0; i < sizeof runtime_kinds / sizeof *runtime_kinds; ++i)
+        expect_child(child_raise_without_handler, runtime_kinds[i], "kriol:11: erro de execução: falhou\n");
+
+    const char* value_kinds[] = {"lansa", "konverti", "toma"};
+    for (size_t i = 0; i < sizeof value_kinds / sizeof *value_kinds; ++i)
+        expect_child(child_raise_without_handler, value_kinds[i], "kriol:12: erro não tratado: falhou\n");
 }
 
 int main(void) {
@@ -230,5 +265,6 @@ int main(void) {
     repeated_throws_into_one_frame_keep_the_latest_error();
     runtime_checks_throw_with_their_kind();
     uncatchable_errors_still_terminate();
+    raise_without_a_handler_reports_by_kind();
     return 0;
 }
