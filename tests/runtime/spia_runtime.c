@@ -131,6 +131,24 @@ static void message_built_on_the_stack_survives_the_jump(void) {
     __kriol_spia_pop();
 }
 
+static void kind_freed_after_the_throw_survives_the_jump(void) {
+    char* volatile kind = malloc(8);
+    CHECK(kind != NULL);
+    memcpy(kind, "toma", 5);
+
+    KriolSpiaFrame* frame = __kriol_spia_push();
+    if (setjmp(*frame_jump(frame)) == 0) {
+        __kriol_spia_throw(kind, "heap kind", 30);
+    }
+    memset(kind, 'x', 7);
+    free(kind);
+    CHECK(strcmp(__kriol_spia_kind(), "toma") == 0);
+    churn_the_collector();
+    CHECK(strcmp(__kriol_spia_kind(), "toma") == 0);
+    CHECK(strcmp(__kriol_spia_message(), "heap kind") == 0);
+    __kriol_spia_pop();
+}
+
 static void repeated_throws_into_one_frame_keep_the_latest_error(void) {
     enum { throw_count = 1000 };
     volatile int throws = 0;
@@ -271,6 +289,7 @@ int main(void) {
     catches_a_throw_from_a_deeper_call();
     nested_throw_reaches_the_inner_frame();
     message_built_on_the_stack_survives_the_jump();
+    kind_freed_after_the_throw_survives_the_jump();
     repeated_throws_into_one_frame_keep_the_latest_error();
     runtime_checks_throw_with_their_kind();
     uncatchable_errors_still_terminate();

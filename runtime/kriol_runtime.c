@@ -278,7 +278,7 @@ struct KriolSpiaFrame {
     jmp_buf Jump;
     KriolSpiaFrame* Previous;
     char* Message;
-    const char* Kind;
+    char* Kind;
     int32_t Line;
 };
 
@@ -289,7 +289,7 @@ KriolSpiaFrame* __kriol_spia_push(void) {
     if (!frame) __kriol_panic("não há memória suficiente para entrar no bloco spia");
     frame->Previous = __kriol_spia_top;
     frame->Message = NULL;
-    frame->Kind = "";
+    frame->Kind = NULL;
     frame->Line = 0;
     __kriol_spia_top = frame;
     return frame;
@@ -299,6 +299,7 @@ void __kriol_spia_pop(void) {
     KriolSpiaFrame* frame = __kriol_spia_top;
     __kriol_spia_top = frame->Previous;
     free(frame->Message);
+    free(frame->Kind);
     free(frame);
 }
 
@@ -312,23 +313,31 @@ const char* __kriol_spia_message(void) {
 }
 
 const char* __kriol_spia_kind(void) {
-    return __kriol_spia_top->Kind;
+    return __kriol_spia_top->Kind ? __kriol_spia_top->Kind : "";
 }
 
 int32_t __kriol_spia_line(void) {
     return __kriol_spia_top->Line;
 }
 
-/* Copied: callers build the message in stack frames that the jump discards. */
-_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line) {
-    KriolSpiaFrame* frame = __kriol_spia_top;
-    size_t length = message ? strlen(message) : 0;
+static char* __kriol_spia_copy(const char* text) {
+    size_t length = strlen(text);
     char* copy = (char*)malloc(length + 1);
     if (!copy) __kriol_panic("não há memória suficiente para guardar o erro do bloco spia");
-    memcpy(copy, message ? message : "", length + 1);
+    memcpy(copy, text, length + 1);
+    return copy;
+}
+
+/* Copied: callers build them in stack frames that the jump discards, or in GC
+   text that only the discarded frames still reference. */
+_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line) {
+    KriolSpiaFrame* frame = __kriol_spia_top;
+    char* message_copy = __kriol_spia_copy(message ? message : "");
+    char* kind_copy = __kriol_spia_copy(kind ? kind : "lansa");
     free(frame->Message);
-    frame->Message = copy;
-    frame->Kind = kind ? kind : "lansa";
+    free(frame->Kind);
+    frame->Message = message_copy;
+    frame->Kind = kind_copy;
     frame->Line = line;
     longjmp(frame->Jump, 1);
 }
