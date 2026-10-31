@@ -277,7 +277,7 @@ typedef struct KriolSpiaFrame KriolSpiaFrame;
 struct KriolSpiaFrame {
     jmp_buf Jump;
     KriolSpiaFrame* Previous;
-    const char* Message;
+    char* Message;
     const char* Kind;
     int32_t Line;
 };
@@ -288,7 +288,7 @@ KriolSpiaFrame* __kriol_spia_push(void) {
     KriolSpiaFrame* frame = (KriolSpiaFrame*)malloc(sizeof *frame);
     if (!frame) __kriol_panic("não há memória suficiente para entrar no bloco spia");
     frame->Previous = __kriol_spia_top;
-    frame->Message = "";
+    frame->Message = NULL;
     frame->Kind = "";
     frame->Line = 0;
     __kriol_spia_top = frame;
@@ -298,6 +298,7 @@ KriolSpiaFrame* __kriol_spia_push(void) {
 void __kriol_spia_pop(void) {
     KriolSpiaFrame* frame = __kriol_spia_top;
     __kriol_spia_top = frame->Previous;
+    free(frame->Message);
     free(frame);
 }
 
@@ -305,8 +306,9 @@ int __kriol_spia_active(void) {
     return __kriol_spia_top != NULL;
 }
 
+/* Owned by the frame: valid until __kriol_spia_pop. */
 const char* __kriol_spia_message(void) {
-    return __kriol_spia_top->Message;
+    return __kriol_spia_top->Message ? __kriol_spia_top->Message : "";
 }
 
 const char* __kriol_spia_kind(void) {
@@ -321,8 +323,10 @@ int32_t __kriol_spia_line(void) {
 _Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line) {
     KriolSpiaFrame* frame = __kriol_spia_top;
     size_t length = message ? strlen(message) : 0;
-    char* copy = __kriol_alloc_text(length + 1);
+    char* copy = (char*)malloc(length + 1);
+    if (!copy) __kriol_panic("não há memória suficiente para guardar o erro do bloco spia");
     memcpy(copy, message ? message : "", length + 1);
+    free(frame->Message);
     frame->Message = copy;
     frame->Kind = kind;
     frame->Line = line;
