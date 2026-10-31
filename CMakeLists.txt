@@ -274,6 +274,7 @@ set(KRIOL_LLVM_SOURCES
     src/kriol/codegen.cc
     src/kriol/codegen_prelude.cc
     src/kriol/codegen_spia.cc
+    src/kriol/codegen_spia_throw.cc
 )
 
 # -----------------------------------------------------------------------------
