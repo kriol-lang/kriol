@@ -273,6 +273,7 @@ set(KRIOL_LLVM_SOURCES
     src/kriol/cli.cc
     src/kriol/codegen.cc
     src/kriol/codegen_prelude.cc
+    src/kriol/codegen_spia.cc
 )
 
 # -----------------------------------------------------------------------------
@@ -313,6 +314,13 @@ add_executable(
     kriol_gc_runtime_test
     EXCLUDE_FROM_ALL
     tests/runtime/gc_stress.c
+    runtime/kriol_runtime.c
+)
+
+add_executable(
+    kriol_spia_runtime_test
+    EXCLUDE_FROM_ALL
+    tests/runtime/spia_runtime.c
     runtime/kriol_runtime.c
 )
 
@@ -409,6 +417,7 @@ kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_type_model_test)
 kriol_configure_target(kriol_gc_runtime_test)
+kriol_configure_target(kriol_spia_runtime_test)
 kriol_configure_target(kriol_compile_fuzz_smoke)
 kriol_configure_target(kriol_compile_random_fuzz)
 
@@ -484,6 +493,12 @@ endforeach()
 
 target_link_libraries(
     kriol_gc_runtime_test
+    PRIVATE
+    gc
+)
+
+target_link_libraries(
+    kriol_spia_runtime_test
     PRIVATE
     gc
 )
@@ -593,12 +608,14 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:kriol_gc_runtime_test>
     COMMAND
+        $<TARGET_FILE:kriol_spia_runtime_test>
+    COMMAND
         $<TARGET_FILE:kriol_compile_fuzz_smoke>
     COMMAND
         ${CMAKE_COMMAND} -E env KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}
-    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_gc_runtime_test kriol_compile_fuzz_smoke
+    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_gc_runtime_test kriol_spia_runtime_test kriol_compile_fuzz_smoke
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <float.h>
+#include <setjmp.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -269,6 +270,63 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
 #endif
     if (!buf) __kriol_panic("não há memória suficiente para guardar texto");
     return buf;
+}
+
+/* Jump stays first: the generated code calls setjmp on the frame pointer. */
+typedef struct KriolSpiaFrame KriolSpiaFrame;
+struct KriolSpiaFrame {
+    jmp_buf Jump;
+    KriolSpiaFrame* Previous;
+    const char* Message;
+    const char* Kind;
+    int32_t Line;
+};
+
+static KriolSpiaFrame* __kriol_spia_top = NULL;
+
+KriolSpiaFrame* __kriol_spia_push(void) {
+    KriolSpiaFrame* frame = (KriolSpiaFrame*)malloc(sizeof *frame);
+    if (!frame) __kriol_panic("não há memória suficiente para entrar no bloco spia");
+    frame->Previous = __kriol_spia_top;
+    frame->Message = "";
+    frame->Kind = "";
+    frame->Line = 0;
+    __kriol_spia_top = frame;
+    return frame;
+}
+
+void __kriol_spia_pop(void) {
+    KriolSpiaFrame* frame = __kriol_spia_top;
+    __kriol_spia_top = frame->Previous;
+    free(frame);
+}
+
+int __kriol_spia_active(void) {
+    return __kriol_spia_top != NULL;
+}
+
+const char* __kriol_spia_message(void) {
+    return __kriol_spia_top->Message;
+}
+
+const char* __kriol_spia_kind(void) {
+    return __kriol_spia_top->Kind;
+}
+
+int32_t __kriol_spia_line(void) {
+    return __kriol_spia_top->Line;
+}
+
+/* Copied: callers build the message in stack frames that the jump discards. */
+_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line) {
+    KriolSpiaFrame* frame = __kriol_spia_top;
+    size_t length = message ? strlen(message) : 0;
+    char* copy = __kriol_alloc_text(length + 1);
+    memcpy(copy, message ? message : "", length + 1);
+    frame->Message = copy;
+    frame->Kind = kind;
+    frame->Line = line;
+    longjmp(frame->Jump, 1);
 }
 
 #ifdef _WIN32

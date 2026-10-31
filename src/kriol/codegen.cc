@@ -16,6 +16,7 @@
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/CommandLine.h>
 
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
@@ -58,6 +59,7 @@ using namespace kriol::typerules;
 #include "wasi_crt1_command.o.h"
 #include "wasi_libc.a.h"
 #include "wasi_libm.a.h"
+#include "wasi_libsetjmp.a.h"
 #include "wasi_builtins.a.h"
 
 #endif // KRIOL_ENABLE_WASM
@@ -148,6 +150,7 @@ struct WasiInputs {
     std::string Libc;
     std::string Libm;
     std::string Builtins;
+    std::string Libsetjmp;
 };
 
 static void initializeTargets() {
@@ -255,6 +258,8 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
     };
     if (!tempLibGc.empty())
         plan.Args.push_back(tempLibGc);
+    if (!wasiInputs.Libsetjmp.empty())
+        plan.Args.push_back(wasiInputs.Libsetjmp);
     plan.Args.insert(plan.Args.end(), {
         wasiInputs.Libm,
         wasiInputs.Libc,
@@ -313,8 +318,8 @@ static void linkWasm(const WasiLinkPlan& plan) {
 }
 
 #if KRIOL_ENABLE_WASM
-static WasiInputs writeWasiInputs() {
-    return WasiInputs{
+static WasiInputs writeWasiInputs(bool sjlj) {
+    WasiInputs inputs{
         writeTempBlob(
             "kriol_wasi_crt1_command",
             "o",
@@ -334,8 +339,25 @@ static WasiInputs writeWasiInputs() {
             "kriol_wasi_builtins",
             "a",
             EmbeddedBlob{wasi_builtins_a, wasi_builtins_a_len}
-        )
+        ),
+        {}
     };
+    if (sjlj)
+        inputs.Libsetjmp = writeTempBlob(
+            "kriol_wasi_libsetjmp",
+            "a",
+            EmbeddedBlob{wasi_libsetjmp_a, wasi_libsetjmp_a_len}
+        );
+    return inputs;
+}
+
+// A global backend option: set on every wasm compilation so it never leaks across programs.
+static void setWasmSjLj(bool enabled) {
+    auto& options = llvm::cl::getRegisteredOptions();
+    auto option = options.find("wasm-enable-sjlj");
+    if (option == options.end())
+        throw std::runtime_error("erro interno: o LLVM não tem a opção 'wasm-enable-sjlj'");
+    static_cast<llvm::cl::opt<bool>*>(option->second)->setValue(enabled);
 }
 #endif
 
@@ -431,7 +453,8 @@ static void optimizeModule(llvm::Module& module,
 static void emitObjectFile(llvm::Module& module,
                            const std::string& targetTriple,
                            const std::string& objPath,
-                           unsigned optLevel) {
+                           unsigned optLevel,
+                           bool wasmSjLj) {
     module.setTargetTriple(targetTriple);
 
     std::string Error;
@@ -440,8 +463,14 @@ static void emitObjectFile(llvm::Module& module,
         throw std::runtime_error("o LLVM não suporta o alvo de compilação: " + Error);
 
     auto CPU = "generic";
-    auto Features = "";
+    auto Features = wasmSjLj ? "+exception-handling,+multivalue,+reference-types" : "";
     llvm::TargetOptions opt;
+#if KRIOL_ENABLE_WASM
+    if (llvm::Triple(targetTriple).isWasm())
+        setWasmSjLj(wasmSjLj);
+#endif
+    if (wasmSjLj)
+        opt.ExceptionModel = llvm::ExceptionHandling::Wasm;
     auto RM = std::optional<llvm::Reloc::Model>();
     const llvm::CodeGenOptLevel codeGenLevel = optLevel == 0 ? llvm::CodeGenOptLevel::None
                                              : optLevel == 1 ? llvm::CodeGenOptLevel::Less
@@ -826,8 +855,9 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
         const std::string objPath(objPathBuf.str());
         tempFiles.push_back(objPath);
 
+        const bool wasmSjLj = options.Target == CodegenTarget::Wasm32Wasi && Mod->getFunction("setjmp");
         linkRuntimeBitcode(*Mod, Context, resources.Runtime);
-        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel);
+        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel, wasmSjLj);
 
         std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
         if (!tempLibGc.empty())
@@ -835,10 +865,12 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
         if (options.Target == CodegenTarget::Wasm32Wasi) {
 #if KRIOL_ENABLE_WASM
-            WasiInputs wasiInputs = writeWasiInputs();
+            WasiInputs wasiInputs = writeWasiInputs(wasmSjLj);
             tempFiles.insert(tempFiles.end(), {
                 wasiInputs.Crt1Command, wasiInputs.Libc, wasiInputs.Libm, wasiInputs.Builtins
             });
+            if (wasmSjLj)
+                tempFiles.push_back(wasiInputs.Libsetjmp);
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
             throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'wasm32-wasi'");

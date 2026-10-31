@@ -107,6 +107,7 @@ namespace ast {
         llvm::Function*      getOrDeclareKriolCheckDiv();
         llvm::Function*      getOrDeclareKriolCheckFloatDiv();
         llvm::Function*      getOrDeclarePanicAt();
+        llvm::Value*         emitSetjmp(llvm::Value* frame);
 
         // After emitting a block terminator (break/continue/return/sai) moves
         // the insert point into a fresh unreachable block so that any further
