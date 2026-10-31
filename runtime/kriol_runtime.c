@@ -333,6 +333,21 @@ _Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t
     longjmp(frame->Jump, 1);
 }
 
+_Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t line) {
+    if (__kriol_spia_active())
+        __kriol_spia_throw(kind, message, line);
+    __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
+}
+
+_Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
+    if (__kriol_spia_active())
+        __kriol_spia_throw(kind, message, origin_line);
+    if (strcmp(kind, "divizon") == 0 || strcmp(kind, "indisi") == 0 ||
+        strcmp(kind, "konfirma") == 0 || strcmp(kind, "paniku") == 0)
+        __kriol_stop(origin_line, KRIOL_RUNTIME_ERROR, message);
+    __kriol_stop(call_line, KRIOL_UNHANDLED_ERROR, message);
+}
+
 #ifdef _WIN32
 /* The C runtime would return console input in the legacy code page. */
 static char* __kriol_read_console_line(HANDLE console, const char** error) {
@@ -721,7 +736,7 @@ int __kriol_convert_bool(const char* text, int32_t* out, const char** error) {
 
 void __kriol_assert_message(int cond, int line, const char* message) {
     if (!cond)
-        __kriol_panic_at(message && message[0] != '\0' ? message : "a condição de konfirma é falsa", line);
+        __kriol_fail_at("konfirma", message && message[0] != '\0' ? message : "a condição de konfirma é falsa", line);
 }
 
 void __kriol_assert(int cond, int line) {
@@ -733,25 +748,25 @@ void __kriol_check_bounds(int64_t index, int64_t size, int line) {
         char message[96];
         snprintf(message, sizeof message, "o índice %lld está fora do array, que vai de 0 a %lld",
                  (long long)index, (long long)size - 1);
-        __kriol_panic_at(message, line);
+        __kriol_fail_at("indisi", message, line);
     }
 }
 
 void __kriol_check_fdiv(double divisor, int32_t line) {
     if (divisor == 0.0)
-        __kriol_panic_at("divisão por zero", line);
+        __kriol_fail_at("divizon", "divisão por zero", line);
 }
 
 void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line) {
     if (rhs == 0)
-        __kriol_panic_at("divisão por zero", line);
+        __kriol_fail_at("divizon", "divisão por zero", line);
 
     if (signed_bits > 0 && rhs == -1) {
         int64_t min = signed_bits >= 64
             ? INT64_MIN
             : -((int64_t)1 << (signed_bits - 1));
         if (lhs == min)
-            __kriol_panic_at("o resultado da divisão não cabe no tipo do número inteiro", line);
+            __kriol_fail_at("divizon", "o resultado da divisão não cabe no tipo do número inteiro", line);
     }
 }
 

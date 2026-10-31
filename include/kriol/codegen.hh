@@ -106,7 +106,7 @@ namespace ast {
         llvm::Function*      getOrDeclareKriolCheckBounds();
         llvm::Function*      getOrDeclareKriolCheckDiv();
         llvm::Function*      getOrDeclareKriolCheckFloatDiv();
-        llvm::Function*      getOrDeclarePanicAt();
+        llvm::Function*      getOrDeclareFailAt();
         llvm::Value*         emitSetjmp(llvm::Value* frame);
 
         // After emitting a block terminator (break/continue/return/sai) moves

@@ -429,6 +429,40 @@ static void linkRuntimeBitcode(llvm::Module& module,
     }
 }
 
+// Without a spia block the handler stack is always empty, so every runtime
+// error terminates: route them to the plain panic, as before spia existed, and
+// drop the throw path (and with it longjmp) from the program.
+static void removeUnreachableSpiaThrow(llvm::Module& module) {
+    if (module.getFunction("setjmp") || module.getFunction("_setjmp"))
+        return;
+    auto* failAt = module.getFunction("__kriol_fail_at");
+    auto* panicAt = module.getFunction("__kriol_panic_at");
+    if (!failAt || !panicAt)
+        return;
+
+    std::vector<llvm::CallInst*> calls;
+    for (llvm::User* user : failAt->users())
+        if (auto* call = llvm::dyn_cast<llvm::CallInst>(user))
+            calls.push_back(call);
+    for (llvm::CallInst* call : calls) {
+        llvm::IRBuilder<> builder(call);
+        auto* replacement = builder.CreateCall(panicAt, {call->getArgOperand(1), call->getArgOperand(2)});
+        replacement->setDebugLoc(call->getDebugLoc());
+        call->eraseFromParent();
+    }
+
+    for (const char* name : {"__kriol_fail_at", "__kriol_raise", "__kriol_spia_throw"})
+        if (auto* fn = module.getFunction(name))
+            fn->eraseFromParent();
+
+    std::vector<llvm::GlobalVariable*> unused;
+    for (llvm::GlobalVariable& global : module.globals())
+        if (global.hasPrivateLinkage() && global.use_empty())
+            unused.push_back(&global);
+    for (llvm::GlobalVariable* global : unused)
+        global->eraseFromParent();
+}
+
 static void optimizeModule(llvm::Module& module,
                            llvm::TargetMachine& targetMachine,
                            unsigned optLevel) {
@@ -857,6 +891,7 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
         const bool wasmSjLj = options.Target == CodegenTarget::Wasm32Wasi && Mod->getFunction("setjmp");
         linkRuntimeBitcode(*Mod, Context, resources.Runtime);
+        removeUnreachableSpiaThrow(*Mod);
         emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel, wasmSjLj);
 
         std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);

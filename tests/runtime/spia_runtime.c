@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <gc.h>
 
 #define CHECK(cond) \
@@ -26,6 +29,14 @@ const char* __kriol_spia_kind(void);
 int32_t __kriol_spia_line(void);
 _Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line);
 int __kriol_spia_active(void);
+void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line);
+void __kriol_check_fdiv(double divisor, int32_t line);
+void __kriol_check_bounds(int64_t index, int64_t size, int line);
+void __kriol_assert(int cond, int line);
+_Noreturn void __kriol_exit(int64_t code, int32_t is_signed, int32_t line);
+_Noreturn void __kriol_panic(const char* message);
+_Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t line);
+_Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line);
 
 static jmp_buf* frame_jump(KriolSpiaFrame* frame) {
     return (jmp_buf*)frame;
@@ -139,11 +150,85 @@ static void repeated_throws_into_one_frame_keep_the_latest_error(void) {
     CHECK(!__kriol_spia_active());
 }
 
+static void expect_check_kind(void (*trigger)(void), const char* kind, const char* message, int32_t line) {
+    volatile int caught = 0;
+    KriolSpiaFrame* frame = __kriol_spia_push();
+    if (setjmp(*frame_jump(frame)) == 0) {
+        trigger();
+    } else {
+        caught = 1;
+        CHECK(strcmp(__kriol_spia_kind(), kind) == 0);
+        CHECK(strcmp(__kriol_spia_message(), message) == 0);
+        CHECK(__kriol_spia_line() == line);
+    }
+    CHECK(caught);
+    __kriol_spia_pop();
+}
+
+static void trigger_div(void) { __kriol_check_div(1, 0, 64, 3); }
+static void trigger_overflow(void) { __kriol_check_div(INT64_MIN, -1, 64, 4); }
+static void trigger_fdiv(void) { __kriol_check_fdiv(0.0, 5); }
+static void trigger_bounds(void) { __kriol_check_bounds(5, 3, 4); }
+static void trigger_assert(void) { __kriol_assert(0, 2); }
+static void trigger_fail_at(void) { __kriol_fail_at("paniku", "boom", 9); }
+static void trigger_raise(void) { __kriol_raise("falhou", "lansa", 11, 12); }
+
+static void runtime_checks_throw_with_their_kind(void) {
+    expect_check_kind(trigger_div, "divizon", "divisão por zero", 3);
+    expect_check_kind(trigger_overflow, "divizon", "o resultado da divisão não cabe no tipo do número inteiro", 4);
+    expect_check_kind(trigger_fdiv, "divizon", "divisão por zero", 5);
+    expect_check_kind(trigger_bounds, "indisi", "o índice 5 está fora do array, que vai de 0 a 2", 4);
+    expect_check_kind(trigger_assert, "konfirma", "a condição de konfirma é falsa", 2);
+    expect_check_kind(trigger_fail_at, "paniku", "boom", 9);
+    expect_check_kind(trigger_raise, "lansa", "falhou", 11);
+    CHECK(!__kriol_spia_active());
+}
+
+static int exit_status_of_child(void (*body)(void)) {
+    fflush(NULL);
+    pid_t pid = fork();
+    CHECK(pid >= 0);
+    if (pid == 0) {
+        freopen("/dev/null", "w", stderr);
+        body();
+        _exit(99);
+    }
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+static void child_exit_out_of_range(void) {
+    KriolSpiaFrame* frame = __kriol_spia_push();
+    if (setjmp(*frame_jump(frame)) == 0)
+        __kriol_exit(300, 1, 1);
+    _exit(99);
+}
+
+static void child_panic(void) {
+    KriolSpiaFrame* frame = __kriol_spia_push();
+    if (setjmp(*frame_jump(frame)) == 0)
+        __kriol_panic("x");
+    _exit(99);
+}
+
+static void child_raise_unhandled(void) { __kriol_raise("falhou", "lansa", 11, 12); }
+static void child_raise_runtime(void) { __kriol_raise("falhou", "indisi", 11, 12); }
+
+static void uncatchable_errors_still_terminate(void) {
+    CHECK(exit_status_of_child(child_exit_out_of_range) == 1);
+    CHECK(exit_status_of_child(child_panic) == 1);
+    CHECK(exit_status_of_child(child_raise_unhandled) == 1);
+    CHECK(exit_status_of_child(child_raise_runtime) == 1);
+}
+
 int main(void) {
     __kriol_gc_init();
     catches_a_throw_from_a_deeper_call();
     nested_throw_reaches_the_inner_frame();
     message_built_on_the_stack_survives_the_jump();
     repeated_throws_into_one_frame_keep_the_latest_error();
+    runtime_checks_throw_with_their_kind();
+    uncatchable_errors_still_terminate();
     return 0;
 }

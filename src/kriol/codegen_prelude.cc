@@ -108,14 +108,14 @@ static llvm::Function* getOrDeclareRuntimeFormat(llvm::Module& Mod, llvm::LLVMCo
 
 } // namespace
 
-llvm::Function* CodeGenVisitor::getOrDeclarePanicAt()
+llvm::Function* CodeGenVisitor::getOrDeclareFailAt()
 {
-    if (auto* fn = Mod->getFunction("__kriol_panic_at")) return fn;
+    if (auto* fn = Mod->getFunction("__kriol_fail_at")) return fn;
     auto* voidTy = llvm::Type::getVoidTy(Context);
     auto* i32Ty  = llvm::Type::getInt32Ty(Context);
     auto* ptrTy  = llvm::PointerType::getUnqual(Context);
-    auto* ftype  = llvm::FunctionType::get(voidTy, {ptrTy, i32Ty}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_panic_at", *Mod);
+    auto* ftype  = llvm::FunctionType::get(voidTy, {ptrTy, ptrTy, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_fail_at", *Mod);
     fn->addFnAttr(llvm::Attribute::NoReturn);
     return fn;
 }
@@ -240,7 +240,7 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             if (!message)
                 throw std::runtime_error("erro interno: falhou a geração da mensagem de paniku");
             llvm::Value* line = llvm::ConstantInt::get(i32Ty, node.LineNum);
-            Builder->CreateCall(getOrDeclarePanicAt(), {message, line});
+            Builder->CreateCall(getOrDeclareFailAt(), {Builder->CreateGlobalString("paniku"), message, line});
             Builder->CreateUnreachable();
             // Like sai(): later statements go into a fresh dead block.
             startDeadBlock();
