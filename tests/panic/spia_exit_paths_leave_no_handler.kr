@@ -1,4 +1,4 @@
-// expect: :39: erro de execução: divisão por zero
+// expect: :65: erro de execução: divisão por zero
 fn do_corpo() int {
     spia {
         divolvi 1;
@@ -32,9 +32,35 @@ fn dos_ciclos() {
     }
 }
 
+fn kebra_do_oops_com_sempri() {
+    pa int i = 0; i < 2; i += 1 {
+        spia {
+            lansa Erru{mensage = "x"};
+        } oops (err) {
+            kebra;
+        } sempri {
+            mostran("sempri do kebra");
+        }
+    }
+}
+
+fn kontinua_do_oops_com_sempri() {
+    pa int i = 0; i < 2; i += 1 {
+        spia {
+            lansa Erru{mensage = "x"};
+        } oops (err) {
+            kontinua;
+        } sempri {
+            mostran("sempri do kontinua");
+        }
+    }
+}
+
 fn inisiu() {
     int zero = do_corpo() + do_oops() - 3;
     dos_ciclos();
+    kebra_do_oops_com_sempri();
+    kontinua_do_oops_com_sempri();
     mostran(zero);
     mostran(10 / zero);
 }

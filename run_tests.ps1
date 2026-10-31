@@ -235,6 +235,21 @@ Write-Result 'unhandled error stops the program' ($ok -and $LASTEXITCODE -ne 0 -
 $strictRejected = -not (Invoke-Kriol @('--strict', '--text', $unhandled, '-o', (Join-Path $Work 'strict.exe')))
 Write-Result '--strict rejects warnings' $strictRejected
 
+$strictClean = Join-Path $Root 'tests/pass/error_union_basic.kr'
+$ok = Invoke-Kriol @('--strict', $strictClean, '-o', (Join-Path $Work 'strict_clean.exe'))
+Write-Result '--strict accepts clean programs' $ok
+
+$oopsCall = Join-Path $Root 'tests/pass/spia_oops_unhandled_call.kr'
+$warning = Get-KriolResult @($oopsCall, '-o', (Join-Path $Work 'oops_call.exe'))
+Write-Result 'unhandled call in oops warns of the return' ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função"))
+$strictRejected = -not (Invoke-Kriol @('--strict', $oopsCall, '-o', (Join-Path $Work 'oops_call_strict.exe')))
+Write-Result '--strict rejects an unhandled call in oops' $strictRejected
+
+foreach ($program in 'spia_lexical', 'spia_value_error_from_callee') {
+    $ok = Invoke-Kriol @('--strict', (Join-Path $Root "tests/pass/$program.kr"), '-o', (Join-Path $Work "strict_$program.exe"))
+    Write-Result "--strict accepts $program" $ok
+}
+
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }
