@@ -1693,6 +1693,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             throw std::runtime_error("erro interno: a função '" + node.Name + "' não tem 'divolvi'");
     }
 
+    if (CurrentHasSpia)
+        markLocalAccessesVolatile(*fn);
     auto verificationFailed = llvm::verifyFunction(*fn);
 
     if (verificationFailed) {
@@ -1713,6 +1715,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     CurrentCanFail = false;
     CurrentIsMain = false;
     CurrentReturnSlot = nullptr;
+    CurrentHasSpia = false;
 }
 
 void CodeGenVisitor::visit(IfSttmt& node) {

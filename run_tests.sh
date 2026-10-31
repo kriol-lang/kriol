@@ -81,11 +81,11 @@ runs_cleanly() {
 
 # Runs a compiled program that must stop with a runtime error: a non-zero exit
 # status (or the '// exit:' one), the '// expect:' message on stderr, and only
-# the expected output before it.
+# the expected output before it. A '// env:' line sets variables for the run.
 stops_as_expected() {
     local source="$1" runner="$2" program="$3" out err status=0 ok=1
     out=$(mktemp /tmp/kriol_out_XXXX); err=$(mktemp /tmp/kriol_err_XXXX)
-    "$TIMEOUT" 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2> "$err" || status=$?
+    env $(directive "$source" env) "$TIMEOUT" 5 $runner "$program" < "$(stdin_for "$source")" > "$out" 2> "$err" || status=$?
     local expected_status expected_message
     expected_status=$(directive "$source" exit)
     expected_message=$(directive "$source" expect)
@@ -160,6 +160,17 @@ for level in 0 3; do
     fi
     rm -f "$tmpbin"
 done
+
+printf "  %-44s" "spia keeps locals at --opt-lvl 3"
+tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
+LOCALS="$ROOT/tests/pass/spia_locals_survive_longjmp.kr"
+if "$KRIOL" --opt-lvl 3 "$LOCALS" -o "$tmpbin" > "$DETAIL" 2>&1 && runs_cleanly "$LOCALS" "" "$tmpbin"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "spia keeps locals at --opt-lvl 3"
+    sed 's/^/      /' "$DETAIL"
+fi
+rm -f "$tmpbin"
 
 # ---- unhandled errors: warning, --strict and the runtime stop -------------------
 UNHANDLED='fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
@@ -366,6 +377,8 @@ else
             program_test "$f" wasm32-wasi runs_cleanly "wasm: ${f#"$ROOT"/}"
         done
         for f in "${PANICS[@]}"; do
+            # The GC's heap limit, which makes this one run out of memory, is native only.
+            [ "${f##*/}" != spia_oom_not_caught.kr ] || continue
             program_test "$f" wasm32-wasi stops_as_expected "wasm: ${f#"$ROOT"/}"
         done
     else

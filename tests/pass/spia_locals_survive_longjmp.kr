@@ -1,0 +1,28 @@
+fn zero() int {
+    divolvi 0;
+}
+
+fn inisiu() {
+    int contador = 0;
+    num total = 0.5;
+    int[3] valores = [0, 0, 0];
+    textu estado = "inisiu";
+    spia {
+        pa int i = 0; i < 3; i += 1 {
+            contador += 1;
+            total = total * 2.0;
+            valores[i] = i * 10 + contador;
+        }
+        estado = "dentro";
+        contador = contador + 10 / zero();
+        estado = "nunca";
+    } oops (err) {
+        mostran(contador);
+        mostran(total);
+        mostran(f"{valores[0]} {valores[1]} {valores[2]}");
+        mostran(estado);
+        contador += 100;
+    } sempri {
+        mostran(contador);
+    }
+}

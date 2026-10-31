@@ -1,0 +1,12 @@
+// exit: 3
+fn inisiu() {
+    spia {
+        mostran("antes");
+        sai(3);
+    } oops (err) {
+        mostran("oops");
+    } sempri {
+        mostran("sempri");
+    }
+    mostran("nunca");
+}

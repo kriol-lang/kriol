@@ -4,7 +4,9 @@
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <llvm/Analysis/ValueTracking.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/IntrinsicInst.h>
 
 #include <set>
 #include <vector>
@@ -52,6 +54,25 @@ void CodeGenVisitor::emitSpiaPop()
     Builder->CreateCall(fn);
 }
 
+// The frame's message is freed by the pop, so it is copied into Kriol text first.
+void CodeGenVisitor::emitCaughtRuntimeError(const SpiaFrame& frame)
+{
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto getter = [&](const char* name, llvm::Type* type) {
+        return Builder->CreateCall(Mod->getOrInsertFunction(name, llvm::FunctionType::get(type, false)));
+    };
+    auto format = Mod->getOrInsertFunction("__kriol_format", llvm::FunctionType::get(ptrTy, {ptrTy}, true));
+    auto* asText = Builder->CreateGlobalString("%s");
+    auto* message = Builder->CreateCall(format, {asText, getter("__kriol_spia_message", ptrTy)}, "spia.message");
+    auto* kind = Builder->CreateCall(format, {asText, getter("__kriol_spia_kind", ptrTy)}, "spia.kind");
+    auto* line = getter("__kriol_spia_line", i32Ty);
+    emitSpiaPop();
+    Builder->CreateStore(makeErru(message, kind, Builder->CreateSExt(line, Builder->getInt64Ty())), frame.ErrSlot);
+    Builder->CreateStore(line, frame.LineSlot);
+    Builder->CreateBr(frame.CatchBB);
+}
+
 void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine)
 {
     const SpiaFrame frame = SpiaFrames.back();
@@ -65,6 +86,8 @@ void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* call
     }
 
     SpiaFrames.pop_back();
+    if (frame.RuntimeHandlerPushed)
+        emitSpiaPop();
     emitSempriThenFail(frame.Sempri, erruValue, callLine);
     SpiaFrames.push_back(frame);
 }
@@ -78,6 +101,22 @@ void CodeGenVisitor::emitSempriThenFail(ast::BlockSttmt* sempri, llvm::Value* er
     emitFailure(erruValue, callLine);
 }
 
+void CodeGenVisitor::emitSpiaHandler(const SpiaFrame& catchTo)
+{
+    auto* fn = Builder->GetInsertBlock()->getParent();
+    auto push = Mod->getOrInsertFunction("__kriol_spia_push", llvm::FunctionType::get(
+                                              llvm::PointerType::getUnqual(Context), false));
+    auto* jumped = Builder->CreateICmpNE(emitSetjmp(Builder->CreateCall(push, {}, "spia.frame")),
+                                         Builder->getInt32(0), "spia.jumped");
+    auto* caughtBB = llvm::BasicBlock::Create(Context, "spia.caught", fn);
+    auto* continueBB = llvm::BasicBlock::Create(Context, "spia.guarded", fn);
+    Builder->CreateCondBr(jumped, caughtBB, continueBB);
+    Builder->SetInsertPoint(caughtBB);
+    emitCaughtRuntimeError(catchTo);
+    Builder->SetInsertPoint(continueBB);
+    CurrentHasSpia = true;
+}
+
 void CodeGenVisitor::visit(SpiaSttmt& node)
 {
     auto* fn = Builder->GetInsertBlock()->getParent();
@@ -87,36 +126,67 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
     Builder->CreateStore(Builder->getInt32(node.LineNum), lineSlot);
     auto* catchBB = llvm::BasicBlock::Create(Context, node.Oops ? "spia.oops" : "spia.escape", fn);
     auto* endBB = llvm::BasicBlock::Create(Context, "spia.end", fn);
-    const auto branchToEnd = [&] {
-        if (!Builder->GetInsertBlock()->getTerminator())
-            Builder->CreateBr(endBB);
+    const auto leaveGuarded = [&](const SpiaFrame& frame) {
+        if (Builder->GetInsertBlock()->getTerminator())
+            return;
+        if (frame.RuntimeHandlerPushed)
+            emitSpiaPop();
+        Builder->CreateBr(endBB);
     };
 
-    SpiaFrames.push_back({catchBB, errSlot, lineSlot, node.Sempri.get()});
+    SpiaFrame body{catchBB, errSlot, lineSlot, node.Sempri.get()};
+    body.RuntimeHandlerPushed = true;
+    emitSpiaHandler(body);
+    SpiaFrames.push_back(body);
     node.Body->accept(*this);
     SpiaFrames.pop_back();
-    branchToEnd();
+    leaveGuarded(body);
 
     Builder->SetInsertPoint(catchBB);
     if (node.Oops) {
-        SpiaFrame oops{catchBB, errSlot, lineSlot, node.Sempri.get()};
+        SpiaFrame oops = body;
         oops.InOops = true;
+        oops.RuntimeHandlerPushed = node.Sempri != nullptr;
+        // A runtime error in an oops with a sempri must run the sempri before it goes on up.
+        llvm::BasicBlock* oopsEscapeBB = nullptr;
+        if (oops.RuntimeHandlerPushed) {
+            oopsEscapeBB = llvm::BasicBlock::Create(Context, "spia.oops.escape", fn);
+            emitSpiaHandler({oopsEscapeBB, errSlot, lineSlot, nullptr});
+        }
         SpiaFrames.push_back(oops);
         pushScope();
         declareVar(node.ErrName, errSlot);
         node.Oops->accept(*this);
         popScope();
         SpiaFrames.pop_back();
-        branchToEnd();
-    } else {
+        leaveGuarded(oops);
+        if (oopsEscapeBB)
+            Builder->SetInsertPoint(oopsEscapeBB);
+    }
+    if (!node.Oops || node.Sempri)
         emitSempriThenFail(node.Sempri.get(), Builder->CreateLoad(erruTy, errSlot, "spia.error"),
                            Builder->CreateLoad(Builder->getInt32Ty(), lineSlot, "spia.line"));
-    }
 
     Builder->SetInsertPoint(endBB);
     if (node.Sempri)
         node.Sempri->accept(*this);
     LastValue = nullptr;
+}
+
+void CodeGenVisitor::markLocalAccessesVolatile(llvm::Function& fn)
+{
+    const auto onLocal = [](llvm::Value* pointer) {
+        return llvm::isa<llvm::AllocaInst>(llvm::getUnderlyingObject(pointer, 0));
+    };
+    for (llvm::BasicBlock& block : fn)
+        for (llvm::Instruction& inst : block) {
+            if (auto* load = llvm::dyn_cast<llvm::LoadInst>(&inst); load && onLocal(load->getPointerOperand()))
+                load->setVolatile(true);
+            if (auto* store = llvm::dyn_cast<llvm::StoreInst>(&inst); store && onLocal(store->getPointerOperand()))
+                store->setVolatile(true);
+            if (auto* memory = llvm::dyn_cast<llvm::MemIntrinsic>(&inst))
+                memory->setVolatile(Builder->getTrue());
+        }
 }
 
 namespace {

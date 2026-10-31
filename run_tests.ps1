@@ -52,9 +52,14 @@ function Get-KriolResult([string[]] $Arguments) {
     return [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
 }
 
-# Runs a program on a stdin file; whether it timed out, the exit status and both outputs.
-function Invoke-Program([string] $Exe, [string] $Stdin) {
+# Runs a program on a stdin file, with 'NAME=value' pairs from $Environment set;
+# whether it timed out, the exit status and both outputs.
+function Invoke-Program([string] $Exe, [string] $Stdin, [string] $Environment = '') {
     $info = [Diagnostics.ProcessStartInfo]::new($Exe)
+    foreach ($pair in ($Environment -split ' ' | Where-Object { $_ })) {
+        $name, $value = $pair -split '=', 2
+        $info.Environment[$name] = $value
+    }
     $info.UseShellExecute = $false
     $info.RedirectStandardInput = $true
     $info.RedirectStandardOutput = $true
@@ -142,7 +147,8 @@ function Invoke-Source([IO.FileInfo] $Source) {
     if (-not $compile.Ok) {
         return [pscustomobject]@{ Compiled = $false; Output = $compile.Output; Run = $null }
     }
-    return [pscustomobject]@{ Compiled = $true; Output = ''; Run = (Invoke-Program $exe $stdin) }
+    $run = Invoke-Program $exe $stdin (Get-Directive $Source 'env')
+    return [pscustomobject]@{ Compiled = $true; Output = ''; Run = $run }
 }
 
 # Why a program test failed: the compiler diagnostics, or the run's exit status,
@@ -212,6 +218,13 @@ foreach ($level in '0', '3') {
     $output = if ($ok) { & $exe } else { $null }
     Write-Result "optimization level $level" ($output -eq '3')
 }
+
+$locals = Get-Item (Join-Path $Root 'tests/pass/spia_locals_survive_longjmp.kr')
+$exe = Join-Path $Work 'locals.exe'
+$ok = Invoke-Kriol @('--opt-lvl', '3', $locals.FullName, '-o', $exe)
+$run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
+Write-Result 'spia keeps locals at --opt-lvl 3' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
+    (Test-Stdout $locals $run.Stdout))
 
 $unhandled = 'fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'

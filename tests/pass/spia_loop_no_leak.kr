@@ -1,0 +1,24 @@
+fn parti(int a, int b) int {
+    divolvi a / b;
+}
+
+fn inisiu() {
+    int apanhados = 0;
+    int sempris = 0;
+    spia {
+        pa int i = 0; i < 1000; i += 1 {
+            spia {
+                mostran(parti(i, 0));
+            } oops (err) {
+                apanhados += 1;
+            } sempri {
+                sempris += 1;
+            }
+        }
+        paniku("depois do ciclo");
+    } oops (err) {
+        mostran(err.mensage);
+    }
+    mostran(apanhados);
+    mostran(sempris);
+}

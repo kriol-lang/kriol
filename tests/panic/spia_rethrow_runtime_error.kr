@@ -1,0 +1,15 @@
+// expect: :5: erro de execução: divisão por zero
+fn relansa(int b) {
+    spia {
+        mostran("antes");
+        mostran(10 / b);
+    } oops (err) {
+        mostran(f"apanhado: {err.tipu}");
+        lansa err;
+    }
+    mostran("nunca");
+}
+
+fn inisiu() {
+    relansa(0);
+}

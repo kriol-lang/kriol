@@ -61,6 +61,7 @@ namespace ast {
         };
         // The spia blocks enclosing the code being emitted, innermost last.
         std::vector<SpiaFrame> SpiaFrames;
+        bool CurrentHasSpia = false;
 
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
@@ -122,6 +123,11 @@ namespace ast {
         llvm::Function*      getOrDeclareFailAt();
         llvm::Value*         emitSetjmp(llvm::Value* frame);
         void                 emitSpiaPop();
+        // Pushes a runtime handler whose errors go to `catchTo`, with the handler popped.
+        void                 emitSpiaHandler(const SpiaFrame& catchTo);
+        void                 emitCaughtRuntimeError(const SpiaFrame& frame);
+        // Keeps every local in memory, so the values changed before a longjmp survive it.
+        void                 markLocalAccessesVolatile(llvm::Function& fn);
 
         // After emitting a block terminator (break/continue/return/sai) moves
         // the insert point into a fresh unreachable block so that any further

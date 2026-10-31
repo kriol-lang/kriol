@@ -1,0 +1,76 @@
+fn parti(int a, int b) int {
+    divolvi a / b;
+}
+
+fn erru_no_oops() {
+    spia {
+        spia {
+            mostran(parti(1, 0));
+        } oops (err) {
+            mostran(f"interior: {err.tipu}");
+            int[2] a = [1, 2];
+            int i = 2;
+            mostran(a[i]);
+            mostran("nunca depois do índice");
+        } sempri {
+            mostran("sempri interior");
+        }
+        mostran("nunca depois do spia interior");
+    } oops (err) {
+        mostran(f"exterior: {err.tipu} na linha {err.linha}");
+    }
+}
+
+fn chamada_no_oops() {
+    spia {
+        spia {
+            paniku("primeiro");
+        } oops (err) {
+            mostran(f"interior: {err.mensage}");
+            mostran(parti(2, 0));
+        }
+    } oops (err) {
+        mostran(f"exterior: {err.mensage} na linha {err.linha}");
+    }
+}
+
+fn lansa_no_oops_ku_sempri() {
+    spia {
+        spia {
+            paniku("segundo");
+        } oops (err) {
+            lansa Erru{mensage = "do oops"};
+        } sempri {
+            mostran("sempri do lansa");
+        }
+    } oops (err) {
+        mostran(f"exterior: {err.mensage}");
+    }
+}
+
+fn oops_termina_normal() {
+    spia {
+        spia {
+            paniku("terceiro");
+        } oops (err) {
+            mostran(f"interior: {err.mensage}");
+        } sempri {
+            mostran("sempri normal");
+        }
+        mostran(parti(4, 0));
+    } oops (err) {
+        mostran(f"exterior depois do oops: {err.tipu}");
+    }
+}
+
+fn inisiu() {
+    erru_no_oops();
+    chamada_no_oops();
+    lansa_no_oops_ku_sempri();
+    oops_termina_normal();
+    spia {
+        mostran(parti(3, 0));
+    } oops (err) {
+        mostran("o spia seguinte ainda apanha");
+    }
+}
