@@ -58,6 +58,7 @@ namespace ast {
             ast::BlockSttmt* Sempri;     // may be null
             bool InOops = false;
             bool RuntimeHandlerPushed = false;
+            size_t ScopeDepth = 0;       // the scopes the sempri sees
         };
         // The spia blocks enclosing the code being emitted, innermost last.
         std::vector<SpiaFrame> SpiaFrames;
@@ -66,6 +67,7 @@ namespace ast {
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
         llvm::BasicBlock* LoopContinue = nullptr;
+        size_t LoopSpiaDepth = 0;
 
         // Scope stack: variable name -> AllocaInst*
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> Scopes;
@@ -183,7 +185,12 @@ namespace ast {
         // of a fallible function or raises it. Ends the current block.
         void emitFailure(llvm::Value* erruValue, llvm::Value* callLine);
         void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine);
-        void emitSempriThenFail(ast::BlockSttmt* sempri, llvm::Value* erruValue, llvm::Value* callLine);
+        void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine);
+        void emitSempri(const SpiaFrame& frame);
+        // Leaves every spia but the outermost `keep`, popping its handler and running its sempri.
+        void emitSpiaExits(size_t keep);
+        // Leaves every spia, then returns `value`, or void when it is null.
+        void emitReturn(llvm::Value* value);
 
         // For a call whose error nobody handles: stops the program with the
         // error message if the call failed, and leaves the plain value.

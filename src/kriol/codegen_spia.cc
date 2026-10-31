@@ -8,7 +8,10 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IntrinsicInst.h>
 
+#include <iterator>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace kriol {
@@ -88,17 +91,50 @@ void CodeGenVisitor::emitFailureToSpia(llvm::Value* erruValue, llvm::Value* call
     SpiaFrames.pop_back();
     if (frame.RuntimeHandlerPushed)
         emitSpiaPop();
-    emitSempriThenFail(frame.Sempri, erruValue, callLine);
+    emitSempriThenFail(frame, erruValue, callLine);
     SpiaFrames.push_back(frame);
 }
 
-void CodeGenVisitor::emitSempriThenFail(ast::BlockSttmt* sempri, llvm::Value* erruValue, llvm::Value* callLine)
+void CodeGenVisitor::emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine)
 {
-    if (sempri)
-        sempri->accept(*this);
+    emitSempri(frame);
+    emitFailure(erruValue, callLine);
+}
+
+// Emitted where the spia is left, so the names declared inside it are hidden first.
+void CodeGenVisitor::emitSempri(const SpiaFrame& frame)
+{
+    if (frame.Sempri) {
+        std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> inner(
+            std::make_move_iterator(Scopes.begin() + frame.ScopeDepth), std::make_move_iterator(Scopes.end()));
+        Scopes.resize(frame.ScopeDepth);
+        frame.Sempri->accept(*this);
+        Scopes.insert(Scopes.end(), std::make_move_iterator(inner.begin()), std::make_move_iterator(inner.end()));
+    }
     if (Builder->GetInsertBlock()->getTerminator())
         startDeadBlock();
-    emitFailure(erruValue, callLine);
+}
+
+void CodeGenVisitor::emitSpiaExits(size_t keep)
+{
+    const std::vector<SpiaFrame> enclosing = SpiaFrames;
+    while (SpiaFrames.size() > keep) {
+        const SpiaFrame frame = SpiaFrames.back();
+        SpiaFrames.pop_back();
+        if (frame.RuntimeHandlerPushed)
+            emitSpiaPop();
+        emitSempri(frame);
+    }
+    SpiaFrames = enclosing;
+}
+
+void CodeGenVisitor::emitReturn(llvm::Value* value)
+{
+    emitSpiaExits(0);
+    if (value)
+        Builder->CreateRet(value);
+    else
+        Builder->CreateRetVoid();
 }
 
 void CodeGenVisitor::emitSpiaHandler(const SpiaFrame& catchTo)
@@ -136,6 +172,7 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
 
     SpiaFrame body{catchBB, errSlot, lineSlot, node.Sempri.get()};
     body.RuntimeHandlerPushed = true;
+    body.ScopeDepth = Scopes.size();
     emitSpiaHandler(body);
     SpiaFrames.push_back(body);
     node.Body->accept(*this);
@@ -164,7 +201,7 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
             Builder->SetInsertPoint(oopsEscapeBB);
     }
     if (!node.Oops || node.Sempri)
-        emitSempriThenFail(node.Sempri.get(), Builder->CreateLoad(erruTy, errSlot, "spia.error"),
+        emitSempriThenFail(body, Builder->CreateLoad(erruTy, errSlot, "spia.error"),
                            Builder->CreateLoad(Builder->getInt32Ty(), lineSlot, "spia.line"));
 
     Builder->SetInsertPoint(endBB);

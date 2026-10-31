@@ -1,0 +1,40 @@
+// expect: :39: erro de execução: divisão por zero
+fn do_corpo() int {
+    spia {
+        divolvi 1;
+    } sempri {
+        mostran("sempri");
+    }
+    divolvi 0;
+}
+
+fn do_oops() int {
+    spia {
+        lansa Erru{mensage = "x"};
+    } oops (err) {
+        divolvi 2;
+    } sempri {
+        mostran("sempri");
+    }
+    divolvi 0;
+}
+
+fn dos_ciclos() {
+    pa int i = 0; i < 3; i += 1 {
+        spia {
+            si i == 0 {
+                kontinua;
+            }
+            kebra;
+        } oops (err) {
+            mostran(err.mensage);
+        }
+    }
+}
+
+fn inisiu() {
+    int zero = do_corpo() + do_oops() - 3;
+    dos_ciclos();
+    mostran(zero);
+    mostran(10 / zero);
+}

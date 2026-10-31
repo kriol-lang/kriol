@@ -1764,7 +1764,8 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
 
     auto* savedExit = LoopExit;
     auto* savedCont = LoopContinue;
-    LoopExit = exitBB; LoopContinue = condBB;
+    const size_t savedSpiaDepth = LoopSpiaDepth;
+    LoopExit = exitBB; LoopContinue = condBB; LoopSpiaDepth = SpiaFrames.size();
 
     Builder->CreateBr(condBB);
     Builder->SetInsertPoint(condBB);
@@ -1777,18 +1778,17 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
         Builder->CreateBr(condBB);
 
     Builder->SetInsertPoint(exitBB);
-    LoopExit = savedExit; LoopContinue = savedCont;
+    LoopExit = savedExit; LoopContinue = savedCont; LoopSpiaDepth = savedSpiaDepth;
     LastValue = nullptr;
 }
 
 void CodeGenVisitor::visit(JumpSttmt& node) {
-    if (node.Name == "kebra" && LoopExit) {
-        Builder->CreateBr(LoopExit);
-        startDeadBlock();
-    } else if (node.Name == "kontinua" && LoopContinue) {
-        Builder->CreateBr(LoopContinue);
-        startDeadBlock();
-    }
+    llvm::BasicBlock* target = node.Name == "kebra" ? LoopExit : LoopContinue;
+    if (!target)
+        return;
+    emitSpiaExits(LoopSpiaDepth);
+    Builder->CreateBr(target);
+    startDeadBlock();
 }
 
 void CodeGenVisitor::visit(ReturnSttmt& node) {
@@ -1801,10 +1801,10 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
         emitAggregateStore(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
         if (CurrentCanFail) {
             auto* resultTy = llvm::cast<llvm::StructType>(retTy);
-            Builder->CreateRet(Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(resultTy),
-                                                          CurrentReturnSlot, {1u}));
+            emitReturn(Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(resultTy),
+                                                  CurrentReturnSlot, {1u}));
         } else {
-            Builder->CreateRet(CurrentReturnSlot);
+            emitReturn(CurrentReturnSlot);
         }
     } else if (CurrentCanFail && !CurrentIsMain) {
         auto* resultTy = llvm::cast<llvm::StructType>(retTy);
@@ -1814,19 +1814,19 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
             llvm::Value* value = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
             result = Builder->CreateInsertValue(result, value, {1u});
         }
-        Builder->CreateRet(result);
+        emitReturn(result);
     } else if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         // Coerce to the function's declared return type (e.g. int -> num widening)
         if (LastValue && LastValue->getType() != retTy)
             LastValue = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
-        Builder->CreateRet(LastValue);
+        emitReturn(LastValue);
     } else if (retTy->isVoidTy()) {
-        Builder->CreateRetVoid();
+        emitReturn(nullptr);
     } else {
         // A bare 'divolvi;' inside inisiu: main returns i32, so return 0
         // instead of emitting an invalid 'ret void'.
-        Builder->CreateRet(llvm::Constant::getNullValue(retTy));
+        emitReturn(llvm::Constant::getNullValue(retTy));
     }
     // Anything else in this source block is unreachable; give it a fresh
     // block so it still produces structurally valid IR.
@@ -2070,7 +2070,8 @@ void CodeGenVisitor::visit(ForSttmt& node) {
 
     auto* savedExit = LoopExit;
     auto* savedCont = LoopContinue;
-    LoopExit = exitBB; LoopContinue = afterBB;
+    const size_t savedSpiaDepth = LoopSpiaDepth;
+    LoopExit = exitBB; LoopContinue = afterBB; LoopSpiaDepth = SpiaFrames.size();
 
     pushScope();
     if (node.Start) node.Start->accept(*this);
@@ -2095,7 +2096,7 @@ void CodeGenVisitor::visit(ForSttmt& node) {
 
     Builder->SetInsertPoint(exitBB);
     popScope();
-    LoopExit = savedExit; LoopContinue = savedCont;
+    LoopExit = savedExit; LoopContinue = savedCont; LoopSpiaDepth = savedSpiaDepth;
     LastValue = nullptr;
 }
 
