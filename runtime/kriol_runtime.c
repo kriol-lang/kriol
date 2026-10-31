@@ -328,7 +328,7 @@ _Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t
     memcpy(copy, message ? message : "", length + 1);
     free(frame->Message);
     frame->Message = copy;
-    frame->Kind = kind;
+    frame->Kind = kind ? kind : "lansa";
     frame->Line = line;
     longjmp(frame->Jump, 1);
 }
@@ -340,6 +340,8 @@ _Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t li
 }
 
 _Noreturn void __kriol_report_escaped(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
+    if (!kind)
+        kind = "lansa";
     if (strcmp(kind, "divizon") == 0 || strcmp(kind, "indisi") == 0 ||
         strcmp(kind, "konfirma") == 0 || strcmp(kind, "paniku") == 0)
         __kriol_stop(origin_line, KRIOL_RUNTIME_ERROR, message);

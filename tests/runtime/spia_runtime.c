@@ -172,6 +172,7 @@ static void trigger_bounds(void) { __kriol_check_bounds(5, 3, 4); }
 static void trigger_assert(void) { __kriol_assert(0, 2); }
 static void trigger_fail_at(void) { __kriol_fail_at("paniku", "boom", 9); }
 static void trigger_raise(void) { __kriol_raise("falhou", "lansa", 11, 12); }
+static void trigger_zeroed_erru(void) { __kriol_raise(NULL, NULL, 0, 6); }
 
 static void runtime_checks_throw_with_their_kind(void) {
     expect_check_kind(trigger_div, "divizon", "divisão por zero", 3);
@@ -181,6 +182,7 @@ static void runtime_checks_throw_with_their_kind(void) {
     expect_check_kind(trigger_assert, "konfirma", "a condição de konfirma é falsa", 2);
     expect_check_kind(trigger_fail_at, "paniku", "boom", 9);
     expect_check_kind(trigger_raise, "lansa", "falhou", 11);
+    expect_check_kind(trigger_zeroed_erru, "lansa", "", 0);
     CHECK(!__kriol_spia_active());
 }
 
@@ -235,6 +237,11 @@ static void child_raise_without_handler(const char* kind) {
     __kriol_raise("falhou", kind, 11, 12);
 }
 
+static void child_raise_zeroed_erru(const char* kind) {
+    (void)kind;
+    __kriol_raise(NULL, NULL, 0, 6);
+}
+
 static void expect_child(void (*body)(const char*), const char* kind, const char* expected_stderr) {
     ChildResult result = run_child(body, kind);
     CHECK(result.status == 1);
@@ -255,6 +262,8 @@ static void raise_without_a_handler_reports_by_kind(void) {
     const char* value_kinds[] = {"lansa", "konverti", "toma"};
     for (size_t i = 0; i < sizeof value_kinds / sizeof *value_kinds; ++i)
         expect_child(child_raise_without_handler, value_kinds[i], "kriol:12: erro não tratado: falhou\n");
+
+    expect_child(child_raise_zeroed_erru, "", "kriol:6: erro não tratado: \n");
 }
 
 int main(void) {
