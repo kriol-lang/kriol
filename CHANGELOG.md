@@ -10,14 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Add `spia { } oops (err) { } sempri { }`, the Kriol try/catch/finally. The
   `oops` block catches an `Erru` raised with `lansa` inside the `spia`, one
-  returned by a call at any depth, an unhandled `toma()` or `konverti()` error,
-  and the runtime errors that used to end the program: division by zero, a
+  returned by a call at any depth, a failed `toma()` or `konverti()`, and the
+  runtime errors that used to end the program: division by zero, a
   division result that does not fit its type, an index out of bounds, a failed
   `konfirma` and `paniku`. The program continues after the block, `lansa err;`
   inside `oops` raises the error again, and `sempri` runs on every way out of
   the block, including `divolvi`, `kebra` and `kontinua`. `sai(n)` and
   out-of-memory are never caught. Programs without `spia` compile to the same
-  code and print the same messages as before. ([#31])
+  code and print the same messages as before. `spia` works in native,
+  `x86_64-windows` and `wasm32-wasi` builds. A WebAssembly program that uses
+  `spia` needs a host with WebAssembly exception handling; one that does not
+  use `spia` is unchanged. ([#31])
 - Give `Erru` three new fields after `mensage`: `tipu` (`textu`, one of
   `"lansa"`, `"paniku"`, `"divizon"`, `"indisi"`, `"konfirma"`, `"konverti"`
   and `"toma"`), `fixeru` (`textu`) and `linha` (`int`). `Erru{mensage = "x"}`
