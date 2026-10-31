@@ -1,0 +1,17 @@
+fn falha() int : Erru {
+    lansa Erru{mensage = "falha"};
+}
+
+fn no_oops() int : Erru {
+    spia {
+        lansa Erru{mensage = "primeiro"};
+    } oops (err) {
+        int x = falha();
+        mostran(f"nunca {x}");
+    }
+    divolvi 1;
+}
+
+fn inisiu() {
+    mostran(no_oops() sinon 42);
+}

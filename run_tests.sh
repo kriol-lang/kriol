@@ -198,6 +198,21 @@ else
 fi
 rm -f "$tmpbin"
 
+OOPS_CALL="$ROOT/tests/pass/spia_oops_unhandled_call.kr"
+printf "  %-44s" "unhandled call in oops warns of the return"
+if "$KRIOL" "$OOPS_CALL" -o /dev/null 2>&1 | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "unhandled call in oops warns of the return"
+fi
+
+printf "  %-44s" "--strict rejects an unhandled call in oops"
+if "$KRIOL" --strict "$OOPS_CALL" -o /dev/null >/dev/null 2>&1; then
+    echo " FAIL (should have been rejected)"; record_failure "--strict rejects an unhandled call in oops"
+else
+    echo " PASS"; pass=$((pass+1))
+fi
+
 for program in spia_lexical spia_value_error_from_callee; do
     printf "  %-44s" "--strict accepts $program"
     tmpbin=$(mktemp /tmp/kriol_strict_XXXX)

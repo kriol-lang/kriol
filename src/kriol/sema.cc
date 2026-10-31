@@ -885,9 +885,14 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     // Only functions declared with ': Erru' warn; an unhandled toma() or
     // T::konverti() also stops the program on failure, but silently, to keep
     // simple programs simple.
-    if (info.canFail && !handled && SpiaBodyDepth == 0)
-        addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso o "
-                   "programa termina se a função falhar; usa 'tenta' ou 'sinon'");
+    if (info.canFail && !handled && SpiaBodyDepth == 0) {
+        const bool returnedToCaller = OopsDepth > 0 && CurrFuncCanFail;
+        const std::string consequence = returnedToCaller
+            ? "é devolvido a quem chamou esta função"
+            : "o programa termina se a função falhar";
+        addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso "
+                   + consequence + "; usa 'tenta' ou 'sinon'");
+    }
 
     size_t want = info.paramTypes.size();
 

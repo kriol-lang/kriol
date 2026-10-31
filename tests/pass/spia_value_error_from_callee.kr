@@ -32,9 +32,20 @@ fn chamador_falivel(int b) int : Erru {
     divolvi -1;
 }
 
+fn so_sempri(int b) int : Erru {
+    spia {
+        int r = divide(10, b);
+        mostran(f"só sempri {r}");
+    } sempri {
+        mostran("sempri do só sempri");
+    }
+    divolvi 0;
+}
+
 fn inisiu() {
     chamador(2);
     chamador(0);
     mostran(chamador_falivel(5) sinon 99);
     mostran(chamador_falivel(0) sinon 99);
+    mostran(so_sempri(0) sinon 43);
 }

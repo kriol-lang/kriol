@@ -94,6 +94,15 @@ fn ciclo_no_sempri() {
     }
 }
 
+fn konverti_sem_tratamento() {
+    spia {
+        int n = int::konverti("abc");
+        mostran(n);
+    } oops (err) {
+        mostran(f"oops do konverti: {err.tipu}");
+    }
+}
+
 fn inisiu() {
     lansa_direto();
     mostran(tenta_no_spia() sinon 0);
@@ -104,4 +113,5 @@ fn inisiu() {
     com_sempri(sin);
     sempri_substitui();
     ciclo_no_sempri();
+    konverti_sem_tratamento();
 }
