@@ -55,7 +55,7 @@ directive() {
 # write the expected output. An empty runner executes the program directly.
 # Why the last program test failed, shown under its FAIL line.
 DETAIL=$(mktemp /tmp/kriol_detail_XXXX)
-trap 'rm -f "$DETAIL"' EXIT
+trap 'rm -f "$DETAIL"; [ -z "${shimdir:-}" ] || rm -rf "$shimdir"' EXIT
 
 # Writes a failed run to $DETAIL: its exit status, what it wrote to stderr and
 # how its output differs from the expected one.
@@ -152,8 +152,8 @@ rm -f "$tmpbin"
 # Prints why a compile was not clean, or nothing at all when it was.
 silent_link_problem() {
     local status="$1" out="$2" program="$3"
-    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return; }
-    [ -x "$program" ] || { echo "no executable produced"; return; }
+    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return 0; }
+    [ -x "$program" ] || { echo "no executable produced"; return 0; }
     [ -z "$out" ] || echo "wrote to stdout or stderr"
 }
 
@@ -174,9 +174,10 @@ rm -f "$tmpbin"
 # A silent link does not prove which flags produced the silence: a linker that
 # ignores the deployment target is just as quiet as one that receives it.
 link_flag_problem() {
-    local status="$1" verdict="$2" program="$3"
-    [ ! -s "$verdict" ] || { cat "$verdict"; return; }
-    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return; }
+    local status="$1" shim_dir="$2" program="$3"
+    [ -f "$shim_dir/called" ] || { echo "linker shim never invoked"; return 0; }
+    [ ! -s "$shim_dir/verdict" ] || { cat "$shim_dir/verdict"; return 0; }
+    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return 0; }
     [ -x "$program" ] || echo "no executable produced"
 }
 
@@ -192,20 +193,25 @@ if [ -z "$real_linker" ]; then
 else
     shimdir=$(mktemp -d /tmp/kriol_shim_XXXX)
     # The compiler turns a failing linker into its own exit 1, so the shim
-    # reports which flag was wrong through a file instead of a status.
+    # reports which flag was wrong through a file instead of a status. It
+    # records that it ran at all, because a shim the compiler never reaches
+    # would otherwise look like a clean link, and it restores PATH before
+    # handing over, or a real linker that re-invokes itself by name recurses.
+    outer_path="$PATH"
     cat > "$shimdir/clang" <<SHIM
 #!/bin/sh
+: > '$shimdir/called'
 printf '%s\n' "\$@" | grep -q -- '^$flag_want' ||
     { echo 'linker never got $flag_want' > '$shimdir/verdict'; exit 1; }
 printf '%s\n' "\$@" | grep -q -- '^$flag_reject' &&
     { echo 'linker got $flag_reject' > '$shimdir/verdict'; exit 1; }
-exec '$real_linker' "\$@"
+exec env PATH='$outer_path' '$real_linker' "\$@"
 SHIM
     chmod +x "$shimdir/clang"
     tmpbin=$(mktemp /tmp/kriol_flags_XXXX)
     flag_status=0
     PATH="$shimdir:$PATH" "$KRIOL" --text 'fn inisiu() {}' -o "$tmpbin" >/dev/null 2>&1 || flag_status=$?
-    flag_problem=$(link_flag_problem "$flag_status" "$shimdir/verdict" "$tmpbin")
+    flag_problem=$(link_flag_problem "$flag_status" "$shimdir" "$tmpbin")
     if [ -z "$flag_problem" ]; then
         echo " PASS"; pass=$((pass+1))
     else
