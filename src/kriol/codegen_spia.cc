@@ -69,11 +69,12 @@ void CodeGenVisitor::emitCaughtRuntimeError(const SpiaFrame& frame)
     auto* message = Builder->CreateCall(format, {asText, getter("__kriol_spia_message", ptrTy)}, "spia.message");
     auto* kind = Builder->CreateCall(format, {asText, getter("__kriol_spia_kind", ptrTy)}, "spia.kind");
     auto* line = getter("__kriol_spia_line", i32Ty);
+    auto* callLine = getter("__kriol_spia_call_line", i32Ty);
     emitSpiaPop();
     if (frame.RuntimeSlot)
         Builder->CreateStore(Builder->getTrue(), frame.RuntimeSlot);
     Builder->CreateStore(makeErru(message, kind, Builder->CreateSExt(line, Builder->getInt64Ty())), frame.ErrSlot);
-    Builder->CreateStore(line, frame.LineSlot);
+    Builder->CreateStore(callLine, frame.LineSlot);
     Builder->CreateBr(frame.CatchBB);
 }
 

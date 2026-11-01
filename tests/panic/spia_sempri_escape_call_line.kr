@@ -1,0 +1,17 @@
+// expect: :7: erro não tratado: de k
+fn k() int : Erru {
+    lansa Erru{mensage = "de k"};
+}
+
+fn d() int {
+    int x = k();
+    divolvi x;
+}
+
+fn inisiu() {
+    spia {
+        mostran(d());
+    } sempri {
+        mostran("sempri");
+    }
+}

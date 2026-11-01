@@ -177,7 +177,7 @@ namespace ast {
         llvm::Value* erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback);
         llvm::Value* makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line);
         // Reports `erru` as unhandled, or throws it to an active spia, and ends the block.
-        // `callLine` is an i32, as are the lines of emitFailure.
+        // `callLine` is an i32, the line the error is reported at.
         void emitRaise(llvm::Value* erru, llvm::Value* callLine);
 
         // Sends the given Erru to the innermost enclosing oops, running the

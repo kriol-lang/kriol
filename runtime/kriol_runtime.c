@@ -280,6 +280,7 @@ struct KriolSpiaFrame {
     char* Message;
     char* Kind;
     int32_t Line;
+    int32_t CallLine;
 };
 
 static KriolSpiaFrame* __kriol_spia_top = NULL;
@@ -291,6 +292,7 @@ KriolSpiaFrame* __kriol_spia_push(void) {
     frame->Message = NULL;
     frame->Kind = NULL;
     frame->Line = 0;
+    frame->CallLine = 0;
     __kriol_spia_top = frame;
     return frame;
 }
@@ -320,6 +322,10 @@ int32_t __kriol_spia_line(void) {
     return __kriol_spia_top->Line;
 }
 
+int32_t __kriol_spia_call_line(void) {
+    return __kriol_spia_top->CallLine;
+}
+
 static char* __kriol_spia_copy(const char* text) {
     size_t length = strlen(text);
     char* copy = (char*)malloc(length + 1);
@@ -330,7 +336,7 @@ static char* __kriol_spia_copy(const char* text) {
 
 /* Copied: callers build them in stack frames that the jump discards, or in GC
    text that only the discarded frames still reference. */
-_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line) {
+_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line, int32_t call_line) {
     KriolSpiaFrame* frame = __kriol_spia_top;
     char* message_copy = __kriol_spia_copy(message ? message : "");
     char* kind_copy = __kriol_spia_copy(kind ? kind : "lansa");
@@ -339,12 +345,13 @@ _Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t
     frame->Message = message_copy;
     frame->Kind = kind_copy;
     frame->Line = line;
+    frame->CallLine = call_line;
     longjmp(frame->Jump, 1);
 }
 
 _Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t line) {
     if (__kriol_spia_active())
-        __kriol_spia_throw(kind, message, line);
+        __kriol_spia_throw(kind, message, line, line);
     __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
 }
 
@@ -359,7 +366,7 @@ _Noreturn void __kriol_report_escaped(const char* message, const char* kind, int
 
 _Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
     if (__kriol_spia_active())
-        __kriol_spia_throw(kind, message, origin_line);
+        __kriol_spia_throw(kind, message, origin_line, call_line);
     __kriol_report_escaped(message, kind, origin_line, call_line);
 }
 
