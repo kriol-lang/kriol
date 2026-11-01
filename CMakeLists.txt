@@ -84,12 +84,17 @@ if(APPLE)
     if(CMAKE_OSX_DEPLOYMENT_TARGET)
         set(_KRIOL_MACOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
     else()
-        # The sysroot has to match the one libgc is compiled against: Apple's
-        # clang infers the default target from the SDK, not from the host alone.
-        set(_KRIOL_PREDEFINE_ARGS -dM -E -x c /dev/null)
+        # Probe the compiler the way the build invokes it for libgc: Apple's
+        # clang infers the default target from the sysroot and the C flags, not
+        # from the host alone, so a probe missing either measures something the
+        # archive does not have.
+        set(_KRIOL_PREDEFINE_ARGS "")
         if(CMAKE_OSX_SYSROOT)
-            list(PREPEND _KRIOL_PREDEFINE_ARGS -isysroot "${CMAKE_OSX_SYSROOT}")
+            list(APPEND _KRIOL_PREDEFINE_ARGS -isysroot "${CMAKE_OSX_SYSROOT}")
         endif()
+
+        separate_arguments(_KRIOL_C_FLAGS NATIVE_COMMAND "${CMAKE_C_FLAGS}")
+        list(APPEND _KRIOL_PREDEFINE_ARGS ${_KRIOL_C_FLAGS} -dM -E -x c /dev/null)
 
         execute_process(
             COMMAND "${CMAKE_C_COMPILER}" ${_KRIOL_PREDEFINE_ARGS}
