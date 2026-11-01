@@ -177,12 +177,6 @@ _Noreturn void __kriol_panic_at(const char* message, int line) {
     __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
 }
 
-/* An Erru that a call did not handle: one returned to inisiu, or one of a call
-   without 'tenta' or 'sinon'. */
-_Noreturn void __kriol_unhandled_error(const char* message, int line) {
-    __kriol_stop(line, KRIOL_UNHANDLED_ERROR, message);
-}
-
 #if !KRIOL_RUNTIME_NO_GC
 static void* __kriol_gc_out_of_memory(size_t requested_bytes) {
     (void)requested_bytes;
