@@ -65,6 +65,9 @@ namespace sema {
         // read the variable itself.
         std::string InitializingVar;
 
+        // Aggregate literals codegen builds in their destination instead of a stack temporary.
+        std::unordered_set<const ast::Expr*> InPlaceLiterals;
+
         GlobalInitOrder InitOrder;
 
         // Collected errors
@@ -155,6 +158,9 @@ namespace sema {
         // Approximate storage size of a value of `type` (ignores padding),
         // saturating instead of overflowing for huge arrays.
         std::size_t storageBytes(const Type& type) const;
+
+        void markInPlace(const ast::Expr* value) { if (value) InPlaceLiterals.insert(value); }
+        void rejectLargeTemporary(const ast::Expr& literal, const Type& type, int lineNum);
 
         // Validates that a condition expression has a type usable in a branch
         // (bool or numeric). Anything else cannot be lowered to a truth value.

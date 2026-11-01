@@ -1,0 +1,13 @@
+// expect: o valor devolvido pela função 'grandi' ocupa 1600000 bytes, mais do que o limite de 1048576 bytes
+molda Grandi {
+    int[200000] v;
+}
+
+Grandi global = Grandi{v = [0; 200000]};
+
+fn grandi() Grandi {
+    divolvi global;
+}
+
+fn inisiu() {
+}
