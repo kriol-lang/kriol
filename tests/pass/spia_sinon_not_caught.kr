@@ -1,0 +1,13 @@
+fn falha() int : Erru {
+    lansa Erru{mensage = "x"};
+}
+
+fn inisiu() {
+    spia {
+        int v = falha() sinon 5;
+        mostran(v);
+    } oops (err) {
+        mostran("oops");
+    }
+    mostran("fin");
+}

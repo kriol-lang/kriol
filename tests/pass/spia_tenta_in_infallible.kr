@@ -1,0 +1,17 @@
+fn g() int : Erru {
+    lansa Erru{mensage = "de g"};
+}
+
+fn sem_erru() {
+    spia {
+        int x = tenta g();
+        mostran("nunca ", x);
+    } oops (err) {
+        mostran("oops: ", err.mensage);
+    }
+}
+
+fn inisiu() {
+    sem_erru();
+    mostran("fin");
+}
