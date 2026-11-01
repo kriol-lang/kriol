@@ -149,16 +149,71 @@ fi
 rm -f "$tmpbin"
 
 # ---- the toolchain the compiler drives must stay quiet ---------------------
+# Prints why a compile was not clean, or nothing at all when it was.
+silent_link_problem() {
+    local status="$1" out="$2" program="$3"
+    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return; }
+    [ -x "$program" ] || { echo "no executable produced"; return; }
+    [ -z "$out" ] || echo "wrote to stdout or stderr"
+}
+
 printf "  %-44s" "silent link"
 tmpbin=$(mktemp /tmp/kriol_silent_XXXX)
-link_out=$("$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpbin" 2>&1)
-if [ -z "$link_out" ] && [ -x "$tmpbin" ]; then
+link_status=0
+link_out=$("$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpbin" 2>&1) || link_status=$?
+link_problem=$(silent_link_problem "$link_status" "$link_out" "$tmpbin")
+if [ -z "$link_problem" ]; then
     echo " PASS"; pass=$((pass+1))
 else
-    echo " FAIL"; record_failure "silent link"
-    printf '%s\n' "$link_out" | sed 's/^/      /'
+    echo " FAIL ($link_problem)"; record_failure "silent link"
+    [ -z "$link_out" ] || printf '%s\n' "$link_out" | sed 's/^/      /'
 fi
 rm -f "$tmpbin"
+
+# ---- the link flags the compiler chooses per platform ----------------------
+# A silent link does not prove which flags produced the silence: a linker that
+# ignores the deployment target is just as quiet as one that receives it.
+link_flag_problem() {
+    local status="$1" verdict="$2" program="$3"
+    [ ! -s "$verdict" ] || { cat "$verdict"; return; }
+    [ "$status" -eq 0 ] || { echo "compiler exited $status"; return; }
+    [ -x "$program" ] || echo "no executable produced"
+}
+
+printf "  %-44s" "platform link flags"
+real_linker=$(command -v clang || command -v cc || true)
+if [ "$(uname -s)" = Darwin ]; then
+    flag_want='-mmacosx-version-min=' flag_reject='-no-pie'
+else
+    flag_want='-no-pie' flag_reject='-mmacosx-version-min='
+fi
+if [ -z "$real_linker" ]; then
+    echo " FAIL (no clang or cc on PATH)"; record_failure "platform link flags"
+else
+    shimdir=$(mktemp -d /tmp/kriol_shim_XXXX)
+    # The compiler turns a failing linker into its own exit 1, so the shim
+    # reports which flag was wrong through a file instead of a status.
+    cat > "$shimdir/clang" <<SHIM
+#!/bin/sh
+printf '%s\n' "\$@" | grep -q -- '^$flag_want' ||
+    { echo 'linker never got $flag_want' > '$shimdir/verdict'; exit 1; }
+printf '%s\n' "\$@" | grep -q -- '^$flag_reject' &&
+    { echo 'linker got $flag_reject' > '$shimdir/verdict'; exit 1; }
+exec '$real_linker' "\$@"
+SHIM
+    chmod +x "$shimdir/clang"
+    tmpbin=$(mktemp /tmp/kriol_flags_XXXX)
+    flag_status=0
+    PATH="$shimdir:$PATH" "$KRIOL" --text 'fn inisiu() {}' -o "$tmpbin" >/dev/null 2>&1 || flag_status=$?
+    flag_problem=$(link_flag_problem "$flag_status" "$shimdir/verdict" "$tmpbin")
+    if [ -z "$flag_problem" ]; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL ($flag_problem)"; record_failure "platform link flags"
+    fi
+    rm -rf "$shimdir"
+    rm -f "$tmpbin"
+fi
 
 # ---- optimization levels -----------------------------------------------------
 for level in 0 3; do
