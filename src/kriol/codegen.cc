@@ -707,8 +707,21 @@ llvm::StructType* CodeGenVisitor::getOrCreateRecordType(const std::string& name)
 
 llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
         llvm::Function* fn, const std::string& name, llvm::Type* ty) {
+    std::vector<llvm::AllocaInst*>* shared = nullptr;
+    size_t index = 0;
+    if (!SempriCopies.empty()) {
+        auto& [sempri, next] = SempriCopies.back();
+        shared = &SempriAllocas[sempri];
+        index = next++;
+        if (index < shared->size() && (*shared)[index]->getAllocatedType() == ty
+            && (*shared)[index]->getFunction() == fn)
+            return (*shared)[index];
+    }
     llvm::IRBuilder<> tmp(&fn->getEntryBlock(), fn->getEntryBlock().begin());
-    return tmp.CreateAlloca(ty, nullptr, name);
+    auto* alloca = tmp.CreateAlloca(ty, nullptr, name);
+    if (shared && index == shared->size())
+        shared->push_back(alloca);
+    return alloca;
 }
 
 llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {

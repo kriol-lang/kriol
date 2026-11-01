@@ -172,6 +172,17 @@ else
 fi
 rm -f "$tmpbin"
 
+printf "  %-44s" "sempri copies share locals at --opt-lvl 0"
+tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
+SEMPRI="$ROOT/tests/pass/spia_sempri_large_local_many_exits.kr"
+if "$KRIOL" --opt-lvl 0 "$SEMPRI" -o "$tmpbin" > "$DETAIL" 2>&1 && runs_cleanly "$SEMPRI" "" "$tmpbin"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "sempri copies share locals at --opt-lvl 0"
+    sed 's/^/      /' "$DETAIL"
+fi
+rm -f "$tmpbin"
+
 # ---- unhandled errors: warning, --strict and the runtime stop -------------------
 UNHANDLED='fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 

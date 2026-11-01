@@ -127,11 +127,18 @@ void CodeGenVisitor::emitSempri(const SpiaFrame& frame)
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> inner(
             std::make_move_iterator(Scopes.begin() + frame.ScopeDepth), std::make_move_iterator(Scopes.end()));
         Scopes.resize(frame.ScopeDepth);
-        frame.Sempri->accept(*this);
+        emitSempriCopy(*frame.Sempri);
         Scopes.insert(Scopes.end(), std::make_move_iterator(inner.begin()), std::make_move_iterator(inner.end()));
     }
     if (Builder->GetInsertBlock()->getTerminator())
         startDeadBlock();
+}
+
+void CodeGenVisitor::emitSempriCopy(ast::BlockSttmt& sempri)
+{
+    SempriCopies.emplace_back(&sempri, 0);
+    sempri.accept(*this);
+    SempriCopies.pop_back();
 }
 
 void CodeGenVisitor::emitSpiaExits(size_t keep)
@@ -231,7 +238,7 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
 
     Builder->SetInsertPoint(endBB);
     if (node.Sempri)
-        node.Sempri->accept(*this);
+        emitSempriCopy(*node.Sempri);
     LastValue = nullptr;
 }
 

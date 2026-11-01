@@ -226,6 +226,13 @@ $run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
 Write-Result 'spia keeps locals at --opt-lvl 3' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
     (Test-Stdout $locals $run.Stdout))
 
+$sempri = Get-Item (Join-Path $Root 'tests/pass/spia_sempri_large_local_many_exits.kr')
+$exe = Join-Path $Work 'sempri.exe'
+$ok = Invoke-Kriol @('--opt-lvl', '0', $sempri.FullName, '-o', $exe)
+$run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
+Write-Result 'sempri copies share locals at --opt-lvl 0' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
+    (Test-Stdout $sempri $run.Stdout))
+
 $unhandled = 'fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'
 $ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)

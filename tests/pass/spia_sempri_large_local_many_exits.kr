@@ -1,0 +1,26 @@
+fn f(int n) int {
+    spia {
+        si n == 1 { divolvi 1; }
+        si n == 2 { divolvi 2; }
+        si n == 3 { divolvi 3; }
+        si n == 4 { divolvi 4; }
+        si n == 5 { divolvi 5; }
+        si n == 6 { divolvi 6; }
+        si n == 7 { divolvi 7; }
+        si n == 8 { divolvi 8; }
+        si n == 9 { divolvi 9; }
+        si n == 10 { divolvi 10; }
+        si n == 11 { divolvi 11; }
+        si n == 12 { divolvi 12; }
+    } sempri {
+        int[120000] buf = [0; 120000];
+        buf[n] = n;
+        mostran("sempri ", buf[n]);
+    }
+    divolvi 0;
+}
+
+fn inisiu() {
+    mostran(f(3));
+    mostran(f(20));
+}

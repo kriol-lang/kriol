@@ -12,10 +12,6 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Value.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Type.h>
-#include <llvm/IR/BasicBlock.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 
 namespace kriol {
@@ -64,6 +60,9 @@ namespace ast {
         // The spia blocks enclosing the code being emitted, innermost last.
         std::vector<SpiaFrame> SpiaFrames;
         bool CurrentHasSpia = false;
+        // Copies of one sempri never run together, so they share its allocas, taken in order.
+        std::unordered_map<const ast::BlockSttmt*, std::vector<llvm::AllocaInst*>> SempriAllocas;
+        std::vector<std::pair<const ast::BlockSttmt*, size_t>> SempriCopies;
 
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
@@ -189,6 +188,7 @@ namespace ast {
         void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime = nullptr);
         void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime);
         void emitSempri(const SpiaFrame& frame);
+        void emitSempriCopy(ast::BlockSttmt& sempri);
         // Leaves every spia but the outermost `keep`, popping its handler and running its sempri.
         void emitSpiaExits(size_t keep);
         // Leaves every spia, then returns `value`, or void when it is null.
