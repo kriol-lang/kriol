@@ -71,6 +71,42 @@ if(UNIX)
 endif()
 
 # -----------------------------------------------------------------------------
+# macOS deployment target
+# -----------------------------------------------------------------------------
+
+# Generated programs link the embedded libgc archive compiled here; record its
+# deployment target so the link step asks for the same one instead of letting
+# whichever clang it finds apply that clang's own default.
+set(KRIOL_MACOS_DEPLOYMENT_TARGET "")
+
+if(APPLE)
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(KRIOL_MACOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+        execute_process(
+            COMMAND "${CMAKE_C_COMPILER}" -dM -E -x c /dev/null
+            OUTPUT_VARIABLE _KRIOL_C_PREDEFINES
+            ERROR_QUIET
+        )
+
+        if(_KRIOL_C_PREDEFINES MATCHES "__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ ([0-9]+)")
+            math(EXPR _KRIOL_MACOS_MAJOR "${CMAKE_MATCH_1} / 10000")
+            math(EXPR _KRIOL_MACOS_MINOR "${CMAKE_MATCH_1} / 100 % 100")
+            set(KRIOL_MACOS_DEPLOYMENT_TARGET "${_KRIOL_MACOS_MAJOR}.${_KRIOL_MACOS_MINOR}")
+        endif()
+    endif()
+
+    if(KRIOL_MACOS_DEPLOYMENT_TARGET)
+        message(STATUS "macOS deployment target ${KRIOL_MACOS_DEPLOYMENT_TARGET}")
+    else()
+        message(WARNING
+            "Could not read the macOS deployment target of ${CMAKE_C_COMPILER}; "
+            "linking generated programs may warn about the embedded libgc archive."
+        )
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # Tools
 # -----------------------------------------------------------------------------
 
@@ -401,6 +437,7 @@ function(kriol_configure_target TARGET_NAME)
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
         KRIOL_ENABLE_WINDOWS_TARGET=$<BOOL:${KRIOL_ENABLE_WINDOWS_TARGET}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
+        KRIOL_MACOS_DEPLOYMENT_TARGET="${KRIOL_MACOS_DEPLOYMENT_TARGET}"
     )
 endfunction()
 

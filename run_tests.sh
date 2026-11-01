@@ -148,6 +148,18 @@ else
 fi
 rm -f "$tmpbin"
 
+# ---- the toolchain the compiler drives must stay quiet ---------------------
+printf "  %-44s" "silent link"
+tmpbin=$(mktemp /tmp/kriol_silent_XXXX)
+link_out=$("$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpbin" 2>&1)
+if [ -z "$link_out" ] && [ -x "$tmpbin" ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "silent link"
+    printf '%s\n' "$link_out" | sed 's/^/      /'
+fi
+rm -f "$tmpbin"
+
 # ---- optimization levels -----------------------------------------------------
 for level in 0 3; do
     printf "  %-44s" "optimization level $level"
