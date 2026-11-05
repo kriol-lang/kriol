@@ -5,7 +5,7 @@ fn sem_erru() {
     } oops (err) {
         lansa err;
     }
-    mostran("nunca");
+    mostraln("nunca");
 }
 
 fn inisiu() {

@@ -7,11 +7,11 @@ fn so_sempri() int : Erru {
     spia {
         divolvi 1 / zero();
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 
 fn inisiu() {
-    mostran(so_sempri() sinon 42);
-    mostran("nunca");
+    mostraln(so_sempri() sinau 42);
+    mostraln("nunca");
 }

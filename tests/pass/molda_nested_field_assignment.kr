@@ -23,6 +23,6 @@ fn inisiu() {
 
     mostra(pessoa.enderesu.rua);
     mostra(" ");
-    mostran(pessoa.enderesu.numero);
-    mostran(f"F pessoa: {pessoa.flags}");
+    mostraln(pessoa.enderesu.numero);
+    mostraln(f"F pessoa: {pessoa.flags}");
 }

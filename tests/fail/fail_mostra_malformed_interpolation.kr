@@ -2,5 +2,5 @@
 // ERROR: Empty and malformed interpolations in f-string
 fn inisiu() {
     mostra(f"{}");
-    mostran(f'{');
+    mostraln(f'{');
 }

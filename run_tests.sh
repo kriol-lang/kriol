@@ -140,7 +140,7 @@ done
 # ---- command-line source text ---------------------------------------------
 printf "  %-44s" "inline source text"
 tmpbin=$(mktemp /tmp/kriol_text_XXXX)
-if "$KRIOL" --text 'fn inisiu() { mostran("Kualeh, Mundu!"); }' -o "$tmpbin" 2>/dev/null && \
+if "$KRIOL" --text 'fn inisiu() { mostraln("Kualeh, Mundu!"); }' -o "$tmpbin" 2>/dev/null && \
    [ "$("$TIMEOUT" 5 "$tmpbin")" = "Kualeh, Mundu!" ]; then
     echo " PASS"; pass=$((pass+1))
 else
@@ -160,7 +160,7 @@ silent_link_problem() {
 printf "  %-44s" "silent link"
 tmpbin=$(mktemp /tmp/kriol_silent_XXXX)
 link_status=0
-link_out=$("$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpbin" 2>&1) || link_status=$?
+link_out=$("$KRIOL" --text 'fn inisiu() { mostraln("x"); }' -o "$tmpbin" 2>&1) || link_status=$?
 link_problem=$(silent_link_problem "$link_status" "$link_out" "$tmpbin")
 if [ -z "$link_problem" ]; then
     echo " PASS"; pass=$((pass+1))
@@ -225,7 +225,7 @@ fi
 for level in 0 3; do
     printf "  %-44s" "optimization level $level"
     tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
-    if "$KRIOL" --opt-lvl "$level" --text 'fn inisiu() { int[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
+    if "$KRIOL" --opt-lvl "$level" --text 'fn inisiu() { int[3] a = [1, 2, 3]; mostraln(a[2] / a[0]); }' -o "$tmpbin" 2>/dev/null && \
        [ "$("$TIMEOUT" 5 "$tmpbin")" = "3" ]; then
         echo " PASS"; pass=$((pass+1))
     else
@@ -259,7 +259,7 @@ fi
 rm -f "$tmpbin"
 
 # ---- unhandled errors: warning, --strict and the runtime stop -------------------
-UNHANDLED='fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+UNHANDLED='fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostraln("never"); }'
 
 printf "  %-44s" "unhandled error warns"
 tmpbin=$(mktemp /tmp/kriol_warn_XXXX)
@@ -331,11 +331,52 @@ for program in spia_lexical spia_value_error_from_callee spia_sempri_catches_its
     rm -f "$tmpbin"
 done
 
+# ---- renamed words: the old names still compile, with a warning ------------
+DEPRECATED="$ROOT/tests/pass/deprecated_names.kr"
+deprecated_out=$("$KRIOL" "$DEPRECATED" -o /dev/null 2>&1)
+for old in "sinon:sinau:6 8" "mostran:mostraln:5 7"; do
+    IFS=: read -r name current lines <<< "$old"
+    printf "  %-44s" "'$name' warns that it is now '$current'"
+    missing=""
+    for line in $lines; do
+        echo "$deprecated_out" | grep -Fq "deprecated_names.kr:$line: aviso: '$name' está obsoleto; usa '$current'" \
+            || missing="$missing $line"
+    done
+    if [ -z "$missing" ]; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL (no warning on line$missing)"; record_failure "'$name' warns that it is now '$current'"
+        echo "$deprecated_out" | sed 's/^/      /'
+    fi
+done
+
+printf "  %-44s" "one warning per use of an old name"
+if [ "$(echo "$deprecated_out" | grep -Fc "está obsoleto")" -eq 4 ]; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "one warning per use of an old name"
+    echo "$deprecated_out" | sed 's/^/      /'
+fi
+
+printf "  %-44s" "--strict rejects the old names"
+if "$KRIOL" --strict "$DEPRECATED" -o /dev/null >/dev/null 2>&1; then
+    echo " FAIL (should have been rejected)"; record_failure "--strict rejects the old names"
+else
+    echo " PASS"; pass=$((pass+1))
+fi
+
+printf "  %-44s" "--strict accepts sinau and mostraln"
+if "$KRIOL" --strict --text 'fn inisiu() { si nau { mostra("a"); } sinau { mostraln("b"); } }' -o /dev/null >/dev/null 2>&1; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "--strict accepts sinau and mostraln"
+fi
+
 # ---- intermediate files stay out of the output directory --------------------
 printf "  %-44s" "output directory left untouched"
 tmpdir=$(mktemp -d /tmp/kriol_out_XXXX)
 echo precious > "$tmpdir/program.o"
-if "$KRIOL" --text 'fn inisiu() { mostran("x"); }' -o "$tmpdir/program" 2>/dev/null && \
+if "$KRIOL" --text 'fn inisiu() { mostraln("x"); }' -o "$tmpdir/program" 2>/dev/null && \
    [ "$(cat "$tmpdir/program.o" 2>/dev/null)" = "precious" ]; then
     echo " PASS"; pass=$((pass+1))
 else
@@ -360,7 +401,7 @@ rejects_with() {
 
 tmpdir=$(mktemp -d /tmp/kriol_cli_XXXX)
 mkdir "$tmpdir/folder.kriol"
-echo 'fn inisiu() { mostran("txt"); }' > "$tmpdir/program.txt"
+echo 'fn inisiu() { mostraln("txt"); }' > "$tmpdir/program.txt"
 rejects_with "cli: missing input" "falta o programa a compilar" -o /dev/null
 rejects_with "cli: file and --text together" "um ficheiro ou --text" \
     "$tmpdir/program.txt" --text 'fn inisiu() {}'

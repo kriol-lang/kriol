@@ -1,8 +1,8 @@
 // expect: não se esperava '{' aqui; esperava-se um nome ou '('
 fn inisiu() {
     spia {
-        mostran("x");
+        mostraln("x");
     } oops {
-        mostran("y");
+        mostraln("y");
     }
 }

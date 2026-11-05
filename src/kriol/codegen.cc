@@ -1501,15 +1501,15 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
 }
 
-void CodeGenVisitor::emitSinon(BinExpr& node) {
+void CodeGenVisitor::emitSinau(BinExpr& node) {
     node.LHS->accept(*this);
     llvm::Value* result = LastValue;
     if (!result)
-        throw std::runtime_error("erro interno: falhou a geração da chamada antes de 'sinon'");
+        throw std::runtime_error("erro interno: falhou a geração da chamada antes de 'sinau'");
 
     auto* fn = Builder->GetInsertBlock()->getParent();
-    auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinon.fallback", fn);
-    auto* mergeBB = llvm::BasicBlock::Create(Context, "sinon.merge", fn);
+    auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinau.fallback", fn);
+    auto* mergeBB = llvm::BasicBlock::Create(Context, "sinau.merge", fn);
     llvm::Value* failed = Builder->CreateExtractValue(result, {0u}, "failed");
     llvm::Value* value = Builder->CreateExtractValue(result, {1u}, "value");
     llvm::BasicBlock* okEndBB = Builder->GetInsertBlock();
@@ -1519,7 +1519,7 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     Builder->SetInsertPoint(fallbackBB);
     node.RHS->accept(*this);
     if (!LastValue)
-        throw std::runtime_error("erro interno: falhou a geração do valor depois de 'sinon'");
+        throw std::runtime_error("erro interno: falhou a geração do valor depois de 'sinau'");
     llvm::Value* fallback = isAggregate(node.ResolvedType)
         ? LastValue
         : coerceToType(LastValue, node.RHS->ResolvedType, node.ResolvedType);
@@ -1527,7 +1527,7 @@ void CodeGenVisitor::emitSinon(BinExpr& node) {
     Builder->CreateBr(mergeBB);
 
     Builder->SetInsertPoint(mergeBB);
-    auto* phi = Builder->CreatePHI(value->getType(), 2, "sinon.value");
+    auto* phi = Builder->CreatePHI(value->getType(), 2, "sinau.value");
     phi->addIncoming(value, okEndBB);
     phi->addIncoming(fallback, fallbackEndBB);
     LastValue = phi;
@@ -1947,7 +1947,7 @@ void CodeGenVisitor::emitShortCircuit(BinExpr& node) {
 void CodeGenVisitor::visit(BinExpr& node) {
     const auto& op = node.Op;
     if (op == "&&" || op == "||") { emitShortCircuit(node); return; }
-    if (op == "sinon") { emitSinon(node); return; }
+    if (op == "sinau") { emitSinau(node); return; }
 
     node.LHS->accept(*this);
     llvm::Value* lhs = LastValue;

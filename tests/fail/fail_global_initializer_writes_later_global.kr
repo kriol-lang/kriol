@@ -8,5 +8,5 @@ fn muda() int {
 }
 
 fn inisiu() {
-    mostran(b);
+    mostraln(b);
 }

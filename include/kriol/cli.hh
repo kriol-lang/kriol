@@ -38,6 +38,8 @@ namespace kriol::cli
     // Compile() returns the recorded errors as diagnostics after parsing.
     void ReportParseError(int line, const std::string& message);
     bool HasParseErrors();
+    // Compile() returns the recorded warnings before those of the semantic check.
+    void ReportParseWarning(int line, const std::string& message);
 
     enum class CompileInputKind
     {

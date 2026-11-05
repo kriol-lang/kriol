@@ -4,6 +4,7 @@
 %{
     #include "include/kriol/ast.hh"
     #include "include/kriol/cli.hh"
+    #include "include/kriol/deprecated.hh"
 
     #include <string>
     #include <cstdio>
@@ -30,6 +31,12 @@
     // One entry per open f-string interpolation: how many `{` inside it are
     // still open, so the `}` of a molda literal does not end the interpolation.
     static std::vector<int> g_fstr_braces;
+
+    // Warns that the keyword just read is an old spelling of a renamed word.
+    static void report_renamed_word(int line, const char* oldName) {
+        kriol::cli::ReportParseWarning(line, kriol::deprecated::renamedWordWarning(
+            oldName, *kriol::deprecated::currentNameOf(oldName)));
+    }
 %}
 
 INT [0-9]+
@@ -55,7 +62,8 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "molda"         return TOKENIZE(MOLDA);
 "inpristan"     return TOKENIZE(IMPRISTAN);
 "si"            return TOKENIZE(SI);
-"sinon"         return TOKENIZE(SINON);
+"sinau"         return TOKENIZE(SINAU);
+"sinon"         { report_renamed_word(yylloc.first_line, yytext); return TOKENIZE(SINAU); }
 "divolvi"       return TOKENIZE(DIVOLVI);
 "pa"            return TOKENIZE(PA);
 "nkuantu"       return TOKENIZE(NKUANTU);

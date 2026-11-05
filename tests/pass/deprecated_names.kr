@@ -1,0 +1,11 @@
+// The old names 'sinon' and 'mostran' still compile, with a warning that names the new one.
+fn inisiu() {
+    int x = 2;
+    si x == 1 {
+        mostran("um");
+    } sinon si x == 2 {
+        mostran("dos");
+    } sinon {
+        mostra("otu\n");
+    }
+}

@@ -10,8 +10,8 @@ fn d() int {
 
 fn inisiu() {
     spia {
-        mostran(d());
+        mostraln(d());
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }

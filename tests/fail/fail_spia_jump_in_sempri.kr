@@ -2,7 +2,7 @@
 fn inisiu() {
     nkuantu sin {
         spia {
-            mostran("x");
+            mostraln("x");
         } sempri {
             kebra;
         }

@@ -1,52 +1,52 @@
 // The header of si, nkuantu, pa and oops may be wrapped in parentheses or not.
 fn inisiu() {
     pa (int i = 0; i < 2; i += 1) {
-        mostran(f"pa 3: {i}");
+        mostraln(f"pa 3: {i}");
     }
     pa (int i = 0; i < 1) {
-        mostran(f"pa 2: {i}");
+        mostraln(f"pa 2: {i}");
         i += 1;
     }
     int j = 9;
     pa (j = 0; j < 1; j += 1) {
-        mostran(f"pa expr: {j}");
+        mostraln(f"pa expr: {j}");
     }
     j = 5;
-    pa (mostran("init paren")); j < 6; j += 1 {
-        mostran(f"pa paren init: {j}");
+    pa (mostraln("init paren")); j < 6; j += 1 {
+        mostraln(f"pa paren init: {j}");
     }
     pa int k = 0; (k) < 1; k += 1 {
-        mostran(f"pa sin parentesis: {k}");
+        mostraln(f"pa sin parentesis: {k}");
     }
     pa ((int[]) [7, 8][0] == 7; j < 7; j += 1) {
-        mostran(f"pa typed array: {j}");
+        mostraln(f"pa typed array: {j}");
     }
 
     si (int x = 5; x > 3) {
-        mostran("si init");
+        mostraln("si init");
     }
     si (int[2] a = [1, 2]; a[1] == 2) {
-        mostran("si init array");
+        mostraln("si init array");
     }
     si int y = 1; y == 1 {
-        mostran("si init sin parentesis");
+        mostraln("si init sin parentesis");
     }
     si (1) + 1 == 2 {
-        mostran("si paren prefix");
+        mostraln("si paren prefix");
     }
     si ((int) 2.5 == 2) {
-        mostran("si cast");
+        mostraln("si cast");
     }
     si ((int[]) [1, 2][0] == 1) {
-        mostran("si typed array");
+        mostraln("si typed array");
     }
     si (int::konverti("3")) == 3 {
-        mostran("si konverti");
+        mostraln("si konverti");
     }
     si (j == 0) {
-        mostran("no");
-    } sinon si (int z = j; z == 7) {
-        mostran("sinon si init");
+        mostraln("no");
+    } sinau si (int z = j; z == 7) {
+        mostraln("sinau si init");
     }
 
     int n = 0;
@@ -56,25 +56,25 @@ fn inisiu() {
     nkuantu n < 2 {
         n += 1;
     }
-    mostran(f"nkuantu: {n}");
+    mostraln(f"nkuantu: {n}");
 
     spia {
         lansa Erru{mensagem = "sin"};
     } oops err {
-        mostran(f"oops {err.mensagem}");
+        mostraln(f"oops {err.mensagem}");
     }
     spia {
         lansa Erru{mensagem = "ku"};
     } oops (err) {
-        mostran(f"oops {err.mensagem}");
+        mostraln(f"oops {err.mensagem}");
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
     spia {
         lansa Erru{mensagem = "sempri sin"};
     } oops err {
-        mostran(f"oops {err.mensagem}");
+        mostraln(f"oops {err.mensagem}");
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }

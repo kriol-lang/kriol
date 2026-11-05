@@ -4,14 +4,14 @@ fn sem_erru() {
     } oops (err) {
         lansa err;
     }
-    mostran("nunca");
+    mostraln("nunca");
 }
 
 fn inisiu() {
     spia {
         sem_erru();
     } oops (err) {
-        mostran("kapturadu: ", err.mensagem, " ", err.linha);
+        mostraln("kapturadu: ", err.mensagem, " ", err.linha);
     }
-    mostran("fin");
+    mostraln("fin");
 }

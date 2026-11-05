@@ -5,5 +5,5 @@ fn dobra(int x) int {
 
 fn inisiu() {
     int a = dobra(3);
-    mostran(f"{a}");
+    mostraln(f"{a}");
 }

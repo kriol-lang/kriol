@@ -4,11 +4,11 @@ fn falha(textu mensagem) int : Erru {
 
 fn lansa_direto() {
     spia {
-        mostran("antes do lansa");
+        mostraln("antes do lansa");
         lansa Erru{mensagem = "direto"};
-        mostran("nunca");
+        mostraln("nunca");
     } oops (err) {
-        mostran(err.mensagem);
+        mostraln(err.mensagem);
         konfirma(err.linha == 8);
     }
 }
@@ -16,9 +16,9 @@ fn lansa_direto() {
 fn tenta_no_spia() int : Erru {
     spia {
         int x = tenta falha("tenta");
-        mostran(x);
+        mostraln(x);
     } oops (err) {
-        mostran(f"oops do tenta: {err.mensagem}");
+        mostraln(f"oops do tenta: {err.mensagem}");
     }
     divolvi 7;
 }
@@ -26,9 +26,9 @@ fn tenta_no_spia() int : Erru {
 fn chamada_sem_tenta() {
     spia {
         int x = falha("sem tenta");
-        mostran(x);
+        mostraln(x);
     } oops (err) {
-        mostran(f"oops sem tenta: {err.mensagem}");
+        mostraln(f"oops sem tenta: {err.mensagem}");
     }
 }
 
@@ -46,12 +46,12 @@ fn aninhado() {
         spia {
             lansa Erru{mensagem = "interior"};
         } oops (err) {
-            mostran(f"interior apanhou {err.mensagem}");
+            mostraln(f"interior apanhou {err.mensagem}");
             lansa Erru{mensagem = "do oops interior"};
         }
-        mostran("nunca");
+        mostraln("nunca");
     } oops (err) {
-        mostran(f"exterior apanhou {err.mensagem}");
+        mostraln(f"exterior apanhou {err.mensagem}");
     }
 }
 
@@ -60,23 +60,23 @@ fn com_sempri(bool falhar) {
         si falhar {
             lansa Erru{mensagem = "falhou"};
         }
-        mostran("corpo terminou");
+        mostraln("corpo terminou");
     } oops (err) {
-        mostran(f"oops: {err.mensagem}");
+        mostraln(f"oops: {err.mensagem}");
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 
 fn ciclo_no_sempri() {
     spia {
-        mostran("corpo");
+        mostraln("corpo");
     } sempri {
         pa int i = 0; i < 5; i += 1 {
             si i == 2 {
                 kebra;
             }
-            mostran(i);
+            mostraln(i);
         }
     }
 }
@@ -84,17 +84,17 @@ fn ciclo_no_sempri() {
 fn konverti_sem_tratamento() {
     spia {
         int n = int::konverti("abc");
-        mostran(n);
+        mostraln(n);
     } oops (err) {
-        mostran(f"oops do konverti: {err.tipu}");
+        mostraln(f"oops do konverti: {err.tipu}");
     }
 }
 
 fn inisiu() {
     lansa_direto();
-    mostran(tenta_no_spia() sinon 0);
+    mostraln(tenta_no_spia() sinau 0);
     chamada_sem_tenta();
-    mostran(relansa() sinon -1);
+    mostraln(relansa() sinau -1);
     aninhado();
     com_sempri(nau);
     com_sempri(sin);

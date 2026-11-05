@@ -1,3 +1,3 @@
 fn inisiu() {
-    mostran("Kualeh Mundu!");
+    mostraln("Kualeh Mundu!");
 }

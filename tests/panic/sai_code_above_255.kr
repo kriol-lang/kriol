@@ -1,7 +1,7 @@
 // expect: :5: erro de execução: o código de saída de 'sai' tem de estar entre 0 e 255, mas é 256
 fn inisiu() {
     int code = 256;
-    mostran("a");
+    mostraln("a");
     sai(code);
-    mostran("b");
+    mostraln("b");
 }

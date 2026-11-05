@@ -4,6 +4,6 @@ fn inisiu() {
         int contador = 1;
         lansa Erru{mensagem = "x"};
     } oops (err) {
-        mostran(contador);
+        mostraln(contador);
     }
 }

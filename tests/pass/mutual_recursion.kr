@@ -9,6 +9,6 @@ fn impar(int n) bool {
 }
 
 fn inisiu() {
-    mostran(par(4));
-    mostran(impar(3));
+    mostraln(par(4));
+    mostraln(impar(3));
 }

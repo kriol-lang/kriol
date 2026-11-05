@@ -8,7 +8,7 @@ fn inisiu() {
     u8 byte = 0;
     si !byte {
         konfirma(sin);
-    } sinon {
+    } sinau {
         konfirma(nau);
     }
 

@@ -6,12 +6,12 @@ fn falha() int : Erru {
 fn inisiu() {
     spia {
         spia {
-            mostran("korpu");
+            mostraln("korpu");
         } sempri {
             int v = falha();
-            mostran("nunca");
+            mostraln("nunca");
         }
     } oops (e) {
-        mostran("nunca");
+        mostraln("nunca");
     }
 }

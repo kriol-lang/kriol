@@ -1,6 +1,6 @@
 // expect: não se esperava ')' aqui
 fn inisiu() {
     pa int i = 0; i < 3) {
-        mostran(f"{i}");
+        mostraln(f"{i}");
     }
 }

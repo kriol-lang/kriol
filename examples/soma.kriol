@@ -11,5 +11,5 @@ fn soma(int n) int {
 fn inisiu() {
     textu entrada = toma('Screbi um númeru interu: ');
     int numeru = int::konverti(entrada);
-    mostran(f"Soma di 1 ti {numeru} é igual a {soma(numeru)}.");
+    mostraln(f"Soma di 1 ti {numeru} é igual a {soma(numeru)}.");
 }

@@ -54,7 +54,7 @@ native-only build with `-DKRIOL_ENABLE_WASM=OFF`, and how to build on Windows.
 the quickest way to check compiler behaviour while you work:
 
 ```sh
-./build/kriol --text 'fn inisiu() { mostran("Kualeh, Mundu!"); }' -o hello && ./hello
+./build/kriol --text 'fn inisiu() { mostraln("Kualeh, Mundu!"); }' -o hello && ./hello
 ```
 
 ## Running the tests
