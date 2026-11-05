@@ -18,6 +18,10 @@ fn limpa() int : Erru {
 }
 
 fn inisiu() {
-    int r = limpa() sinon 0;
-    mostran(f"nunca {r}");
+    spia {
+        int r = limpa();
+        mostran(f"nunca {r}");
+    } oops (e) {
+        mostran("nunca");
+    }
 }

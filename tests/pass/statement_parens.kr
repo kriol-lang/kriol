@@ -40,7 +40,7 @@ fn inisiu() {
     si ((int[]) [1, 2][0] == 1) {
         mostran("si typed array");
     }
-    si (int::konverti("3") sinon 0) == 3 {
+    si (int::konverti("3")) == 3 {
         mostran("si konverti");
     }
     si (j == 0) {
