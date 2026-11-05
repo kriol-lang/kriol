@@ -1,7 +1,7 @@
 // expect: spia_lansa_fixeru.kr|
 fn inisiu() {
     spia {
-        lansa Erru{mensage = "x"};
+        lansa Erru{mensagem = "x"};
     } oops (err) {
         paniku(f"{err.fixeru}|");
     }

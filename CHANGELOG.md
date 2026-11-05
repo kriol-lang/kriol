@@ -21,13 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `x86_64-windows` and `wasm32-wasi` builds. A WebAssembly program that uses
   `spia` needs a host with WebAssembly exception handling; one that does not
   use `spia` is unchanged. ([#31])
-- Give `Erru` three new fields after `mensage`: `tipu` (`textu`, one of
+- Give `Erru` three new fields after `mensagem`: `tipu` (`textu`, one of
   `"lansa"`, `"paniku"`, `"divizon"`, `"indisi"`, `"konfirma"`, `"konverti"`
-  and `"toma"`), `fixeru` (`textu`) and `linha` (`int`). `Erru{mensage = "x"}`
+  and `"toma"`), `fixeru` (`textu`) and `linha` (`int`). `Erru{mensagem = "x"}`
   still compiles, and the compiler fills the new fields. ([#31])
 
 ### Changed
 
+- **Breaking:** the `mensage` field of `Erru` is now `mensagem`, so every
+  `Erru{mensage = ...}` and `err.mensage` has to be rewritten. ([#31])
 - **Breaking:** `spia`, `oops` and `sempri` are now reserved words, so a
   program that uses one of them as a name no longer compiles. ([#31])
 

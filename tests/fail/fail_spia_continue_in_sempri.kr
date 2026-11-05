@@ -4,7 +4,7 @@ fn inisiu() {
         spia {
             mostran(i);
         } oops (err) {
-            mostran(err.mensage);
+            mostran(err.mensagem);
         } sempri {
             kontinua;
         }

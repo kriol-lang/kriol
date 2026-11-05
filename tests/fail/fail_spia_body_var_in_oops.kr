@@ -2,7 +2,7 @@
 fn inisiu() {
     spia {
         int contador = 1;
-        lansa Erru{mensage = "x"};
+        lansa Erru{mensagem = "x"};
     } oops (err) {
         mostran(contador);
     }

@@ -15,7 +15,7 @@ fn chama(int b) {
     spia {
         mostran(riba(b));
     } oops (err) {
-        mostran(f"{err.tipu}: {err.mensage}");
+        mostran(f"{err.tipu}: {err.mensagem}");
         konfirma(err.linha == 2);
     } sempri {
         mostran("sempri");

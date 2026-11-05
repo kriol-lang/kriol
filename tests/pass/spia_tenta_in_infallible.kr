@@ -1,5 +1,5 @@
 fn g() int : Erru {
-    lansa Erru{mensage = "de g"};
+    lansa Erru{mensagem = "de g"};
 }
 
 fn sem_erru() {
@@ -7,7 +7,7 @@ fn sem_erru() {
         int x = tenta g();
         mostran("nunca ", x);
     } oops (err) {
-        mostran("oops: ", err.mensage);
+        mostran("oops: ", err.mensagem);
     }
 }
 

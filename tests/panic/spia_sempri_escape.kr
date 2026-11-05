@@ -1,6 +1,6 @@
 // expect: :8: erro não tratado: boom
 fn falha() int : Erru {
-    lansa Erru{mensage = "boom"};
+    lansa Erru{mensagem = "boom"};
 }
 
 fn inisiu() {

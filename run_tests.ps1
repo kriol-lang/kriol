@@ -233,7 +233,7 @@ $run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
 Write-Result 'sempri copies share locals at --opt-lvl 0' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
     (Test-Stdout $sempri $run.Stdout))
 
-$unhandled = 'fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+$unhandled = 'fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'
 $ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)
 Write-Result 'unhandled error compiles' $ok

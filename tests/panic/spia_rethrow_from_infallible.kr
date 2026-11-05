@@ -1,7 +1,7 @@
 // expect: :6: erro não tratado: de novo
 fn sem_erru() {
     spia {
-        lansa Erru{mensage = "de novo"};
+        lansa Erru{mensagem = "de novo"};
     } oops (err) {
         lansa err;
     }

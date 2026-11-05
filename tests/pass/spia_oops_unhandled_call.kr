@@ -1,10 +1,10 @@
 fn falha() int : Erru {
-    lansa Erru{mensage = "falha"};
+    lansa Erru{mensagem = "falha"};
 }
 
 fn no_oops() int : Erru {
     spia {
-        lansa Erru{mensage = "primeiro"};
+        lansa Erru{mensagem = "primeiro"};
     } oops (err) {
         int x = falha();
         mostran(f"nunca {x}");

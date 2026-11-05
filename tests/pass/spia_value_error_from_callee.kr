@@ -1,6 +1,6 @@
 fn divide(int a, int b) int : Erru {
     si b == 0 {
-        lansa Erru{mensage = "b é zero"};
+        lansa Erru{mensagem = "b é zero"};
     }
     divolvi a / b;
 }
@@ -16,7 +16,7 @@ fn chamador(int b) {
         int r = passa(10, b);
         mostran(f"outra vez {r}");
     } oops (err) {
-        mostran(f"oops: {err.mensage}");
+        mostran(f"oops: {err.mensagem}");
         mostran(err.tipu);
         konfirma(err.linha == 3);
     }
@@ -27,7 +27,7 @@ fn chamador_falivel(int b) int : Erru {
         int r = passa(10, b);
         divolvi r;
     } oops (err) {
-        mostran(f"oops falível: {err.mensage}");
+        mostran(f"oops falível: {err.mensagem}");
     }
     divolvi -1;
 }

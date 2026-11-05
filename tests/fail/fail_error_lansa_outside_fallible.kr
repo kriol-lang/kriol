@@ -1,4 +1,4 @@
 // expect: 'lansa' só pode ser usado numa função que pode falhar, declarada com ': Erru', como 'fn inisiu(...) : Erru'
 fn inisiu() {
-    lansa Erru{mensage = "x"};
+    lansa Erru{mensagem = "x"};
 }

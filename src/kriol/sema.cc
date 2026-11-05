@@ -689,7 +689,7 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
             const Type& got = node.ReturnValue->ResolvedType;
             if (got.valid() && got != Type::Named(erruName))
                 addError(loc + "'lansa' recebe um valor do tipo '" + erruName + "', mas este é do tipo '"
-                         + got.str() + "'; por exemplo: lansa " + erruName + "{mensage = \"...\"};");
+                         + got.str() + "'; por exemplo: lansa " + erruName + "{mensagem = \"...\"};");
         }
         return;
     }

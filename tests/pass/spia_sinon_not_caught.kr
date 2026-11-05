@@ -1,5 +1,5 @@
 fn falha() int : Erru {
-    lansa Erru{mensage = "x"};
+    lansa Erru{mensagem = "x"};
 }
 
 fn inisiu() {

@@ -26,11 +26,11 @@ fn chamada_no_oops() {
         spia {
             paniku("primeiro");
         } oops (err) {
-            mostran(f"interior: {err.mensage}");
+            mostran(f"interior: {err.mensagem}");
             mostran(parti(2, 0));
         }
     } oops (err) {
-        mostran(f"exterior: {err.mensage} na linha {err.linha}");
+        mostran(f"exterior: {err.mensagem} na linha {err.linha}");
     }
 }
 
@@ -39,12 +39,12 @@ fn lansa_no_oops_ku_sempri() {
         spia {
             paniku("segundo");
         } oops (err) {
-            lansa Erru{mensage = "do oops"};
+            lansa Erru{mensagem = "do oops"};
         } sempri {
             mostran("sempri do lansa");
         }
     } oops (err) {
-        mostran(f"exterior: {err.mensage}");
+        mostran(f"exterior: {err.mensagem}");
     }
 }
 
@@ -53,7 +53,7 @@ fn oops_termina_normal() {
         spia {
             paniku("terceiro");
         } oops (err) {
-            mostran(f"interior: {err.mensage}");
+            mostran(f"interior: {err.mensagem}");
         } sempri {
             mostran("sempri normal");
         }

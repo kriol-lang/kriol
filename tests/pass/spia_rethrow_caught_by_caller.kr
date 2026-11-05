@@ -1,6 +1,6 @@
 fn sem_erru() {
     spia {
-        lansa Erru{mensage = "de novo"};
+        lansa Erru{mensagem = "de novo"};
     } oops (err) {
         lansa err;
     }
@@ -11,7 +11,7 @@ fn inisiu() {
     spia {
         sem_erru();
     } oops (err) {
-        mostran("kapturadu: ", err.mensage, " ", err.linha);
+        mostran("kapturadu: ", err.mensagem, " ", err.linha);
     }
     mostran("fin");
 }

@@ -3,7 +3,7 @@ fn inisiu() {
     spia {
         mostran("x");
     } oops (err) {
-        mostran(err.mensage);
+        mostran(err.mensagem);
     }
-    mostran(err.mensage);
+    mostran(err.mensagem);
 }

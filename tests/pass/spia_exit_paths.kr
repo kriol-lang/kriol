@@ -21,7 +21,7 @@ fn divolvi_textu() textu {
 fn divolvi_do_oops() int : Erru {
     int x = 1;
     spia {
-        lansa Erru{mensage = "falha"};
+        lansa Erru{mensagem = "falha"};
     } oops (err) {
         x = 30;
         divolvi x;
@@ -60,7 +60,7 @@ fn kebra_e_kontinua() {
     nkuantu n < 3 {
         n += 1;
         spia {
-            lansa Erru{mensage = "no ciclo"};
+            lansa Erru{mensagem = "no ciclo"};
         } oops (err) {
             si n == 1 {
                 kontinua;
@@ -126,7 +126,7 @@ fn sempri_ve_o_seu_ambito() int {
 fn sempri_fora_do_oops() int : Erru {
     int err = 6;
     spia {
-        lansa Erru{mensage = "x"};
+        lansa Erru{mensagem = "x"};
     } oops (err) {
         divolvi 8;
     } sempri {
@@ -138,7 +138,7 @@ fn sempri_fora_do_oops() int : Erru {
 fn sempri_ao_relansar() int : Erru {
     int err = 7;
     spia {
-        lansa Erru{mensage = "relansado"};
+        lansa Erru{mensagem = "relansado"};
     } oops (err) {
         lansa err;
     } sempri {
@@ -151,7 +151,7 @@ fn sempri_substitui_o_valor() int : Erru {
     spia {
         divolvi 1;
     } sempri {
-        lansa Erru{mensage = "do sempri"};
+        lansa Erru{mensagem = "do sempri"};
     }
 }
 
@@ -161,10 +161,10 @@ fn sempri_falha_para_o_exterior() int {
             divolvi 1;
         } sempri {
             mostran("sempri interior antes de falhar");
-            lansa Erru{mensage = "interior"};
+            lansa Erru{mensagem = "interior"};
         }
     } oops (err) {
-        mostran(f"exterior apanhou {err.mensage}");
+        mostran(f"exterior apanhou {err.mensagem}");
     }
     divolvi 2;
 }

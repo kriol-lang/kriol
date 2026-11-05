@@ -1,6 +1,6 @@
 // expect: :7: erro não tratado: de k
 fn k() int : Erru {
-    lansa Erru{mensage = "de k"};
+    lansa Erru{mensagem = "de k"};
 }
 
 fn d() int {

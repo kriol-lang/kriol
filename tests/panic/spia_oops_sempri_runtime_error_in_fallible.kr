@@ -5,7 +5,7 @@ fn zero() int {
 
 fn oops_ku_sempri() int : Erru {
     spia {
-        lansa Erru{mensage = "x"};
+        lansa Erru{mensagem = "x"};
     } oops (err) {
         mostran(f"oops apanhou {err.tipu}");
         divolvi 1 / zero();

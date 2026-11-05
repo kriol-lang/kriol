@@ -1,14 +1,14 @@
-fn falha(textu mensage) int : Erru {
-    lansa Erru{mensage = mensage};
+fn falha(textu mensagem) int : Erru {
+    lansa Erru{mensagem = mensagem};
 }
 
 fn lansa_direto() {
     spia {
         mostran("antes do lansa");
-        lansa Erru{mensage = "direto"};
+        lansa Erru{mensagem = "direto"};
         mostran("nunca");
     } oops (err) {
-        mostran(err.mensage);
+        mostran(err.mensagem);
         konfirma(err.linha == 8);
     }
 }
@@ -18,7 +18,7 @@ fn tenta_no_spia() int : Erru {
         int x = tenta falha("tenta");
         mostran(x);
     } oops (err) {
-        mostran(f"oops do tenta: {err.mensage}");
+        mostran(f"oops do tenta: {err.mensagem}");
     }
     divolvi 7;
 }
@@ -28,13 +28,13 @@ fn chamada_sem_tenta() {
         int x = falha("sem tenta");
         mostran(x);
     } oops (err) {
-        mostran(f"oops sem tenta: {err.mensage}");
+        mostran(f"oops sem tenta: {err.mensagem}");
     }
 }
 
 fn relansa() int : Erru {
     spia {
-        lansa Erru{mensage = "relansado"};
+        lansa Erru{mensagem = "relansado"};
     } oops (err) {
         lansa err;
     }
@@ -44,25 +44,25 @@ fn relansa() int : Erru {
 fn aninhado() {
     spia {
         spia {
-            lansa Erru{mensage = "interior"};
+            lansa Erru{mensagem = "interior"};
         } oops (err) {
-            mostran(f"interior apanhou {err.mensage}");
-            lansa Erru{mensage = "do oops interior"};
+            mostran(f"interior apanhou {err.mensagem}");
+            lansa Erru{mensagem = "do oops interior"};
         }
         mostran("nunca");
     } oops (err) {
-        mostran(f"exterior apanhou {err.mensage}");
+        mostran(f"exterior apanhou {err.mensagem}");
     }
 }
 
 fn com_sempri(bool falhar) {
     spia {
         si falhar {
-            lansa Erru{mensage = "falhou"};
+            lansa Erru{mensagem = "falhou"};
         }
         mostran("corpo terminou");
     } oops (err) {
-        mostran(f"oops: {err.mensage}");
+        mostran(f"oops: {err.mensagem}");
     } sempri {
         mostran("sempri");
     }
@@ -71,13 +71,13 @@ fn com_sempri(bool falhar) {
 fn sempri_substitui() {
     spia {
         spia {
-            lansa Erru{mensage = "original"};
+            lansa Erru{mensagem = "original"};
         } sempri {
             mostran("sempri interior");
-            lansa Erru{mensage = "do sempri"};
+            lansa Erru{mensagem = "do sempri"};
         }
     } oops (err) {
-        mostran(f"exterior viu {err.mensage}");
+        mostran(f"exterior viu {err.mensagem}");
     }
 }
 

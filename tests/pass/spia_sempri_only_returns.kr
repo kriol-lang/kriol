@@ -9,7 +9,7 @@ fn so_sempri() int {
 fn falivel(int b) int : Erru {
     spia {
         si b == 0 {
-            lansa Erru{mensage = "b é zero"};
+            lansa Erru{mensagem = "b é zero"};
         }
         divolvi 10 / b;
     } sempri {

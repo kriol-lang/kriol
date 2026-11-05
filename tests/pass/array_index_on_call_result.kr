@@ -9,7 +9,7 @@ fn novu() Par {
 
 fn talvez(bool ok) Par : Erru {
     si !ok {
-        lansa Erru{mensage = "no"};
+        lansa Erru{mensagem = "no"};
     }
     divolvi novu();
 }

@@ -1,5 +1,5 @@
 fn relata(Erru err) {
-    mostran(f"{err.tipu}: {err.mensage} (linha {err.linha})");
+    mostran(f"{err.tipu}: {err.mensagem} (linha {err.linha})");
 }
 
 fn divizon_interu(int b) {

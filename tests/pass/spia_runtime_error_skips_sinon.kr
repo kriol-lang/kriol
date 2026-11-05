@@ -35,7 +35,7 @@ fn spia_dentu_spia() int : Erru {
 
 fn lansa_ku_sempri() int : Erru {
     spia {
-        lansa Erru{mensage = "lansadu"};
+        lansa Erru{mensagem = "lansadu"};
     } sempri {
         mostran("sempri do lansa");
     }

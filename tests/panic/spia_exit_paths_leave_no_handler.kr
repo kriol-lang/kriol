@@ -9,7 +9,7 @@ fn do_corpo() int {
 
 fn do_oops() int {
     spia {
-        lansa Erru{mensage = "x"};
+        lansa Erru{mensagem = "x"};
     } oops (err) {
         divolvi 2;
     } sempri {
@@ -26,7 +26,7 @@ fn dos_ciclos() {
             }
             kebra;
         } oops (err) {
-            mostran(err.mensage);
+            mostran(err.mensagem);
         }
     }
 }
@@ -34,7 +34,7 @@ fn dos_ciclos() {
 fn kebra_do_oops_com_sempri() {
     pa int i = 0; i < 2; i += 1 {
         spia {
-            lansa Erru{mensage = "x"};
+            lansa Erru{mensagem = "x"};
         } oops (err) {
             kebra;
         } sempri {
@@ -46,7 +46,7 @@ fn kebra_do_oops_com_sempri() {
 fn kontinua_do_oops_com_sempri() {
     pa int i = 0; i < 2; i += 1 {
         spia {
-            lansa Erru{mensage = "x"};
+            lansa Erru{mensagem = "x"};
         } oops (err) {
             kontinua;
         } sempri {

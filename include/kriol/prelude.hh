@@ -9,9 +9,9 @@
 namespace kriol {
 namespace prelude {
 
-// The built-in error type, `molda Erru { textu mensage; textu tipu; textu fixeru; int linha; }`.
+// The built-in error type, `molda Erru { textu mensagem; textu tipu; textu fixeru; int linha; }`.
 inline constexpr const char* ErrorTypeName = "Erru";
-inline constexpr const char* ErrorMessageField = "mensage";
+inline constexpr const char* ErrorMessageField = "mensagem";
 inline constexpr const char* ErrorKindField = "tipu";
 inline constexpr const char* ErrorFileField = "fixeru";
 inline constexpr const char* ErrorLineField = "linha";

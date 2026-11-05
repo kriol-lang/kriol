@@ -8,7 +8,7 @@ fn inisiu() {
         int numeru = int::konverti(entrada);
         mostran(f"100 / {numeru} = {divide(100, numeru)}");
     } oops (err) {
-        mostran(f"Erru ({err.tipu}): {err.mensage}");
+        mostran(f"Erru ({err.tipu}): {err.mensagem}");
     } sempri {
         mostran("Fin.");
     }

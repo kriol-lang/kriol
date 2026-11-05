@@ -17,7 +17,7 @@ fn inisiu() {
         }
         paniku("depois do ciclo");
     } oops (err) {
-        mostran(err.mensage);
+        mostran(err.mensagem);
     }
     mostran(apanhados);
     mostran(sempris);
