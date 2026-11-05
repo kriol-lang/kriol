@@ -1,0 +1,9 @@
+divizon: divisão por zero (linha 7)
+divizon: divisão por zero (linha 16)
+indisi: o índice 3 está fora do array, que vai de 0 a 2 (linha 26)
+konfirma: n tem de ser positivo (linha 35)
+paniku: z (linha 44)
+konverti: 'abc' não é um número inteiro válido (linha 53)
+toma: a entrada terminou e não há mais linhas para ler (linha 63)
+divizon: o resultado da divisão não cabe no tipo do número inteiro (linha 74)
+fin

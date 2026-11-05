@@ -1,0 +1,13 @@
+// expect: :3: erro de execução: divisão por zero
+fn parti(int a, int b) int {
+    divolvi a / b;
+}
+
+fn inisiu() {
+    spia {
+        mostran(parti(1, 0));
+    } sempri {
+        mostran("sempri");
+    }
+    mostran("nunca");
+}

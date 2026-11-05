@@ -1,0 +1,10 @@
+// expect: 'kebra' não pode sair de um bloco 'sempri', que corre sempre até ao fim
+fn inisiu() {
+    nkuantu sin {
+        spia {
+            mostran("x");
+        } sempri {
+            kebra;
+        }
+    }
+}

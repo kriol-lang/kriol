@@ -9,13 +9,23 @@
 namespace kriol {
 namespace prelude {
 
-// The built-in error type, `molda Erru { textu mensage; }`.
+// The built-in error type, `molda Erru { textu mensagem; textu tipu; textu fixeru; int linha; }`.
 inline constexpr const char* ErrorTypeName = "Erru";
-inline constexpr const char* ErrorMessageField = "mensage";
+inline constexpr const char* ErrorMessageField = "mensagem";
+inline constexpr const char* ErrorKindField = "tipu";
+inline constexpr const char* ErrorFileField = "fixeru";
+inline constexpr const char* ErrorLineField = "linha";
+
+inline bool isErrorFilledField(const std::string& name) {
+    return name == ErrorKindField || name == ErrorFileField || name == ErrorLineField;
+}
 
 inline std::unique_ptr<ast::MoldaDeclSttmt> makeErrorTypeDecl() {
     auto erru = std::make_unique<ast::MoldaDeclSttmt>(ErrorTypeName);
     erru->AddField(std::make_unique<ast::VarDeclSttmt>(Type::Text(), ErrorMessageField, nullptr));
+    erru->AddField(std::make_unique<ast::VarDeclSttmt>(Type::Text(), ErrorKindField, nullptr));
+    erru->AddField(std::make_unique<ast::VarDeclSttmt>(Type::Text(), ErrorFileField, nullptr));
+    erru->AddField(std::make_unique<ast::VarDeclSttmt>(Type::Integer(), ErrorLineField, nullptr));
     return erru;
 }
 

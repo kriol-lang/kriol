@@ -16,7 +16,7 @@ fn move(Pontu p, int dx) Pontu {
 
 fn kria(int x) Pontu : Erru {
     si x < 0 {
-        lansa Erru{mensage = "negativu"};
+        lansa Erru{mensagem = "negativu"};
     }
     divolvi Pontu{x = x, y = x * 2};
 }
@@ -27,7 +27,7 @@ fn kaminhu(int x) int : Erru {
 }
 
 fn falha() : Erru {
-    Erru e = Erru{mensage = "guardadu"};
+    Erru e = Erru{mensagem = "guardadu"};
     lansa e;
 }
 

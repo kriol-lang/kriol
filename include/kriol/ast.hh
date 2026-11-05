@@ -44,6 +44,7 @@ namespace ast {
     class UnaryExpr;
     class CastExpr;
     class TypeCallExpr;
+    class SpiaSttmt;
 
     class Visitor {
     public:
@@ -77,6 +78,7 @@ namespace ast {
         virtual void visit(UnaryExpr& node) = 0;
         virtual void visit(CastExpr& node) = 0;
         virtual void visit(TypeCallExpr& node) = 0;
+        virtual void visit(SpiaSttmt& node) = 0;
     };
 
     class Sttmt {
@@ -391,6 +393,19 @@ namespace ast {
 
         ForSttmt(std::unique_ptr<Sttmt> Start, std::unique_ptr<Expr> Cond, std::unique_ptr<Expr> After, std::unique_ptr<BlockSttmt> Then)
             : Start(std::move(Start)), Cond(std::move(Cond)), After(std::move(After)), Then(std::move(Then)) {}
+        void accept(Visitor& v) override { v.visit(*this); }
+    };
+
+    class SpiaSttmt : public Sttmt {
+    public:
+        std::unique_ptr<BlockSttmt> Body;
+        std::string ErrName;                 // empty when there is no oops
+        std::unique_ptr<BlockSttmt> Oops;    // null when absent
+        std::unique_ptr<BlockSttmt> Sempri;  // null when absent
+
+        SpiaSttmt(std::unique_ptr<BlockSttmt> Body, std::string ErrName, std::unique_ptr<BlockSttmt> Oops,
+                  std::unique_ptr<BlockSttmt> Sempri)
+            : Body(std::move(Body)), ErrName(std::move(ErrName)), Oops(std::move(Oops)), Sempri(std::move(Sempri)) {}
         void accept(Visitor& v) override { v.visit(*this); }
     };
 

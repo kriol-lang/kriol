@@ -1,0 +1,215 @@
+fn divolvi_do_corpo() int {
+    int x = 1;
+    spia {
+        x = 10;
+        divolvi x;
+    } sempri {
+        mostran(f"sempri do corpo viu {x}");
+        x = 20;
+    }
+}
+
+fn divolvi_textu() textu {
+    textu s = "antes";
+    spia {
+        divolvi s;
+    } sempri {
+        s = "depois";
+    }
+}
+
+fn divolvi_do_oops() int : Erru {
+    int x = 1;
+    spia {
+        lansa Erru{mensagem = "falha"};
+    } oops (err) {
+        x = 30;
+        divolvi x;
+    } sempri {
+        mostran(f"sempri do oops viu {x}");
+        x = 40;
+    }
+    divolvi x;
+}
+
+fn divolvi_vazio() {
+    spia {
+        mostran("corpo vazio");
+        divolvi;
+    } sempri {
+        mostran("sempri do divolvi vazio");
+    }
+    mostran("nunca");
+}
+
+fn kebra_e_kontinua() {
+    pa int i = 0; i < 4; i += 1 {
+        spia {
+            si i == 1 {
+                kontinua;
+            }
+            si i == 2 {
+                kebra;
+            }
+            mostran(f"corpo {i}");
+        } sempri {
+            mostran(f"sempri {i}");
+        }
+    }
+    int n = 0;
+    nkuantu n < 3 {
+        n += 1;
+        spia {
+            lansa Erru{mensagem = "no ciclo"};
+        } oops (err) {
+            si n == 1 {
+                kontinua;
+            }
+            mostran(f"oops {n}");
+            kebra;
+        } sempri {
+            mostran(f"sempri do oops {n}");
+        }
+    }
+}
+
+fn aninhado_em_ciclo() int {
+    pa int i = 0; i < 3; i += 1 {
+        spia {
+            spia {
+                si i == 1 {
+                    divolvi i;
+                }
+                mostran(f"interior {i}");
+            } sempri {
+                mostran(f"sempri interior {i}");
+            }
+        } sempri {
+            mostran(f"sempri exterior {i}");
+        }
+    }
+    divolvi -1;
+}
+
+fn spia_seguinte(int zero) {
+    spia {
+        int q = 7 / zero;
+        mostran(q);
+    } oops (err) {
+        mostran(f"seguinte apanhou {err.tipu}");
+    }
+}
+
+fn ciclo_no_sempri() int {
+    spia {
+        divolvi 5;
+    } sempri {
+        pa int i = 0; i < 5; i += 1 {
+            si i == 2 {
+                kebra;
+            }
+            mostran(f"sempri ciclo {i}");
+        }
+    }
+}
+
+fn sempri_ve_o_seu_ambito() int {
+    int err = 3;
+    spia {
+        int err = 4;
+        divolvi err;
+    } sempri {
+        mostran(f"sempri do corpo vê {err}");
+    }
+}
+
+fn sempri_fora_do_oops() int : Erru {
+    int err = 6;
+    spia {
+        lansa Erru{mensagem = "x"};
+    } oops (err) {
+        divolvi 8;
+    } sempri {
+        mostran(f"sempri do oops vê {err}");
+    }
+    divolvi 0;
+}
+
+fn sempri_ao_relansar() int : Erru {
+    int err = 7;
+    spia {
+        lansa Erru{mensagem = "relansado"};
+    } oops (err) {
+        lansa err;
+    } sempri {
+        mostran(f"sempri do relansar vê {err}");
+    }
+    divolvi 0;
+}
+
+fn sempri_substitui_o_valor() int : Erru {
+    spia {
+        divolvi 1;
+    } sempri {
+        lansa Erru{mensagem = "do sempri"};
+    }
+}
+
+fn sempri_falha_para_o_exterior() int {
+    spia {
+        spia {
+            divolvi 1;
+        } sempri {
+            mostran("sempri interior antes de falhar");
+            lansa Erru{mensagem = "interior"};
+        }
+    } oops (err) {
+        mostran(f"exterior apanhou {err.mensagem}");
+    }
+    divolvi 2;
+}
+
+molda Pontu {
+    int x;
+    int y;
+}
+
+fn divolvi_array() int[2] {
+    int[2] v = [1, 2];
+    spia {
+        divolvi v;
+    } sempri {
+        v[0] = 99;
+        v[1] = 98;
+    }
+}
+
+fn divolvi_molda() Pontu {
+    Pontu p = Pontu{x = 1, y = 2};
+    spia {
+        divolvi p;
+    } sempri {
+        p.x = 99;
+        p.y = 98;
+    }
+}
+
+fn inisiu() {
+    int[2] a = divolvi_array();
+    mostran(f"array {a[0]} {a[1]}");
+    Pontu p = divolvi_molda();
+    mostran(f"molda {p.x} {p.y}");
+    mostran(divolvi_do_corpo());
+    mostran(divolvi_textu());
+    mostran(divolvi_do_oops() sinon 99);
+    divolvi_vazio();
+    kebra_e_kontinua();
+    mostran(aninhado_em_ciclo());
+    spia_seguinte(0);
+    mostran(ciclo_no_sempri());
+    mostran(sempri_ve_o_seu_ambito());
+    mostran(sempri_fora_do_oops() sinon 99);
+    mostran(sempri_ao_relansar() sinon 98);
+    mostran(sempri_substitui_o_valor() sinon 99);
+    mostran(sempri_falha_para_o_exterior());
+}

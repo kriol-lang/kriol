@@ -12,10 +12,6 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Value.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Type.h>
-#include <llvm/IR/BasicBlock.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 
 namespace kriol {
@@ -26,6 +22,8 @@ namespace ast {
         Wasm32Wasi,
         X86_64Windows
     };
+
+    void removeUnreachableSpiaThrow(llvm::Module& module);
 
     struct EmitOptions {
         CodegenTarget Target = CodegenTarget::Native;
@@ -49,9 +47,27 @@ namespace ast {
         // Where a function returning an array writes it: its hidden first argument.
         llvm::Value* CurrentReturnSlot = nullptr;
 
+        struct SpiaFrame {
+            llvm::BasicBlock* CatchBB;   // oops, or the escape block when there is none
+            llvm::AllocaInst* ErrSlot;   // Erru
+            llvm::AllocaInst* LineSlot;  // i32 line an escaping error is reported at
+            ast::BlockSttmt* Sempri;     // may be null
+            llvm::AllocaInst* RuntimeSlot = nullptr; // i1: the escape block was entered by a runtime error
+            bool InOops = false;
+            bool RuntimeHandlerPushed = false;
+            size_t ScopeDepth = 0;       // the scopes the sempri sees
+        };
+        // The spia blocks enclosing the code being emitted, innermost last.
+        std::vector<SpiaFrame> SpiaFrames;
+        bool CurrentHasSpia = false;
+        // Copies of one sempri never run together, so they share its allocas, taken in order.
+        std::unordered_map<const ast::BlockSttmt*, std::vector<llvm::AllocaInst*>> SempriAllocas;
+        std::vector<std::pair<const ast::BlockSttmt*, size_t>> SempriCopies;
+
         // Loop exit / continue targets (for break / continue)
         llvm::BasicBlock* LoopExit     = nullptr;
         llvm::BasicBlock* LoopContinue = nullptr;
+        size_t LoopSpiaDepth = 0;
 
         // Scope stack: variable name -> AllocaInst*
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> Scopes;
@@ -106,7 +122,14 @@ namespace ast {
         llvm::Function*      getOrDeclareKriolCheckBounds();
         llvm::Function*      getOrDeclareKriolCheckDiv();
         llvm::Function*      getOrDeclareKriolCheckFloatDiv();
-        llvm::Function*      getOrDeclarePanicAt();
+        llvm::Function*      getOrDeclareFailAt();
+        llvm::Value*         emitSetjmp(llvm::Value* frame);
+        void                 emitSpiaPop();
+        // Pushes a runtime handler whose errors go to `catchTo`, with the handler popped.
+        void                 emitSpiaHandler(const SpiaFrame& catchTo);
+        void                 emitCaughtRuntimeError(const SpiaFrame& frame);
+        // Keeps every local in memory, so the values changed before a longjmp survive it.
+        void                 markLocalAccessesVolatile(llvm::Function& fn);
 
         // After emitting a block terminator (break/continue/return/sai) moves
         // the insert point into a fresh unreachable block so that any further
@@ -148,13 +171,28 @@ namespace ast {
         // The failable result of a built-in call: `message` is the runtime's
         // error text, read only when `failed` is true.
         llvm::Value* makeFailableResult(const Type& valueType, llvm::Value* failed,
-                                        llvm::Value* value, llvm::Value* message);
-        llvm::Value* erruMessage(llvm::Value* erru);
+                                        llvm::Value* value, llvm::Value* message,
+                                        const char* kind, int lineNum);
+        llvm::Value* erruField(llvm::Value* erru, const char* field);
+        llvm::Value* erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback);
+        llvm::Value* makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line);
+        // Reports `erru` as unhandled, or throws it to an active spia, and ends the block.
+        // `callLine` is an i32, the line the error is reported at.
+        void emitRaise(llvm::Value* erru, llvm::Value* callLine);
 
-        // Fails the current function with the given Erru value: returns it to
-        // the caller, or reports it and exits when the function is inisiu.
-        // Ends the current block with a terminator.
-        void emitFailure(llvm::Value* erruValue, int lineNum);
+        // Sends the given Erru to the innermost enclosing oops, running the
+        // sempri of each oops it leaves; without one, returns it to the caller
+        // of a fallible function or raises it. Ends the current block.
+        void emitFailure(llvm::Value* erruValue, llvm::Value* callLine);
+        // A true i1 `cameThroughRuntime` raises the error instead of returning it.
+        void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime = nullptr);
+        void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime);
+        void emitSempri(const SpiaFrame& frame);
+        void emitSempriCopy(ast::BlockSttmt& sempri);
+        // Leaves every spia but the outermost `keep`, popping its handler and running its sempri.
+        void emitSpiaExits(size_t keep);
+        // Leaves every spia, then returns `value`, or void when it is null.
+        void emitReturn(llvm::Value* value);
 
         // For a call whose error nobody handles: stops the program with the
         // error message if the call failed, and leaves the plain value.
@@ -253,6 +291,7 @@ namespace ast {
         void visit(UnaryExpr&         node) override;
         void visit(CastExpr&          node) override;
         void visit(TypeCallExpr&      node) override;
+        void visit(SpiaSttmt&         node) override;
     };
 
 } // namespace ast

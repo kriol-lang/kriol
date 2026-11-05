@@ -1,0 +1,15 @@
+fn divide(int a, int b) int {
+    divolvi a / b;
+}
+
+fn inisiu() {
+    textu entrada = toma('Screbi un númeru interu: ');
+    spia {
+        int numeru = int::konverti(entrada);
+        mostran(f"100 / {numeru} = {divide(100, numeru)}");
+    } oops (err) {
+        mostran(f"Erru ({err.tipu}): {err.mensagem}");
+    } sempri {
+        mostran("Fin.");
+    }
+}

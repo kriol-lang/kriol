@@ -1,0 +1,36 @@
+array 1 2
+molda 1 2
+sempri do corpo viu 10
+10
+antes
+sempri do oops viu 30
+30
+corpo vazio
+sempri do divolvi vazio
+corpo 0
+sempri 0
+sempri 1
+sempri 2
+sempri do oops 1
+oops 2
+sempri do oops 2
+interior 0
+sempri interior 0
+sempri exterior 0
+sempri interior 1
+sempri exterior 1
+1
+seguinte apanhou divizon
+sempri ciclo 0
+sempri ciclo 1
+5
+sempri do corpo vê 3
+4
+sempri do oops vê 6
+8
+sempri do relansar vê 7
+98
+99
+sempri interior antes de falhar
+exterior apanhou interior
+2

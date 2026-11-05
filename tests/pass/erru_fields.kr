@@ -1,0 +1,11 @@
+fn inisiu() {
+    Erru e = Erru{mensagem = "y"};
+    konfirma(e.linha == 2);
+    mostran(e.tipu);
+    mostran(e.mensagem);
+
+    Erru full = Erru{mensagem = "m", tipu = "divizon", fixeru = "a.kr", linha = 42};
+    konfirma(full.linha == 42);
+    mostran(full.tipu);
+    mostran(full.fixeru);
+}

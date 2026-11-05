@@ -1,0 +1,13 @@
+// expect: :6: erro de execução: o código de saída de 'sai' tem de estar entre 0 e 255, mas é 300
+fn inisiu() {
+    int code = 300;
+    spia {
+        mostran("antes");
+        sai(code);
+    } oops (err) {
+        mostran("oops");
+    } sempri {
+        mostran("sempri");
+    }
+    mostran("nunca");
+}

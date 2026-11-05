@@ -1,0 +1,91 @@
+fn relata(Erru err) {
+    mostran(f"{err.tipu}: {err.mensagem} (linha {err.linha})");
+}
+
+fn divizon_interu(int b) {
+    spia {
+        mostran(10 / b);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 7);
+    }
+}
+
+fn divizon_real(num b) {
+    spia {
+        mostran(1.5 / b);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 16);
+    }
+}
+
+fn indisi(int i) {
+    int[3] a = [1, 2, 3];
+    spia {
+        mostran(a[i]);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 26);
+    }
+}
+
+fn konfirma_falhadu(int n) {
+    spia {
+        konfirma(n > 0, "n tem de ser positivo");
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 35);
+    }
+}
+
+fn paniku_apanhadu() {
+    spia {
+        paniku("z");
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 44);
+    }
+}
+
+fn konverti_falhadu() {
+    spia {
+        int n = int::konverti("abc");
+        mostran(n);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 53);
+    }
+}
+
+fn toma_sem_entrada() {
+    spia {
+        textu linha = toma();
+        mostran(linha);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 63);
+    }
+}
+
+fn divizon_ki_ka_kabe(i8 b) {
+    i8 a = -128;
+    spia {
+        mostran(a / b);
+    } oops (err) {
+        relata(err);
+        konfirma(err.linha == 74);
+    }
+}
+
+fn inisiu() {
+    divizon_interu(0);
+    divizon_real(0.0);
+    indisi(3);
+    konfirma_falhadu(-1);
+    paniku_apanhadu();
+    konverti_falhadu();
+    toma_sem_entrada();
+    divizon_ki_ka_kabe(-1);
+    mostran("fin");
+}

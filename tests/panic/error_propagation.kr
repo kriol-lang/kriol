@@ -1,6 +1,6 @@
 // expect: :13: erro não tratado: divizon pa zero
 fn metadi(int a, int b) num : Erru {
-    si b == 0 { lansa Erru{mensage = "divizon pa zero"}; }
+    si b == 0 { lansa Erru{mensagem = "divizon pa zero"}; }
     divolvi (num) a / b;
 }
 

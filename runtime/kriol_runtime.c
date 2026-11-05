@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <float.h>
+#include <setjmp.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -176,12 +177,6 @@ _Noreturn void __kriol_panic_at(const char* message, int line) {
     __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
 }
 
-/* An Erru that a call did not handle: one returned to inisiu, or one of a call
-   without 'tenta' or 'sinon'. */
-_Noreturn void __kriol_unhandled_error(const char* message, int line) {
-    __kriol_stop(line, KRIOL_UNHANDLED_ERROR, message);
-}
-
 #if !KRIOL_RUNTIME_NO_GC
 static void* __kriol_gc_out_of_memory(size_t requested_bytes) {
     (void)requested_bytes;
@@ -269,6 +264,104 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
 #endif
     if (!buf) __kriol_panic("não há memória suficiente para guardar texto");
     return buf;
+}
+
+/* Jump stays first: the generated code calls setjmp on the frame pointer. */
+typedef struct KriolSpiaFrame KriolSpiaFrame;
+struct KriolSpiaFrame {
+    jmp_buf Jump;
+    KriolSpiaFrame* Previous;
+    char* Message;
+    char* Kind;
+    int32_t Line;
+    int32_t CallLine;
+};
+
+static KriolSpiaFrame* __kriol_spia_top = NULL;
+
+KriolSpiaFrame* __kriol_spia_push(void) {
+    KriolSpiaFrame* frame = (KriolSpiaFrame*)malloc(sizeof *frame);
+    if (!frame) __kriol_panic("não há memória suficiente para entrar no bloco spia");
+    frame->Previous = __kriol_spia_top;
+    frame->Message = NULL;
+    frame->Kind = NULL;
+    frame->Line = 0;
+    frame->CallLine = 0;
+    __kriol_spia_top = frame;
+    return frame;
+}
+
+void __kriol_spia_pop(void) {
+    KriolSpiaFrame* frame = __kriol_spia_top;
+    __kriol_spia_top = frame->Previous;
+    free(frame->Message);
+    free(frame->Kind);
+    free(frame);
+}
+
+int __kriol_spia_active(void) {
+    return __kriol_spia_top != NULL;
+}
+
+/* Owned by the frame: valid until __kriol_spia_pop. */
+const char* __kriol_spia_message(void) {
+    return __kriol_spia_top->Message ? __kriol_spia_top->Message : "";
+}
+
+const char* __kriol_spia_kind(void) {
+    return __kriol_spia_top->Kind ? __kriol_spia_top->Kind : "";
+}
+
+int32_t __kriol_spia_line(void) {
+    return __kriol_spia_top->Line;
+}
+
+int32_t __kriol_spia_call_line(void) {
+    return __kriol_spia_top->CallLine;
+}
+
+static char* __kriol_spia_copy(const char* text) {
+    size_t length = strlen(text);
+    char* copy = (char*)malloc(length + 1);
+    if (!copy) __kriol_panic("não há memória suficiente para guardar o erro do bloco spia");
+    memcpy(copy, text, length + 1);
+    return copy;
+}
+
+/* Copied: callers build them in stack frames that the jump discards, or in GC
+   text that only the discarded frames still reference. */
+_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line, int32_t call_line) {
+    KriolSpiaFrame* frame = __kriol_spia_top;
+    char* message_copy = __kriol_spia_copy(message ? message : "");
+    char* kind_copy = __kriol_spia_copy(kind ? kind : "lansa");
+    free(frame->Message);
+    free(frame->Kind);
+    frame->Message = message_copy;
+    frame->Kind = kind_copy;
+    frame->Line = line;
+    frame->CallLine = call_line;
+    longjmp(frame->Jump, 1);
+}
+
+_Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t line) {
+    if (__kriol_spia_active())
+        __kriol_spia_throw(kind, message, line, line);
+    __kriol_stop(line, KRIOL_RUNTIME_ERROR, message);
+}
+
+_Noreturn void __kriol_report_escaped(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
+    if (!kind)
+        kind = "lansa";
+    if (strcmp(kind, "divizon") == 0 || strcmp(kind, "indisi") == 0 ||
+        strcmp(kind, "konfirma") == 0 || strcmp(kind, "paniku") == 0)
+        __kriol_stop(origin_line, KRIOL_RUNTIME_ERROR, message);
+    __kriol_stop(call_line, KRIOL_UNHANDLED_ERROR, message);
+}
+
+_Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line) {
+    if (__kriol_spia_active())
+        __kriol_spia_throw(kind, message, origin_line, call_line);
+    __kriol_report_escaped(message, kind, origin_line, call_line);
 }
 
 #ifdef _WIN32
@@ -659,7 +752,7 @@ int __kriol_convert_bool(const char* text, int32_t* out, const char** error) {
 
 void __kriol_assert_message(int cond, int line, const char* message) {
     if (!cond)
-        __kriol_panic_at(message && message[0] != '\0' ? message : "a condição de konfirma é falsa", line);
+        __kriol_fail_at("konfirma", message && message[0] != '\0' ? message : "a condição de konfirma é falsa", line);
 }
 
 void __kriol_assert(int cond, int line) {
@@ -671,25 +764,25 @@ void __kriol_check_bounds(int64_t index, int64_t size, int line) {
         char message[96];
         snprintf(message, sizeof message, "o índice %lld está fora do array, que vai de 0 a %lld",
                  (long long)index, (long long)size - 1);
-        __kriol_panic_at(message, line);
+        __kriol_fail_at("indisi", message, line);
     }
 }
 
 void __kriol_check_fdiv(double divisor, int32_t line) {
     if (divisor == 0.0)
-        __kriol_panic_at("divisão por zero", line);
+        __kriol_fail_at("divizon", "divisão por zero", line);
 }
 
 void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line) {
     if (rhs == 0)
-        __kriol_panic_at("divisão por zero", line);
+        __kriol_fail_at("divizon", "divisão por zero", line);
 
     if (signed_bits > 0 && rhs == -1) {
         int64_t min = signed_bits >= 64
             ? INT64_MIN
             : -((int64_t)1 << (signed_bits - 1));
         if (lhs == min)
-            __kriol_panic_at("o resultado da divisão não cabe no tipo do número inteiro", line);
+            __kriol_fail_at("divizon", "o resultado da divisão não cabe no tipo do número inteiro", line);
     }
 }
 

@@ -61,6 +61,9 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "nkuantu"       return TOKENIZE(NKUANTU);
 "tenta"         return TOKENIZE(TENTA);
 "lansa"         return TOKENIZE(LANSA);
+"spia"          return TOKENIZE(SPIA);
+"oops"          return TOKENIZE(OOPS);
+"sempri"        return TOKENIZE(SEMPRI);
 "num"           SAVE_TOKEN;   return TYPE_NUM;
 "int"           SAVE_TOKEN;   return TYPE_INT;
 "bool"          SAVE_TOKEN;   return TYPE_BOOL;

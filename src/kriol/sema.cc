@@ -82,7 +82,7 @@ private:
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "kebra", "kontinua", "tenta", "lansa",
+    "kebra", "kontinua", "tenta", "lansa", "spia", "oops", "sempri",
 
     // Type names and literals.
     "num", "int", "bool", "textu", "sin", "nau",
@@ -462,6 +462,10 @@ bool SemanticAnalyzer::blockDefinitelyReturns(BlockSttmt* block) const {
                 blockDefinitelyReturns(ifStmt->Else.get()))
                 return true;
         }
+
+        if (auto* spia = dynamic_cast<SpiaSttmt*>(stmt.get()))
+            if (blockDefinitelyReturns(spia->Body.get()) && (!spia->Oops || blockDefinitelyReturns(spia->Oops.get())))
+                return true;
     }
     return false;
 }
@@ -635,12 +639,41 @@ void SemanticAnalyzer::visit(WhileSttmt& node) {
 
 void SemanticAnalyzer::visit(JumpSttmt& node) {
     // ReturnSttmt overrides this, so here we only see break/continue
-    if (LoopDepth == 0)
+    if (LoopDepth == 0) {
         addError(errLoc(node.LineNum) + "'" + node.Name + "' só pode ser usado dentro de um ciclo 'pa' ou 'nkuantu'");
+        return;
+    }
+    if (LoopDepth == SempriLoopDepth)
+        reportJumpOutOfSempri(node.Name, node.LineNum);
+}
+
+void SemanticAnalyzer::reportJumpOutOfSempri(const std::string& keyword, int lineNum) {
+    addError(errLoc(lineNum) + "'" + keyword + "' não pode sair de um bloco 'sempri', que corre sempre até ao fim");
+}
+
+void SemanticAnalyzer::visit(SpiaSttmt& node) {
+    if (node.Body) {
+        ++SpiaBodyDepth;
+        node.Body->accept(*this);
+        --SpiaBodyDepth;
+    }
+    if (node.Oops) {
+        pushScope();
+        if (checkDeclaredNameValid(node.ErrName, "variável", node.LineNum))
+            declareVar(node.ErrName, Type::Named(erruName));
+        ++OopsDepth;
+        node.Oops->accept(*this);
+        --OopsDepth;
+        popScope();
+    }
+    if (node.Sempri) {
+        ScopedValue<int> sempri(SempriLoopDepth, LoopDepth);
+        node.Sempri->accept(*this);
+    }
 }
 
 void SemanticAnalyzer::requireFallibleFunction(const std::string& keyword, int lineNum) {
-    if (CurrFuncCanFail) return;
+    if (CurrFuncCanFail || SpiaBodyDepth > 0 || OopsDepth > 0) return;
     const std::string example = CurrFuncName.empty() ? "f" : CurrFuncName;
     addError(errLoc(lineNum) + "'" + keyword + "' só pode ser usado numa função que pode falhar, "
              "declarada com ': " + erruName + "', como 'fn " + example + "(...) : " + erruName + "'");
@@ -656,10 +689,13 @@ void SemanticAnalyzer::visit(ReturnSttmt& node) {
             const Type& got = node.ReturnValue->ResolvedType;
             if (got.valid() && got != Type::Named(erruName))
                 addError(loc + "'lansa' recebe um valor do tipo '" + erruName + "', mas este é do tipo '"
-                         + got.str() + "'; por exemplo: lansa " + erruName + "{mensage = \"...\"};");
+                         + got.str() + "'; por exemplo: lansa " + erruName + "{mensagem = \"...\"};");
         }
         return;
     }
+
+    if (SempriLoopDepth >= 0)
+        reportJumpOutOfSempri("divolvi", node.LineNum);
 
     if (CurrFuncRetType.valid() && CurrFuncRetType.isVoid() && node.ReturnValue)
         addError(loc + "a função '" + CurrFuncName + "' não declara um tipo de retorno, por isso 'divolvi' não pode ter um valor");
@@ -849,9 +885,14 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     // Only functions declared with ': Erru' warn; an unhandled toma() or
     // T::konverti() also stops the program on failure, but silently, to keep
     // simple programs simple.
-    if (info.canFail && !handled)
-        addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso o "
-                   "programa termina se a função falhar; usa 'tenta' ou 'sinon'");
+    if (info.canFail && !handled && SpiaBodyDepth == 0) {
+        const bool returnedToCaller = OopsDepth > 0 && CurrFuncCanFail;
+        const std::string consequence = returnedToCaller
+            ? "é devolvido a quem chamou esta função"
+            : "o programa termina se a função falhar";
+        addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso "
+                   + consequence + "; usa 'tenta' ou 'sinon'");
+    }
 
     size_t want = info.paramTypes.size();
 
@@ -1191,7 +1232,9 @@ void SemanticAnalyzer::visit(RecordLiteralExpr& node) {
     }
 
     for (std::size_t i = 0; i < info.fields.size(); ++i) {
-        if (!initialized[i])
+        const bool filledByCompiler = node.TypeName == erruName
+            && prelude::isErrorFilledField(info.fields[i]->Name);
+        if (!initialized[i] && !filledByCompiler)
             addError(errLoc(node.LineNum) + "falta o campo '" + info.fields[i]->Name
                      + "' na criação de '" + node.TypeName + "'; todos os campos têm de ter um valor");
     }

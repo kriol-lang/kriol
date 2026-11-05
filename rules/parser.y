@@ -100,6 +100,7 @@
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa" TENTA "tenta" LANSA "lansa"
+%token<token>  SPIA "spia" OOPS "oops" SEMPRI "sempri"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> KEBRA "kebra" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
 %token<token> FN "fn" MOLDA "molda" NOT "!"
@@ -113,7 +114,7 @@
             typed_array_initializer record_literal record_field_initializers
 %type<sttmt> expression_statement selection_statement iteration_statement jump_statement
              function_declaration declaration control_initializer control_initializer_statement
-             if_initializer molda_declaration statement import_statement
+             if_initializer molda_declaration statement import_statement spia_statement
 %type<block> compound_statement statements else_then
 %type<string> declarator identifier type_specifier assignment_operator single_import
 %type<vardecl> parameter_declaration molda_field_declaration
@@ -392,6 +393,7 @@ statement : expression_statement { $$ = $1; }
           | molda_declaration { $$ = $1; }
           | declaration { $$ = $1; }
           | import_statement { $$ = $1; }
+          | spia_statement { $$ = $1; }
           | error SEMIC { $$ = nullptr; }
           ;
 
@@ -429,6 +431,11 @@ if_initializer_type_specifier : TYPE_NUM { $$ = $1; }
 else_then : compound_statement { $$ = $1; }
           | selection_statement { $$ = new ast::BlockSttmt(); $$->AddSttmt(std::unique_ptr<ast::Sttmt>($1)); }
           ;
+
+spia_statement : SPIA compound_statement OOPS LPAR IDENT RPAR compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$5, std::unique_ptr<ast::BlockSttmt>($7), nullptr); n->LineNum = @$.first_line; $$ = n; delete $5; }
+               | SPIA compound_statement OOPS LPAR IDENT RPAR compound_statement SEMPRI compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$5, std::unique_ptr<ast::BlockSttmt>($7), std::unique_ptr<ast::BlockSttmt>($9)); n->LineNum = @$.first_line; $$ = n; delete $5; }
+               | SPIA compound_statement SEMPRI compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), "", nullptr, std::unique_ptr<ast::BlockSttmt>($4)); n->LineNum = @$.first_line; $$ = n; }
+               ;
 
 iteration_statement : NKUANTU expression compound_statement { auto n = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); n->LineNum = @$.first_line; $$ = n; }
                     | PA control_initializer_statement SEMIC expression SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; }
@@ -530,7 +537,7 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
     static const yysymbol_kind_t keywords[] = {
         YYSYMBOL_FN, YYSYMBOL_MOLDA, YYSYMBOL_SI, YYSYMBOL_SINON, YYSYMBOL_PA, YYSYMBOL_NKUANTU,
         YYSYMBOL_KEBRA, YYSYMBOL_CONTINUA, YYSYMBOL_DIVOLVI, YYSYMBOL_TENTA, YYSYMBOL_LANSA,
-        YYSYMBOL_IMPRISTAN,
+        YYSYMBOL_IMPRISTAN, YYSYMBOL_SPIA, YYSYMBOL_OOPS, YYSYMBOL_SEMPRI,
     };
     if (expects(YYSYMBOL_IDENT) && std::find(std::begin(keywords), std::end(keywords), found) != std::end(keywords)) {
         kriol::cli::ReportParseError(line, kriol_describe_symbol(found)

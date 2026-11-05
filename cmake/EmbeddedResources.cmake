@@ -70,12 +70,14 @@ if(KRIOL_ENABLE_WASM)
     set(WASI_CRT1_COMMAND_HEADER      ${GENERATED_DIR}/wasi_crt1_command.o.h)
     set(WASI_LIBC_HEADER              ${GENERATED_DIR}/wasi_libc.a.h)
     set(WASI_LIBM_HEADER              ${GENERATED_DIR}/wasi_libm.a.h)
+    set(WASI_LIBSETJMP_HEADER         ${GENERATED_DIR}/wasi_libsetjmp.a.h)
     set(WASI_BUILTINS_HEADER          ${GENERATED_DIR}/wasi_builtins.a.h)
     list(APPEND KRIOL_EMBEDDED_RESOURCE_HEADERS
         ${RUNTIME_WASM32_WASI_HEADER}
         ${WASI_CRT1_COMMAND_HEADER}
         ${WASI_LIBC_HEADER}
         ${WASI_LIBM_HEADER}
+        ${WASI_LIBSETJMP_HEADER}
         ${WASI_BUILTINS_HEADER}
     )
 
@@ -136,6 +138,7 @@ if(KRIOL_ENABLE_WASM)
     set(WASI_CRT1_COMMAND ${WASI_LIB_DIR}/crt1-command.o)
     set(WASI_LIBC ${WASI_LIB_DIR}/libc.a)
     set(WASI_LIBM ${WASI_LIB_DIR}/libm.a)
+    set(WASI_LIBSETJMP ${WASI_LIB_DIR}/libsetjmp.a)
 
     execute_process(
         COMMAND
@@ -156,6 +159,7 @@ if(KRIOL_ENABLE_WASM)
         "${WASI_CRT1_COMMAND}"
         "${WASI_LIBC}"
         "${WASI_LIBM}"
+        "${WASI_LIBSETJMP}"
     )
         if(NOT EXISTS "${_KRIOL_WASI_INPUT}")
             message(FATAL_ERROR "Required WASI input not found: ${_KRIOL_WASI_INPUT}")
@@ -169,6 +173,8 @@ if(KRIOL_ENABLE_WASM)
             ${CLANG_PROGRAM}
             --target=${KRIOL_WASI_TARGET}
             --sysroot=${KRIOL_WASI_SYSROOT}
+            -mllvm
+            -wasm-enable-sjlj
             -emit-llvm
             -O3
             -c
@@ -190,6 +196,8 @@ if(KRIOL_ENABLE_WASM)
     kriol_embed_file(${WASI_LIBC} ${WASI_LIBC_HEADER} wasi_libc.a)
 
     kriol_embed_file(${WASI_LIBM} ${WASI_LIBM_HEADER} wasi_libm.a)
+
+    kriol_embed_file(${WASI_LIBSETJMP} ${WASI_LIBSETJMP_HEADER} wasi_libsetjmp.a)
 
     kriol_embed_file(${WASI_BUILTINS} ${WASI_BUILTINS_HEADER} wasi_builtins.a)
 

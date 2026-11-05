@@ -52,9 +52,14 @@ function Get-KriolResult([string[]] $Arguments) {
     return [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
 }
 
-# Runs a program on a stdin file; whether it timed out, the exit status and both outputs.
-function Invoke-Program([string] $Exe, [string] $Stdin) {
+# Runs a program on a stdin file, with 'NAME=value' pairs from $Environment set;
+# whether it timed out, the exit status and both outputs.
+function Invoke-Program([string] $Exe, [string] $Stdin, [string] $Environment = '') {
     $info = [Diagnostics.ProcessStartInfo]::new($Exe)
+    foreach ($pair in ($Environment -split ' ' | Where-Object { $_ })) {
+        $name, $value = $pair -split '=', 2
+        $info.Environment[$name] = $value
+    }
     $info.UseShellExecute = $false
     $info.RedirectStandardInput = $true
     $info.RedirectStandardOutput = $true
@@ -142,7 +147,8 @@ function Invoke-Source([IO.FileInfo] $Source) {
     if (-not $compile.Ok) {
         return [pscustomobject]@{ Compiled = $false; Output = $compile.Output; Run = $null }
     }
-    return [pscustomobject]@{ Compiled = $true; Output = ''; Run = (Invoke-Program $exe $stdin) }
+    $run = Invoke-Program $exe $stdin (Get-Directive $Source 'env')
+    return [pscustomobject]@{ Compiled = $true; Output = ''; Run = $run }
 }
 
 # Why a program test failed: the compiler diagnostics, or the run's exit status,
@@ -213,7 +219,21 @@ foreach ($level in '0', '3') {
     Write-Result "optimization level $level" ($output -eq '3')
 }
 
-$unhandled = 'fn f() int : Erru { lansa Erru{mensage = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+$locals = Get-Item (Join-Path $Root 'tests/pass/spia_locals_survive_longjmp.kr')
+$exe = Join-Path $Work 'locals.exe'
+$ok = Invoke-Kriol @('--opt-lvl', '3', $locals.FullName, '-o', $exe)
+$run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
+Write-Result 'spia keeps locals at --opt-lvl 3' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
+    (Test-Stdout $locals $run.Stdout))
+
+$sempri = Get-Item (Join-Path $Root 'tests/pass/spia_sempri_large_local_many_exits.kr')
+$exe = Join-Path $Work 'sempri.exe'
+$ok = Invoke-Kriol @('--opt-lvl', '0', $sempri.FullName, '-o', $exe)
+$run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
+Write-Result 'sempri copies share locals at --opt-lvl 0' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
+    (Test-Stdout $sempri $run.Stdout))
+
+$unhandled = 'fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'
 $ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)
 Write-Result 'unhandled error compiles' $ok
@@ -221,6 +241,21 @@ $output = if ($ok) { (& $exe 2>&1) -join "`n" } else { '' }
 Write-Result 'unhandled error stops the program' ($ok -and $LASTEXITCODE -ne 0 -and $output -match 'boom' -and $output -notmatch 'never')
 $strictRejected = -not (Invoke-Kriol @('--strict', '--text', $unhandled, '-o', (Join-Path $Work 'strict.exe')))
 Write-Result '--strict rejects warnings' $strictRejected
+
+$strictClean = Join-Path $Root 'tests/pass/error_union_basic.kr'
+$ok = Invoke-Kriol @('--strict', $strictClean, '-o', (Join-Path $Work 'strict_clean.exe'))
+Write-Result '--strict accepts clean programs' $ok
+
+$oopsCall = Join-Path $Root 'tests/pass/spia_oops_unhandled_call.kr'
+$warning = Get-KriolResult @($oopsCall, '-o', (Join-Path $Work 'oops_call.exe'))
+Write-Result 'unhandled call in oops warns of the return' ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função"))
+$strictRejected = -not (Invoke-Kriol @('--strict', $oopsCall, '-o', (Join-Path $Work 'oops_call_strict.exe')))
+Write-Result '--strict rejects an unhandled call in oops' $strictRejected
+
+foreach ($program in 'spia_lexical', 'spia_value_error_from_callee') {
+    $ok = Invoke-Kriol @('--strict', (Join-Path $Root "tests/pass/$program.kr"), '-o', (Join-Path $Work "strict_$program.exe"))
+    Write-Result "--strict accepts $program" $ok
+}
 
 $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null

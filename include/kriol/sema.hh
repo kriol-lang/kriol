@@ -50,6 +50,11 @@ namespace sema {
         // How many loops deep we currently are (used for break/continue validation)
         int LoopDepth = 0;
 
+        int SpiaBodyDepth = 0;
+        int OopsDepth = 0;
+        // The LoopDepth on entering the innermost sempri, -1 outside one.
+        int SempriLoopDepth = -1;
+
         // How many function bodies deep we currently are (nested functions are
         // not supported and must be rejected).
         int FunctionDepth = 0;
@@ -127,8 +132,9 @@ namespace sema {
                            const std::string& callee);
 
         // Reports an error if 'tenta' or 'lansa' is used outside a function
-        // that declares an error type.
+        // that declares an error type and outside a spia body or oops.
         void requireFallibleFunction(const std::string& keyword, int lineNum);
+        void reportJumpOutOfSempri(const std::string& keyword, int lineNum);
 
         // Reports an error if `name` is the variable whose initializer is
         // being analysed.
@@ -236,6 +242,7 @@ namespace sema {
         void visit(ast::UnaryExpr&         node) override;
         void visit(ast::CastExpr&          node) override;
         void visit(ast::TypeCallExpr&      node) override;
+        void visit(ast::SpiaSttmt&         node) override;
     };
 
 } // namespace sema

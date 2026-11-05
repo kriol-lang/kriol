@@ -1,0 +1,29 @@
+fn fundu(int b) int {
+    divolvi 100 / b;
+}
+
+fn meiu(int b) int {
+    int r = fundu(b);
+    divolvi r + 1;
+}
+
+fn riba(int b) int {
+    divolvi meiu(b) * 2;
+}
+
+fn chama(int b) {
+    spia {
+        mostran(riba(b));
+    } oops (err) {
+        mostran(f"{err.tipu}: {err.mensagem}");
+        konfirma(err.linha == 2);
+    } sempri {
+        mostran("sempri");
+    }
+}
+
+fn inisiu() {
+    chama(5);
+    chama(0);
+    chama(10);
+}

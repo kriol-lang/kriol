@@ -16,6 +16,7 @@
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/CommandLine.h>
 
 #include <llvm/Support/Program.h>
 #include <llvm/Support/Path.h>
@@ -58,6 +59,7 @@ using namespace kriol::typerules;
 #include "wasi_crt1_command.o.h"
 #include "wasi_libc.a.h"
 #include "wasi_libm.a.h"
+#include "wasi_libsetjmp.a.h"
 #include "wasi_builtins.a.h"
 
 #endif // KRIOL_ENABLE_WASM
@@ -148,6 +150,7 @@ struct WasiInputs {
     std::string Libc;
     std::string Libm;
     std::string Builtins;
+    std::string Libsetjmp;
 };
 
 static void initializeTargets() {
@@ -255,6 +258,8 @@ static WasiLinkPlan buildWasiLinkPlan(const std::string& objPath,
     };
     if (!tempLibGc.empty())
         plan.Args.push_back(tempLibGc);
+    if (!wasiInputs.Libsetjmp.empty())
+        plan.Args.push_back(wasiInputs.Libsetjmp);
     plan.Args.insert(plan.Args.end(), {
         wasiInputs.Libm,
         wasiInputs.Libc,
@@ -313,8 +318,8 @@ static void linkWasm(const WasiLinkPlan& plan) {
 }
 
 #if KRIOL_ENABLE_WASM
-static WasiInputs writeWasiInputs() {
-    return WasiInputs{
+static WasiInputs writeWasiInputs(bool sjlj) {
+    WasiInputs inputs{
         writeTempBlob(
             "kriol_wasi_crt1_command",
             "o",
@@ -334,8 +339,25 @@ static WasiInputs writeWasiInputs() {
             "kriol_wasi_builtins",
             "a",
             EmbeddedBlob{wasi_builtins_a, wasi_builtins_a_len}
-        )
+        ),
+        {}
     };
+    if (sjlj)
+        inputs.Libsetjmp = writeTempBlob(
+            "kriol_wasi_libsetjmp",
+            "a",
+            EmbeddedBlob{wasi_libsetjmp_a, wasi_libsetjmp_a_len}
+        );
+    return inputs;
+}
+
+// A global backend option: set on every wasm compilation so it never leaks across programs.
+static void setWasmSjLj(bool enabled) {
+    auto& options = llvm::cl::getRegisteredOptions();
+    auto option = options.find("wasm-enable-sjlj");
+    if (option == options.end())
+        throw std::runtime_error("erro interno: o LLVM não tem a opção 'wasm-enable-sjlj'");
+    static_cast<llvm::cl::opt<bool>*>(option->second)->setValue(enabled);
 }
 #endif
 
@@ -431,7 +453,8 @@ static void optimizeModule(llvm::Module& module,
 static void emitObjectFile(llvm::Module& module,
                            const std::string& targetTriple,
                            const std::string& objPath,
-                           unsigned optLevel) {
+                           unsigned optLevel,
+                           bool wasmSjLj) {
     module.setTargetTriple(targetTriple);
 
     std::string Error;
@@ -440,8 +463,14 @@ static void emitObjectFile(llvm::Module& module,
         throw std::runtime_error("o LLVM não suporta o alvo de compilação: " + Error);
 
     auto CPU = "generic";
-    auto Features = "";
+    auto Features = wasmSjLj ? "+exception-handling,+multivalue,+reference-types" : "";
     llvm::TargetOptions opt;
+#if KRIOL_ENABLE_WASM
+    if (llvm::Triple(targetTriple).isWasm())
+        setWasmSjLj(wasmSjLj);
+#endif
+    if (wasmSjLj)
+        opt.ExceptionModel = llvm::ExceptionHandling::Wasm;
     auto RM = std::optional<llvm::Reloc::Model>();
     const llvm::CodeGenOptLevel codeGenLevel = optLevel == 0 ? llvm::CodeGenOptLevel::None
                                              : optLevel == 1 ? llvm::CodeGenOptLevel::Less
@@ -686,8 +715,21 @@ llvm::StructType* CodeGenVisitor::getOrCreateRecordType(const std::string& name)
 
 llvm::AllocaInst* CodeGenVisitor::createEntryAlloca(
         llvm::Function* fn, const std::string& name, llvm::Type* ty) {
+    std::vector<llvm::AllocaInst*>* shared = nullptr;
+    size_t index = 0;
+    if (!SempriCopies.empty()) {
+        auto& [sempri, next] = SempriCopies.back();
+        shared = &SempriAllocas[sempri];
+        index = next++;
+        if (index < shared->size() && (*shared)[index]->getAllocatedType() == ty
+            && (*shared)[index]->getFunction() == fn)
+            return (*shared)[index];
+    }
     llvm::IRBuilder<> tmp(&fn->getEntryBlock(), fn->getEntryBlock().begin());
-    return tmp.CreateAlloca(ty, nullptr, name);
+    auto* alloca = tmp.CreateAlloca(ty, nullptr, name);
+    if (shared && index == shared->size())
+        shared->push_back(alloca);
+    return alloca;
 }
 
 llvm::AllocaInst* CodeGenVisitor::lookupVar(const std::string& name) {
@@ -834,8 +876,10 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
         const std::string objPath(objPathBuf.str());
         tempFiles.push_back(objPath);
 
+        const bool wasmSjLj = options.Target == CodegenTarget::Wasm32Wasi && Mod->getFunction("setjmp");
         linkRuntimeBitcode(*Mod, Context, resources.Runtime);
-        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel);
+        removeUnreachableSpiaThrow(*Mod);
+        emitObjectFile(*Mod, resources.Triple, objPath, options.OptLevel, wasmSjLj);
 
         std::string tempLibGc = writeGcArchive(options.Target, resources.Triple, resources.GcArchive);
         if (!tempLibGc.empty())
@@ -843,10 +887,12 @@ void CodeGenVisitor::emit(const std::string& outputPath, const EmitOptions& opti
 
         if (options.Target == CodegenTarget::Wasm32Wasi) {
 #if KRIOL_ENABLE_WASM
-            WasiInputs wasiInputs = writeWasiInputs();
+            WasiInputs wasiInputs = writeWasiInputs(wasmSjLj);
             tempFiles.insert(tempFiles.end(), {
                 wasiInputs.Crt1Command, wasiInputs.Libc, wasiInputs.Libm, wasiInputs.Builtins
             });
+            if (wasmSjLj)
+                tempFiles.push_back(wasiInputs.Libsetjmp);
             linkWasm(buildWasiLinkPlan(objPath, tempLibGc, wasiInputs, outputPath));
 #else
             throw std::runtime_error("esta versão do compilador foi construída sem suporte para 'wasm32-wasi'");
@@ -1200,7 +1246,10 @@ void CodeGenVisitor::emitRecordLiteral(llvm::Value* dest, RecordLiteralExpr& nod
     for (std::size_t i = 0; i < initialized.size(); ++i) {
         if (initialized[i]) continue;
         llvm::Type* fieldTy = structTy->getElementType(static_cast<unsigned>(i));
-        Builder->CreateStore(llvm::Constant::getNullValue(fieldTy),
+        llvm::Value* fieldValue = llvm::Constant::getNullValue(fieldTy);
+        if (node.TypeName == prelude::ErrorTypeName)
+            fieldValue = erruDefaultField(recordIt->second.fields[i]->Name, node.LineNum, fieldValue);
+        Builder->CreateStore(fieldValue,
                              Builder->CreateStructGEP(structTy, dest, static_cast<unsigned>(i), "field.ptr"));
     }
     LastValue = nullptr;
@@ -1270,20 +1319,42 @@ void CodeGenVisitor::emitAggregateCopy(llvm::Value* dest, llvm::Value* src, cons
                            llvm::ConstantExpr::getSizeOf(mapType(type)));
 }
 
-llvm::Value* CodeGenVisitor::erruMessage(llvm::Value* erru) {
+llvm::Value* CodeGenVisitor::erruField(llvm::Value* erru, const char* field) {
     const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
-    const unsigned index = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
-    return Builder->CreateExtractValue(erru, {index}, "error.message");
+    const unsigned index = static_cast<unsigned>(fields.at(field));
+    return Builder->CreateExtractValue(erru, {index}, std::string("error.") + field);
+}
+
+llvm::Value* CodeGenVisitor::erruDefaultField(const std::string& name, int lineNum, llvm::Value* fallback) {
+    if (name == prelude::ErrorKindField)
+        return Builder->CreateGlobalString("lansa");
+    if (name == prelude::ErrorFileField)
+        return Builder->CreateLoad(llvm::PointerType::getUnqual(Context), Mod->getNamedGlobal("__kriol_source_name"),
+                                   "error.file");
+    if (name == prelude::ErrorLineField)
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), lineNum);
+    return fallback;
+}
+
+llvm::Value* CodeGenVisitor::makeErru(llvm::Value* message, llvm::Value* kind, llvm::Value* line) {
+    auto* erruTy = getOrCreateRecordType(prelude::ErrorTypeName);
+    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
+    auto* source = Builder->CreateLoad(llvm::PointerType::getUnqual(Context),
+                                       Mod->getNamedGlobal("__kriol_source_name"), "error.file");
+    llvm::Value* erru = llvm::ConstantAggregateZero::get(erruTy);
+    erru = Builder->CreateInsertValue(erru, message, {static_cast<unsigned>(fields.at(prelude::ErrorMessageField))});
+    erru = Builder->CreateInsertValue(erru, kind, {static_cast<unsigned>(fields.at(prelude::ErrorKindField))});
+    erru = Builder->CreateInsertValue(erru, source, {static_cast<unsigned>(fields.at(prelude::ErrorFileField))});
+    return Builder->CreateInsertValue(erru, line, {static_cast<unsigned>(fields.at(prelude::ErrorLineField))});
 }
 
 llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Value* failed,
-                                                llvm::Value* value, llvm::Value* message) {
+                                                llvm::Value* value, llvm::Value* message,
+                                                const char* kind, int lineNum) {
     auto* resultTy = failableResultType(valueType);
     const unsigned erruIndex = resultTy->getNumElements() - 1;
-    auto* erruTy = llvm::cast<llvm::StructType>(resultTy->getElementType(erruIndex));
-    const auto& fields = Records.at(prelude::ErrorTypeName).fieldIndex;
-    const unsigned messageIndex = static_cast<unsigned>(fields.at(prelude::ErrorMessageField));
-    llvm::Value* erru = Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(erruTy), message, {messageIndex});
+    llvm::Value* erru = makeErru(message, Builder->CreateGlobalString(kind),
+                                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(Context), lineNum));
 
     llvm::Value* result = llvm::ConstantAggregateZero::get(resultTy);
     result = Builder->CreateInsertValue(result, failed, {0u});
@@ -1292,22 +1363,32 @@ llvm::Value* CodeGenVisitor::makeFailableResult(const Type& valueType, llvm::Val
     return Builder->CreateInsertValue(result, erru, {erruIndex}, "result");
 }
 
-static llvm::Function* getOrDeclareUnhandledError(llvm::Module& Mod, llvm::LLVMContext& Context) {
-    if (auto* fn = Mod.getFunction("__kriol_unhandled_error")) return fn;
+static llvm::Function* getOrDeclareRaise(llvm::Module& Mod, llvm::LLVMContext& Context) {
+    if (auto* fn = Mod.getFunction("__kriol_raise")) return fn;
     auto* ptrTy = llvm::PointerType::getUnqual(Context);
-    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context),
-                                          {ptrTy, llvm::Type::getInt32Ty(Context)}, false);
-    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage,
-                                      "__kriol_unhandled_error", Mod);
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* ftype = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy, ptrTy, i32Ty, i32Ty}, false);
+    auto* fn = llvm::Function::Create(ftype, llvm::Function::ExternalLinkage, "__kriol_raise", Mod);
     fn->addFnAttr(llvm::Attribute::NoReturn);
     return fn;
 }
 
-void CodeGenVisitor::emitFailure(llvm::Value* erruValue, int lineNum) {
-    if (CurrentIsMain) {
-        Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
-                            {erruMessage(erruValue), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), lineNum)});
-        Builder->CreateUnreachable();
+void CodeGenVisitor::emitRaise(llvm::Value* erru, llvm::Value* callLine) {
+    auto* i32Ty = llvm::Type::getInt32Ty(Context);
+    auto* originLine = Builder->CreateTrunc(erruField(erru, prelude::ErrorLineField), i32Ty, "error.origin");
+    Builder->CreateCall(getOrDeclareRaise(*Mod, Context),
+                        {erruField(erru, prelude::ErrorMessageField), erruField(erru, prelude::ErrorKindField),
+                         originLine, callLine});
+    Builder->CreateUnreachable();
+}
+
+void CodeGenVisitor::emitFailure(llvm::Value* erruValue, llvm::Value* callLine) {
+    if (!SpiaFrames.empty()) {
+        emitFailureToSpia(erruValue, callLine);
+        return;
+    }
+    if (!CurrentCanFail || CurrentIsMain) {
+        emitRaise(erruValue, callLine);
         return;
     }
 
@@ -1369,7 +1450,8 @@ void CodeGenVisitor::emitConversionCall(TypeCallExpr& node) {
         value = Builder->CreateICmpNE(raw, llvm::ConstantInt::get(i32Ty, 0), "konverti.bool");
 
     llvm::Value* message = Builder->CreateLoad(ptrTy, errorSlot, "konverti.message");
-    LastValue = makeFailableResult(target, Builder->CreateIsNull(ok, "konverti.failed"), value, message);
+    LastValue = makeFailableResult(target, Builder->CreateIsNull(ok, "konverti.failed"), value, message,
+                                   "konverti", node.LineNum);
 }
 
 void CodeGenVisitor::visit(TypeCallExpr& node) {
@@ -1389,9 +1471,10 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
 
     Builder->SetInsertPoint(failBB);
     llvm::Value* error = Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error");
-    Builder->CreateCall(getOrDeclareUnhandledError(*Mod, Context),
-                        {erruMessage(error), llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context), node.LineNum)});
-    Builder->CreateUnreachable();
+    if (SpiaFrames.empty())
+        emitRaise(error, Builder->getInt32(node.LineNum));
+    else
+        emitFailure(error, Builder->getInt32(node.LineNum));
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
@@ -1411,7 +1494,8 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
     Builder->CreateCondBr(failed, failBB, okBB);
 
     Builder->SetInsertPoint(failBB);
-    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"), node.LineNum);
+    emitFailure(Builder->CreateExtractValue(result, {resultTy->getNumElements() - 1}, "error"),
+                Builder->getInt32(node.LineNum));
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
@@ -1630,6 +1714,8 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
             throw std::runtime_error("erro interno: a função '" + node.Name + "' não tem 'divolvi'");
     }
 
+    if (CurrentHasSpia)
+        markLocalAccessesVolatile(*fn);
     auto verificationFailed = llvm::verifyFunction(*fn);
 
     if (verificationFailed) {
@@ -1650,6 +1736,7 @@ void CodeGenVisitor::visit(FuncDeclSttmt& node) {
     CurrentCanFail = false;
     CurrentIsMain = false;
     CurrentReturnSlot = nullptr;
+    CurrentHasSpia = false;
 }
 
 void CodeGenVisitor::visit(IfSttmt& node) {
@@ -1698,7 +1785,8 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
 
     auto* savedExit = LoopExit;
     auto* savedCont = LoopContinue;
-    LoopExit = exitBB; LoopContinue = condBB;
+    const size_t savedSpiaDepth = LoopSpiaDepth;
+    LoopExit = exitBB; LoopContinue = condBB; LoopSpiaDepth = SpiaFrames.size();
 
     Builder->CreateBr(condBB);
     Builder->SetInsertPoint(condBB);
@@ -1711,33 +1799,33 @@ void CodeGenVisitor::visit(WhileSttmt& node) {
         Builder->CreateBr(condBB);
 
     Builder->SetInsertPoint(exitBB);
-    LoopExit = savedExit; LoopContinue = savedCont;
+    LoopExit = savedExit; LoopContinue = savedCont; LoopSpiaDepth = savedSpiaDepth;
     LastValue = nullptr;
 }
 
 void CodeGenVisitor::visit(JumpSttmt& node) {
-    if (node.Name == "kebra" && LoopExit) {
-        Builder->CreateBr(LoopExit);
-        startDeadBlock();
-    } else if (node.Name == "kontinua" && LoopContinue) {
-        Builder->CreateBr(LoopContinue);
-        startDeadBlock();
-    }
+    llvm::BasicBlock* target = node.Name == "kebra" ? LoopExit : LoopContinue;
+    if (!target)
+        return;
+    emitSpiaExits(LoopSpiaDepth);
+    Builder->CreateBr(target);
+    startDeadBlock();
 }
 
 void CodeGenVisitor::visit(ReturnSttmt& node) {
     llvm::Type* retTy = Builder->GetInsertBlock()->getParent()->getReturnType();
     if (node.Throws) {
         llvm::Value* erru = emitAggregateAddress(node.ReturnValue.get(), node.ReturnValue->ResolvedType);
-        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"), node.LineNum);
+        emitFailure(Builder->CreateLoad(getOrCreateRecordType(prelude::ErrorTypeName), erru, "erru"),
+                    Builder->getInt32(node.LineNum));
     } else if (isAggregate(CurrentReturnType)) {
         emitAggregateStore(CurrentReturnSlot, CurrentReturnType, node.ReturnValue.get());
         if (CurrentCanFail) {
             auto* resultTy = llvm::cast<llvm::StructType>(retTy);
-            Builder->CreateRet(Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(resultTy),
-                                                          CurrentReturnSlot, {1u}));
+            emitReturn(Builder->CreateInsertValue(llvm::ConstantAggregateZero::get(resultTy),
+                                                  CurrentReturnSlot, {1u}));
         } else {
-            Builder->CreateRet(CurrentReturnSlot);
+            emitReturn(CurrentReturnSlot);
         }
     } else if (CurrentCanFail && !CurrentIsMain) {
         auto* resultTy = llvm::cast<llvm::StructType>(retTy);
@@ -1747,19 +1835,19 @@ void CodeGenVisitor::visit(ReturnSttmt& node) {
             llvm::Value* value = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
             result = Builder->CreateInsertValue(result, value, {1u});
         }
-        Builder->CreateRet(result);
+        emitReturn(result);
     } else if (node.ReturnValue) {
         node.ReturnValue->accept(*this);
         // Coerce to the function's declared return type (e.g. int -> num widening)
         if (LastValue && LastValue->getType() != retTy)
             LastValue = coerceToType(LastValue, node.ReturnValue->ResolvedType, CurrentReturnType);
-        Builder->CreateRet(LastValue);
+        emitReturn(LastValue);
     } else if (retTy->isVoidTy()) {
-        Builder->CreateRetVoid();
+        emitReturn(nullptr);
     } else {
         // A bare 'divolvi;' inside inisiu: main returns i32, so return 0
         // instead of emitting an invalid 'ret void'.
-        Builder->CreateRet(llvm::Constant::getNullValue(retTy));
+        emitReturn(llvm::Constant::getNullValue(retTy));
     }
     // Anything else in this source block is unreachable; give it a fresh
     // block so it still produces structurally valid IR.
@@ -2003,7 +2091,8 @@ void CodeGenVisitor::visit(ForSttmt& node) {
 
     auto* savedExit = LoopExit;
     auto* savedCont = LoopContinue;
-    LoopExit = exitBB; LoopContinue = afterBB;
+    const size_t savedSpiaDepth = LoopSpiaDepth;
+    LoopExit = exitBB; LoopContinue = afterBB; LoopSpiaDepth = SpiaFrames.size();
 
     pushScope();
     if (node.Start) node.Start->accept(*this);
@@ -2028,7 +2117,7 @@ void CodeGenVisitor::visit(ForSttmt& node) {
 
     Builder->SetInsertPoint(exitBB);
     popScope();
-    LoopExit = savedExit; LoopContinue = savedCont;
+    LoopExit = savedExit; LoopContinue = savedCont; LoopSpiaDepth = savedSpiaDepth;
     LastValue = nullptr;
 }
 
