@@ -1,0 +1,46 @@
+// A sempri may fail inside a spia of its own that catches the error; the error never leaves it.
+fn falha() int : Erru {
+    lansa Erru{mensagem = "falha"};
+}
+
+fn protejidu(int zero) {
+    spia {
+        int x = 1 / zero;
+    } oops (e) {
+        mostran(f"protejidu: {e.tipu}");
+    }
+}
+
+// The outer spia stays active while the sempri runs: handlers pushed inside the sempri still catch.
+fn inisiu() {
+    spia {
+        int zero = 0;
+        spia {
+            mostran("korpu");
+        } sempri {
+            spia {
+                lansa Erru{mensagem = "lansa"};
+            } oops (e) {
+                mostran(f"sempri: {e.mensagem}");
+            }
+            spia {
+                int v = tenta falha();
+            } oops (e) {
+                mostran(f"sempri: {e.mensagem}");
+            }
+            spia {
+                spia {
+                    int x = 1 / zero;
+                } sempri {
+                    mostran("sempri dentu");
+                }
+            } oops (e) {
+                mostran(f"sempri: {e.tipu}");
+            }
+            protejidu(zero);
+            mostran("fin");
+        }
+    } oops (e) {
+        mostran("nunca");
+    }
+}

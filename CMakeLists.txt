@@ -361,6 +361,12 @@ add_executable(
 )
 
 add_executable(
+    kriol_spia_locals_test
+    EXCLUDE_FROM_ALL
+    tests/api/spia_volatile_locals.cc
+)
+
+add_executable(
     kriol_type_model_test
     EXCLUDE_FROM_ALL
     tests/api/type_model.cc
@@ -473,6 +479,7 @@ kriol_configure_target(kriol_core)
 kriol_configure_target(kriol)
 kriol_configure_target(kriol_api_compile_memory_test)
 kriol_configure_target(kriol_spia_codegen_test)
+kriol_configure_target(kriol_spia_locals_test)
 kriol_configure_target(kriol_type_model_test)
 kriol_configure_target(kriol_gc_runtime_test)
 kriol_configure_target(kriol_spia_runtime_test)
@@ -544,6 +551,7 @@ foreach(_KRIOL_COMPILER_TARGET IN ITEMS
     kriol
     kriol_api_compile_memory_test
     kriol_spia_codegen_test
+    kriol_spia_locals_test
     kriol_compile_fuzz_smoke
     kriol_compile_random_fuzz
 )
@@ -667,6 +675,8 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:kriol_spia_codegen_test>
     COMMAND
+        $<TARGET_FILE:kriol_spia_locals_test>
+    COMMAND
         $<TARGET_FILE:kriol_gc_runtime_test>
     COMMAND
         $<TARGET_FILE:kriol_spia_runtime_test>
@@ -677,6 +687,6 @@ add_custom_target(
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}
-    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_spia_codegen_test kriol_gc_runtime_test kriol_spia_runtime_test kriol_compile_fuzz_smoke
+    DEPENDS kriol kriol_api_compile_memory_test kriol_type_model_test kriol_spia_codegen_test kriol_spia_locals_test kriol_gc_runtime_test kriol_spia_runtime_test kriol_compile_fuzz_smoke
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

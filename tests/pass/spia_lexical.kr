@@ -68,19 +68,6 @@ fn com_sempri(bool falhar) {
     }
 }
 
-fn sempri_substitui() {
-    spia {
-        spia {
-            lansa Erru{mensagem = "original"};
-        } sempri {
-            mostran("sempri interior");
-            lansa Erru{mensagem = "do sempri"};
-        }
-    } oops (err) {
-        mostran(f"exterior viu {err.mensagem}");
-    }
-}
-
 fn ciclo_no_sempri() {
     spia {
         mostran("corpo");
@@ -111,7 +98,6 @@ fn inisiu() {
     aninhado();
     com_sempri(nau);
     com_sempri(sin);
-    sempri_substitui();
     ciclo_no_sempri();
     konverti_sem_tratamento();
 }

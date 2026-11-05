@@ -60,6 +60,9 @@ namespace ast {
         // The spia blocks enclosing the code being emitted, innermost last.
         std::vector<SpiaFrame> SpiaFrames;
         bool CurrentHasSpia = false;
+        // How many sempri the code being emitted is in. An error a sempri does not catch
+        // itself stops the program: it is never returned to the caller.
+        int SempriDepth = 0;
         // Copies of one sempri never run together, so they share its allocas, taken in order.
         std::unordered_map<const ast::BlockSttmt*, std::vector<llvm::AllocaInst*>> SempriAllocas;
         std::vector<std::pair<const ast::BlockSttmt*, size_t>> SempriCopies;
@@ -128,7 +131,8 @@ namespace ast {
         // Pushes a runtime handler whose errors go to `catchTo`, with the handler popped.
         void                 emitSpiaHandler(const SpiaFrame& catchTo);
         void                 emitCaughtRuntimeError(const SpiaFrame& frame);
-        // Keeps every local in memory, so the values changed before a longjmp survive it.
+        // Keeps in memory, through volatile accesses, the locals a longjmp could find stale:
+        // those written while a spia handler is pushed and those whose address escapes.
         void                 markLocalAccessesVolatile(llvm::Function& fn);
 
         // After emitting a block terminator (break/continue/return/sai) moves
@@ -188,6 +192,7 @@ namespace ast {
         void emitFailureToSpia(llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime = nullptr);
         void emitSempriThenFail(const SpiaFrame& frame, llvm::Value* erruValue, llvm::Value* callLine, llvm::Value* cameThroughRuntime);
         void emitSempri(const SpiaFrame& frame);
+        // Emits the sempri with the enclosing spia blocks hidden, at compile time and at run time.
         void emitSempriCopy(ast::BlockSttmt& sempri);
         // Leaves every spia but the outermost `keep`, popping its handler and running its sempri.
         void emitSpiaExits(size_t keep);

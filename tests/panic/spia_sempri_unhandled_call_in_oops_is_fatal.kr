@@ -1,0 +1,23 @@
+// expect: erro não tratado: falha
+// In a function that can fail, an unhandled call in an oops inside a sempri is not returned to the caller.
+fn falha() int : Erru {
+    lansa Erru{mensagem = "falha"};
+}
+
+fn limpa() int : Erru {
+    spia {
+        mostran("korpu");
+    } sempri {
+        spia {
+            lansa Erru{mensagem = "primeiru"};
+        } oops (e) {
+            int v = falha();
+        }
+    }
+    divolvi 1;
+}
+
+fn inisiu() {
+    int r = limpa() sinon 0;
+    mostran(f"nunca {r}");
+}

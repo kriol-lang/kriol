@@ -1,0 +1,6 @@
+// expect: falta ')' antes de '{'
+fn inisiu() {
+    pa (int i = 0; i < 3; i += 1 {
+        mostran(f"{i}");
+    }
+}

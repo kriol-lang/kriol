@@ -18,6 +18,8 @@
 #include <windows.h>
 #endif
 
+#include "../include/kriol/constants.hh"
+
 #ifndef KRIOL_RUNTIME_NO_GC
 #define KRIOL_RUNTIME_NO_GC 0
 #endif
@@ -266,7 +268,9 @@ static char* __kriol_resize_text(char* old_buf, size_t bytes) {
     return buf;
 }
 
-/* Jump stays first: the generated code calls setjmp on the frame pointer. */
+/* Jump stays first: the generated code calls setjmp on the frame pointer. The
+   frame lives in the stack of the function that has the spia, which pops it on
+   every way out, so it is never left on the stack of handlers once gone. */
 typedef struct KriolSpiaFrame KriolSpiaFrame;
 struct KriolSpiaFrame {
     jmp_buf Jump;
@@ -277,11 +281,19 @@ struct KriolSpiaFrame {
     int32_t CallLine;
 };
 
-static KriolSpiaFrame* __kriol_spia_top = NULL;
+_Static_assert(sizeof(KriolSpiaFrame) <= KR_SPIA_FRAME_BYTES,
+               "KR_SPIA_FRAME_BYTES is too small for this target's KriolSpiaFrame");
+_Static_assert(_Alignof(KriolSpiaFrame) <= KR_SPIA_FRAME_ALIGN,
+               "KR_SPIA_FRAME_ALIGN is too small for this target's KriolSpiaFrame");
 
-KriolSpiaFrame* __kriol_spia_push(void) {
-    KriolSpiaFrame* frame = (KriolSpiaFrame*)malloc(sizeof *frame);
-    if (!frame) __kriol_panic("não há memória suficiente para entrar no bloco spia");
+static KriolSpiaFrame* __kriol_spia_top = NULL;
+/* The frames from here down belong to the code around a running sempri, which
+   catches nothing raised inside it. */
+static KriolSpiaFrame* __kriol_spia_floor = NULL;
+
+/* `storage` is KR_SPIA_FRAME_BYTES aligned to KR_SPIA_FRAME_ALIGN. */
+KriolSpiaFrame* __kriol_spia_push(void* storage) {
+    KriolSpiaFrame* frame = (KriolSpiaFrame*)storage;
     frame->Previous = __kriol_spia_top;
     frame->Message = NULL;
     frame->Kind = NULL;
@@ -296,11 +308,21 @@ void __kriol_spia_pop(void) {
     __kriol_spia_top = frame->Previous;
     free(frame->Message);
     free(frame->Kind);
-    free(frame);
 }
 
 int __kriol_spia_active(void) {
-    return __kriol_spia_top != NULL;
+    return __kriol_spia_top != __kriol_spia_floor;
+}
+
+/* A sempri never jumps out, so every enter is matched by its leave. */
+void* __kriol_sempri_enter(void) {
+    KriolSpiaFrame* previous = __kriol_spia_floor;
+    __kriol_spia_floor = __kriol_spia_top;
+    return previous;
+}
+
+void __kriol_sempri_leave(void* previous) {
+    __kriol_spia_floor = (KriolSpiaFrame*)previous;
 }
 
 /* Owned by the frame: valid until __kriol_spia_pop. */

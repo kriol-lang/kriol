@@ -1,0 +1,17 @@
+// expect: erro não tratado: falha
+fn falha() int : Erru {
+    lansa Erru{mensagem = "falha"};
+}
+
+fn inisiu() {
+    spia {
+        spia {
+            mostran("korpu");
+        } sempri {
+            int v = falha();
+            mostran("nunca");
+        }
+    } oops (e) {
+        mostran("nunca");
+    }
+}

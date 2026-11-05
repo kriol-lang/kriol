@@ -9,6 +9,8 @@
 
 #include <gc.h>
 
+#include "../../include/kriol/constants.hh"
+
 #define CHECK(cond) \
     do { \
         if (!(cond)) { \
@@ -22,13 +24,15 @@ typedef struct KriolSpiaFrame KriolSpiaFrame;
 void __kriol_gc_init(void);
 char* __kriol_format(const char* fmt, ...);
 
-KriolSpiaFrame* __kriol_spia_push(void);
+KriolSpiaFrame* __kriol_spia_push(void* storage);
 void __kriol_spia_pop(void);
 const char* __kriol_spia_message(void);
 const char* __kriol_spia_kind(void);
 int32_t __kriol_spia_line(void);
-_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line);
+_Noreturn void __kriol_spia_throw(const char* kind, const char* message, int32_t line, int32_t call_line);
 int __kriol_spia_active(void);
+void* __kriol_sempri_enter(void);
+void __kriol_sempri_leave(void* previous);
 void __kriol_check_div(int64_t lhs, int64_t rhs, int32_t signed_bits, int32_t line);
 void __kriol_check_fdiv(double divisor, int32_t line);
 void __kriol_check_bounds(int64_t index, int64_t size, int line);
@@ -38,22 +42,25 @@ _Noreturn void __kriol_panic(const char* message);
 _Noreturn void __kriol_fail_at(const char* kind, const char* message, int32_t line);
 _Noreturn void __kriol_raise(const char* message, const char* kind, int32_t origin_line, int32_t call_line);
 
+/* Generated code keeps each frame in the stack of the function that has the spia. */
+#define SPIA_STORAGE(name) _Alignas(KR_SPIA_FRAME_ALIGN) unsigned char name[KR_SPIA_FRAME_BYTES]
+
 static jmp_buf* frame_jump(KriolSpiaFrame* frame) {
     return (jmp_buf*)frame;
 }
 
 __attribute__((noinline)) static void divide_by_zero(void) {
-    __kriol_spia_throw("divizon", "x", 7);
+    __kriol_spia_throw("divizon", "x", 7, 7);
 }
 
 __attribute__((noinline)) static void fail_with(const char* kind, int32_t line) {
-    __kriol_spia_throw(kind, "inner", line);
+    __kriol_spia_throw(kind, "inner", line, line);
 }
 
 __attribute__((noinline)) static void fail_with_stack_message(int32_t line) {
     char message[64];
     snprintf(message, sizeof message, "stack message %d", (int)line);
-    __kriol_spia_throw("indisi", message, line);
+    __kriol_spia_throw("indisi", message, line, line);
 }
 
 __attribute__((noinline)) static void clobber_stack(void) {
@@ -62,11 +69,21 @@ __attribute__((noinline)) static void clobber_stack(void) {
         scratch[i] = 'z';
 }
 
+static void frames_live_in_the_callers_storage(void) {
+    SPIA_STORAGE(storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(storage);
+    CHECK((void*)frame == (void*)storage);
+    CHECK(__kriol_spia_active());
+    __kriol_spia_pop();
+    CHECK(!__kriol_spia_active());
+}
+
 static void catches_a_throw_from_a_deeper_call(void) {
     CHECK(!__kriol_spia_active());
 
     volatile int caught = 0;
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     CHECK(__kriol_spia_active());
 
     if (setjmp(*frame_jump(frame)) == 0) {
@@ -87,9 +104,11 @@ static void nested_throw_reaches_the_inner_frame(void) {
     volatile int outer_caught = 0;
     volatile int inner_caught = 0;
 
-    KriolSpiaFrame* outer = __kriol_spia_push();
+    SPIA_STORAGE(outer_storage);
+    KriolSpiaFrame* outer = __kriol_spia_push(outer_storage);
     if (setjmp(*frame_jump(outer)) == 0) {
-        KriolSpiaFrame* inner = __kriol_spia_push();
+        SPIA_STORAGE(inner_storage);
+        KriolSpiaFrame* inner = __kriol_spia_push(inner_storage);
         if (setjmp(*frame_jump(inner)) == 0) {
             fail_with("paniku", 11);
         } else {
@@ -120,7 +139,8 @@ static void churn_the_collector(void) {
 }
 
 static void message_built_on_the_stack_survives_the_jump(void) {
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     if (setjmp(*frame_jump(frame)) == 0) {
         fail_with_stack_message(21);
     }
@@ -136,9 +156,10 @@ static void kind_freed_after_the_throw_survives_the_jump(void) {
     CHECK(kind != NULL);
     memcpy(kind, "toma", 5);
 
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     if (setjmp(*frame_jump(frame)) == 0) {
-        __kriol_spia_throw(kind, "heap kind", 30);
+        __kriol_spia_throw(kind, "heap kind", 30, 30);
     }
     memset(kind, 'x', 7);
     free(kind);
@@ -153,7 +174,8 @@ static void repeated_throws_into_one_frame_keep_the_latest_error(void) {
     enum { throw_count = 1000 };
     volatile int throws = 0;
 
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     setjmp(*frame_jump(frame));
     if (throws < throw_count) {
         ++throws;
@@ -168,9 +190,65 @@ static void repeated_throws_into_one_frame_keep_the_latest_error(void) {
     CHECK(!__kriol_spia_active());
 }
 
+static void sempri_hides_the_enclosing_frames(void) {
+    volatile int inner_caught = 0;
+    volatile int outer_caught = 0;
+
+    SPIA_STORAGE(outer_storage);
+    KriolSpiaFrame* outer = __kriol_spia_push(outer_storage);
+    if (setjmp(*frame_jump(outer)) == 0) {
+        void* previous = __kriol_sempri_enter();
+        CHECK(!__kriol_spia_active());
+
+        SPIA_STORAGE(inner_storage);
+        KriolSpiaFrame* inner = __kriol_spia_push(inner_storage);
+        CHECK(__kriol_spia_active());
+        if (setjmp(*frame_jump(inner)) == 0)
+            fail_with("divizon", 3);
+        else
+            inner_caught = 1;
+        __kriol_spia_pop();
+
+        CHECK(!__kriol_spia_active());
+        __kriol_sempri_leave(previous);
+        CHECK(__kriol_spia_active());
+        fail_with("lansa", 4);
+    } else {
+        outer_caught = 1;
+        CHECK(__kriol_spia_line() == 4);
+    }
+    __kriol_spia_pop();
+
+    CHECK(inner_caught);
+    CHECK(outer_caught);
+    CHECK(!__kriol_spia_active());
+}
+
+static void nested_sempri_restore_their_floor(void) {
+    SPIA_STORAGE(outer_storage);
+    KriolSpiaFrame* outer = __kriol_spia_push(outer_storage);
+    void* first = __kriol_sempri_enter();
+    SPIA_STORAGE(middle_storage);
+    KriolSpiaFrame* middle = __kriol_spia_push(middle_storage);
+    CHECK(__kriol_spia_active());
+    void* second = __kriol_sempri_enter();
+    CHECK(!__kriol_spia_active());
+    __kriol_sempri_leave(second);
+    CHECK(__kriol_spia_active());
+    __kriol_spia_pop();
+    CHECK(!__kriol_spia_active());
+    __kriol_sempri_leave(first);
+    CHECK(__kriol_spia_active());
+    __kriol_spia_pop();
+    CHECK(!__kriol_spia_active());
+    (void)outer;
+    (void)middle;
+}
+
 static void expect_check_kind(void (*trigger)(void), const char* kind, const char* message, int32_t line) {
     volatile int caught = 0;
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     if (setjmp(*frame_jump(frame)) == 0) {
         trigger();
     } else {
@@ -237,7 +315,8 @@ static ChildResult run_child(void (*body)(const char*), const char* kind) {
 
 static void child_exit_out_of_range(const char* kind) {
     (void)kind;
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     if (setjmp(*frame_jump(frame)) == 0)
         __kriol_exit(300, 1, 1);
     _exit(99);
@@ -245,7 +324,8 @@ static void child_exit_out_of_range(const char* kind) {
 
 static void child_panic(const char* kind) {
     (void)kind;
-    KriolSpiaFrame* frame = __kriol_spia_push();
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
     if (setjmp(*frame_jump(frame)) == 0)
         __kriol_panic("x");
     _exit(99);
@@ -260,6 +340,28 @@ static void child_raise_zeroed_erru(const char* kind) {
     __kriol_raise(NULL, NULL, 0, 6);
 }
 
+static void child_fail_in_sempri(const char* kind) {
+    (void)kind;
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
+    if (setjmp(*frame_jump(frame)) == 0) {
+        __kriol_sempri_enter();
+        __kriol_fail_at("divizon", "divisão por zero", 8);
+    }
+    _exit(99);
+}
+
+static void child_raise_in_sempri(const char* kind) {
+    (void)kind;
+    SPIA_STORAGE(frame_storage);
+    KriolSpiaFrame* frame = __kriol_spia_push(frame_storage);
+    if (setjmp(*frame_jump(frame)) == 0) {
+        __kriol_sempri_enter();
+        __kriol_raise("falhou", "lansa", 11, 12);
+    }
+    _exit(99);
+}
+
 static void expect_child(void (*body)(const char*), const char* kind, const char* expected_stderr) {
     ChildResult result = run_child(body, kind);
     CHECK(result.status == 1);
@@ -270,6 +372,11 @@ static void uncatchable_errors_still_terminate(void) {
     expect_child(child_exit_out_of_range, "",
                  "kriol:1: erro de execução: o código de saída de 'sai' tem de estar entre 0 e 255, mas é 300\n");
     expect_child(child_panic, "", "kriol: erro de execução: x\n");
+}
+
+static void errors_in_a_sempri_terminate(void) {
+    expect_child(child_fail_in_sempri, "", "kriol:8: erro de execução: divisão por zero\n");
+    expect_child(child_raise_in_sempri, "", "kriol:12: erro não tratado: falhou\n");
 }
 
 static void raise_without_a_handler_reports_by_kind(void) {
@@ -286,13 +393,17 @@ static void raise_without_a_handler_reports_by_kind(void) {
 
 int main(void) {
     __kriol_gc_init();
+    frames_live_in_the_callers_storage();
     catches_a_throw_from_a_deeper_call();
     nested_throw_reaches_the_inner_frame();
     message_built_on_the_stack_survives_the_jump();
     kind_freed_after_the_throw_survives_the_jump();
     repeated_throws_into_one_frame_keep_the_latest_error();
     runtime_checks_throw_with_their_kind();
+    sempri_hides_the_enclosing_frames();
+    nested_sempri_restore_their_floor();
     uncatchable_errors_still_terminate();
+    errors_in_a_sempri_terminate();
     raise_without_a_handler_reports_by_kind();
     return 0;
 }

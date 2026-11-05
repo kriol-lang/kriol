@@ -1,20 +1,115 @@
 #include "../../include/kriol/codegen.hh"
+#include "../../include/kriol/constants.hh"
 
 #include <llvm/IR/Attributes.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
 #include <llvm/Analysis/ValueTracking.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IntrinsicInst.h>
 
 #include <iterator>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace kriol {
 namespace ast {
+
+namespace {
+
+using InstructionSet = std::unordered_set<const llvm::Instruction*>;
+
+bool callsFunction(const llvm::Instruction& inst, llvm::StringRef name)
+{
+    const auto* call = llvm::dyn_cast<llvm::CallBase>(&inst);
+    return call && call->getCalledFunction() && call->getCalledFunction()->getName() == name;
+}
+
+// The instructions that run while one of the function's spia handlers is pushed,
+// between a setjmp and any longjmp back to it. Returns false when the pushes and
+// pops do not nest the same way on every path.
+bool collectGuardedInstructions(const llvm::Function& fn, InstructionSet& guarded)
+{
+    std::unordered_map<const llvm::BasicBlock*, int> depthOnEntry{{&fn.getEntryBlock(), 0}};
+    std::vector<const llvm::BasicBlock*> pending{&fn.getEntryBlock()};
+    while (!pending.empty()) {
+        const llvm::BasicBlock* block = pending.back();
+        pending.pop_back();
+        int depth = depthOnEntry.at(block);
+        for (const llvm::Instruction& inst : *block) {
+            if (depth > 0)
+                guarded.insert(&inst);
+            if (callsFunction(inst, "__kriol_spia_push"))
+                ++depth;
+            else if (callsFunction(inst, "__kriol_spia_pop") && --depth < 0)
+                return false;
+        }
+        for (const llvm::BasicBlock* next : llvm::successors(block)) {
+            const auto [known, isNew] = depthOnEntry.emplace(next, depth);
+            if (isNew)
+                pending.push_back(next);
+            else if (known->second != depth)
+                return false;
+        }
+    }
+    return true;
+}
+
+enum class LocalUse { Read, Write, Escape };
+
+// How `user` uses `address`, an address inside a local.
+LocalUse classifyUse(const llvm::User& user, const llvm::Value& address)
+{
+    if (llvm::isa<llvm::LoadInst>(user))
+        return LocalUse::Read;
+    if (const auto* store = llvm::dyn_cast<llvm::StoreInst>(&user))
+        return store->getPointerOperand() == &address ? LocalUse::Write : LocalUse::Escape;
+    if (const auto* memory = llvm::dyn_cast<llvm::MemIntrinsic>(&user))
+        return memory->getRawDest() == &address ? LocalUse::Write : LocalUse::Read;
+    return LocalUse::Escape;
+}
+
+// C keeps across a longjmp the locals left unchanged since the setjmp (C17 7.13.2.1),
+// so only a local written under a handler, or changed out of sight through an
+// escaped address, has to stay in memory.
+bool mustStayInMemory(const llvm::AllocaInst& local, const InstructionSet& guarded)
+{
+    std::vector<const llvm::Value*> addresses{&local};
+    while (!addresses.empty()) {
+        const llvm::Value* address = addresses.back();
+        addresses.pop_back();
+        for (const llvm::User* user : address->users()) {
+            if (llvm::isa<llvm::GetElementPtrInst, llvm::BitCastInst, llvm::AddrSpaceCastInst>(user)) {
+                addresses.push_back(user);
+                continue;
+            }
+            const LocalUse use = classifyUse(*user, *address);
+            if (use == LocalUse::Escape
+                    || (use == LocalUse::Write && guarded.count(llvm::cast<llvm::Instruction>(user))))
+                return true;
+        }
+    }
+    return false;
+}
+
+std::unordered_set<const llvm::Value*> localsToKeepInMemory(llvm::Function& fn)
+{
+    InstructionSet guarded;
+    const bool nested = collectGuardedInstructions(fn, guarded);
+    std::unordered_set<const llvm::Value*> kept;
+    for (const llvm::BasicBlock& block : fn)
+        for (const llvm::Instruction& inst : block)
+            if (const auto* local = llvm::dyn_cast<llvm::AllocaInst>(&inst);
+                    local && (!nested || mustStayInMemory(*local, guarded)))
+                kept.insert(local);
+    return kept;
+}
+
+} // namespace
 
 // Pairs with the runtime's longjmp. Darwin, wasm32-wasi (with -wasm-enable-sjlj
 // and libsetjmp.a, see emit): setjmp(buf). glibc: _setjmp(buf). MinGW:
@@ -137,9 +232,23 @@ void CodeGenVisitor::emitSempri(const SpiaFrame& frame)
 
 void CodeGenVisitor::emitSempriCopy(ast::BlockSttmt& sempri)
 {
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto enter = Mod->getOrInsertFunction("__kriol_sempri_enter", llvm::FunctionType::get(ptrTy, false));
+    auto leave = Mod->getOrInsertFunction("__kriol_sempri_leave",
+                                          llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {ptrTy}, false));
+    auto* floor = Builder->CreateCall(enter, {}, "sempri.floor");
+
+    std::vector<SpiaFrame> enclosing;
+    enclosing.swap(SpiaFrames);
+    ++SempriDepth;
     SempriCopies.emplace_back(&sempri, 0);
     sempri.accept(*this);
     SempriCopies.pop_back();
+    --SempriDepth;
+    SpiaFrames.swap(enclosing);
+
+    if (!Builder->GetInsertBlock()->getTerminator())
+        Builder->CreateCall(leave, {floor});
 }
 
 void CodeGenVisitor::emitSpiaExits(size_t keep)
@@ -167,10 +276,13 @@ void CodeGenVisitor::emitReturn(llvm::Value* value)
 void CodeGenVisitor::emitSpiaHandler(const SpiaFrame& catchTo)
 {
     auto* fn = Builder->GetInsertBlock()->getParent();
-    auto push = Mod->getOrInsertFunction("__kriol_spia_push", llvm::FunctionType::get(
-                                              llvm::PointerType::getUnqual(Context), false));
-    auto* jumped = Builder->CreateICmpNE(emitSetjmp(Builder->CreateCall(push, {}, "spia.frame")),
-                                         Builder->getInt32(0), "spia.jumped");
+    auto* ptrTy = llvm::PointerType::getUnqual(Context);
+    auto push = Mod->getOrInsertFunction("__kriol_spia_push", llvm::FunctionType::get(ptrTy, {ptrTy}, false));
+    auto* storage = createEntryAlloca(fn, "spia.frame",
+                                      llvm::ArrayType::get(Builder->getInt8Ty(), KR_SPIA_FRAME_BYTES));
+    storage->setAlignment(llvm::Align(KR_SPIA_FRAME_ALIGN));
+    auto* frame = Builder->CreateCall(push, {storage}, "spia.frame");
+    auto* jumped = Builder->CreateICmpNE(emitSetjmp(frame), Builder->getInt32(0), "spia.jumped");
     auto* caughtBB = llvm::BasicBlock::Create(Context, "spia.caught", fn);
     auto* continueBB = llvm::BasicBlock::Create(Context, "spia.guarded", fn);
     Builder->CreateCondBr(jumped, caughtBB, continueBB);
@@ -245,16 +357,20 @@ void CodeGenVisitor::visit(SpiaSttmt& node)
 
 void CodeGenVisitor::markLocalAccessesVolatile(llvm::Function& fn)
 {
-    const auto onLocal = [](llvm::Value* pointer) {
-        return llvm::isa<llvm::AllocaInst>(llvm::getUnderlyingObject(pointer, 0));
+    const std::unordered_set<const llvm::Value*> kept = localsToKeepInMemory(fn);
+    const auto onKeptLocal = [&](const llvm::Value* pointer) {
+        return kept.count(llvm::getUnderlyingObject(pointer, 0)) != 0;
     };
     for (llvm::BasicBlock& block : fn)
         for (llvm::Instruction& inst : block) {
-            if (auto* load = llvm::dyn_cast<llvm::LoadInst>(&inst); load && onLocal(load->getPointerOperand()))
+            if (auto* load = llvm::dyn_cast<llvm::LoadInst>(&inst); load && onKeptLocal(load->getPointerOperand()))
                 load->setVolatile(true);
-            if (auto* store = llvm::dyn_cast<llvm::StoreInst>(&inst); store && onLocal(store->getPointerOperand()))
+            if (auto* store = llvm::dyn_cast<llvm::StoreInst>(&inst); store && onKeptLocal(store->getPointerOperand()))
                 store->setVolatile(true);
-            if (auto* memory = llvm::dyn_cast<llvm::MemIntrinsic>(&inst))
+            auto* transfer = llvm::dyn_cast<llvm::MemTransferInst>(&inst);
+            if (auto* memory = llvm::dyn_cast<llvm::MemIntrinsic>(&inst);
+                    memory && (onKeptLocal(memory->getRawDest())
+                               || (transfer && onKeptLocal(transfer->getRawSource()))))
                 memory->setVolatile(Builder->getTrue());
         }
 }

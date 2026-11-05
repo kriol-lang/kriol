@@ -1,4 +1,4 @@
-// expect: não se esperava '::' aqui; esperava-se um nome ou '['
+// expect: não se esperava '::' aqui; esperava-se um nome
 fn inisiu() {
     Mesa::novu();
 }

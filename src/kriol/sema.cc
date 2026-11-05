@@ -653,9 +653,9 @@ void SemanticAnalyzer::reportJumpOutOfSempri(const std::string& keyword, int lin
 
 void SemanticAnalyzer::visit(SpiaSttmt& node) {
     if (node.Body) {
-        ++SpiaBodyDepth;
+        ScopedValue<int> body(SpiaBodyDepth, SpiaBodyDepth + 1);
+        ScopedValue<int> catching(CatchingSpiaDepth, CatchingSpiaDepth + (node.Oops ? 1 : 0));
         node.Body->accept(*this);
-        --SpiaBodyDepth;
     }
     if (node.Oops) {
         pushScope();
@@ -668,11 +668,19 @@ void SemanticAnalyzer::visit(SpiaSttmt& node) {
     }
     if (node.Sempri) {
         ScopedValue<int> sempri(SempriLoopDepth, LoopDepth);
+        ScopedValue<int> body(SpiaBodyDepth, 0);
+        ScopedValue<int> oops(OopsDepth, 0);
+        ScopedValue<int> catching(CatchingSpiaDepth, 0);
         node.Sempri->accept(*this);
     }
 }
 
 void SemanticAnalyzer::requireFallibleFunction(const std::string& keyword, int lineNum) {
+    if (CatchingSpiaDepth > 0) return;
+    if (insideSempri()) {
+        reportJumpOutOfSempri(keyword, lineNum);
+        return;
+    }
     if (CurrFuncCanFail || SpiaBodyDepth > 0 || OopsDepth > 0) return;
     const std::string example = CurrFuncName.empty() ? "f" : CurrFuncName;
     addError(errLoc(lineNum) + "'" + keyword + "' só pode ser usado numa função que pode falhar, "
@@ -886,7 +894,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     // T::konverti() also stops the program on failure, but silently, to keep
     // simple programs simple.
     if (info.canFail && !handled && SpiaBodyDepth == 0) {
-        const bool returnedToCaller = OopsDepth > 0 && CurrFuncCanFail;
+        const bool returnedToCaller = OopsDepth > 0 && CurrFuncCanFail && !insideSempri();
         const std::string consequence = returnedToCaller
             ? "é devolvido a quem chamou esta função"
             : "o programa termina se a função falhar";

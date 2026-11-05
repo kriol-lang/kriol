@@ -4,35 +4,6 @@ All notable changes to the Kriol compiler are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Added
-
-- Add `spia { } oops (err) { } sempri { }`, the Kriol try/catch/finally. The
-  `oops` block catches an `Erru` raised with `lansa` inside the `spia`, one
-  returned by a call at any depth, a failed `toma()` or `konverti()`, and the
-  runtime errors that used to end the program: division by zero, a
-  division result that does not fit its type, an index out of bounds, a failed
-  `konfirma` and `paniku`. The program continues after the block, `lansa err;`
-  inside `oops` raises the error again, and `sempri` runs on every way out of
-  the block, including `divolvi`, `kebra` and `kontinua`. `sai(n)` and
-  out-of-memory are never caught. Programs without `spia` compile to the same
-  code and print the same messages as before. `spia` works in native,
-  `x86_64-windows` and `wasm32-wasi` builds. A WebAssembly program that uses
-  `spia` needs a host with WebAssembly exception handling; one that does not
-  use `spia` is unchanged. ([#31])
-- Give `Erru` three new fields after `mensagem`: `tipu` (`textu`, one of
-  `"lansa"`, `"paniku"`, `"divizon"`, `"indisi"`, `"konfirma"`, `"konverti"`
-  and `"toma"`), `fixeru` (`textu`) and `linha` (`int`). `Erru{mensagem = "x"}`
-  still compiles, and the compiler fills the new fields. ([#31])
-
-### Changed
-
-- **Breaking:** the `mensage` field of `Erru` is now `mensagem`, so every
-  `Erru{mensage = ...}` and `err.mensage` has to be rewritten. ([#31])
-- **Breaking:** `spia`, `oops` and `sempri` are now reserved words, so a
-  program that uses one of them as a name no longer compiles. ([#31])
-
 ## [1.16.2] - 2026-10-25
 
 ### Added
@@ -148,7 +119,6 @@ Releases before 1.14.0 are not covered here. See the
 [#19]: https://github.com/kriol-lang/kriol/pull/19
 [#20]: https://github.com/kriol-lang/kriol/pull/20
 [#21]: https://github.com/kriol-lang/kriol/pull/21
-[#31]: https://github.com/kriol-lang/kriol/issues/31
 [4d11ab4]: https://github.com/kriol-lang/kriol/commit/4d11ab414aeeec30c60071006d34fea38a44f020
 [4e2da1b]: https://github.com/kriol-lang/kriol/commit/4e2da1b69890b3dd9f9e65136e5b9bd032e2285a
 [8a99934]: https://github.com/kriol-lang/kriol/commit/8a99934e7781e35ccbe8e8f24c9593d1f4695f54

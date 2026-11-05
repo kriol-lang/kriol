@@ -234,16 +234,18 @@ for level in 0 3; do
     rm -f "$tmpbin"
 done
 
-printf "  %-44s" "spia keeps locals at --opt-lvl 3"
-tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
-LOCALS="$ROOT/tests/pass/spia_locals_survive_longjmp.kr"
-if "$KRIOL" --opt-lvl 3 "$LOCALS" -o "$tmpbin" > "$DETAIL" 2>&1 && runs_cleanly "$LOCALS" "" "$tmpbin"; then
-    echo " PASS"; pass=$((pass+1))
-else
-    echo " FAIL"; record_failure "spia keeps locals at --opt-lvl 3"
-    sed 's/^/      /' "$DETAIL"
-fi
-rm -f "$tmpbin"
+for program in spia_locals_survive_longjmp spia_locals_survive_longjmp_outside; do
+    printf "  %-44s" "spia keeps locals at --opt-lvl 3: ${program#spia_locals_survive_}"
+    tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
+    LOCALS="$ROOT/tests/pass/$program.kr"
+    if "$KRIOL" --opt-lvl 3 "$LOCALS" -o "$tmpbin" > "$DETAIL" 2>&1 && runs_cleanly "$LOCALS" "" "$tmpbin"; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "spia keeps locals at --opt-lvl 3: $program"
+        sed 's/^/      /' "$DETAIL"
+    fi
+    rm -f "$tmpbin"
+done
 
 printf "  %-44s" "sempri copies share locals at --opt-lvl 0"
 tmpbin=$(mktemp /tmp/kriol_opt_XXXX)
@@ -308,7 +310,17 @@ else
     echo " PASS"; pass=$((pass+1))
 fi
 
-for program in spia_lexical spia_value_error_from_callee; do
+for program in spia_sempri_unhandled_call_is_fatal spia_sempri_unhandled_call_in_oops_is_fatal; do
+    printf "  %-44s" "unhandled call in sempri warns of the stop: ${program#spia_sempri_}"
+    if "$KRIOL" "$ROOT/tests/panic/$program.kr" -o /dev/null 2>&1 \
+            | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar"; then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "unhandled call in sempri warns of the stop: $program"
+    fi
+done
+
+for program in spia_lexical spia_value_error_from_callee spia_sempri_catches_its_own; do
     printf "  %-44s" "--strict accepts $program"
     tmpbin=$(mktemp /tmp/kriol_strict_XXXX)
     if "$KRIOL" --strict "$ROOT/tests/pass/$program.kr" -o "$tmpbin" >/dev/null 2>&1; then

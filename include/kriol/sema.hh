@@ -50,10 +50,16 @@ namespace sema {
         // How many loops deep we currently are (used for break/continue validation)
         int LoopDepth = 0;
 
+        // Inside a sempri these count only the spia and oops nested in it: what
+        // encloses the sempri cannot catch an error raised inside it.
         int SpiaBodyDepth = 0;
         int OopsDepth = 0;
+        // Bodies of a spia that has an oops, which catches what they raise.
+        int CatchingSpiaDepth = 0;
         // The LoopDepth on entering the innermost sempri, -1 outside one.
         int SempriLoopDepth = -1;
+
+        bool insideSempri() const { return SempriLoopDepth >= 0; }
 
         // How many function bodies deep we currently are (nested functions are
         // not supported and must be rejected).
@@ -132,7 +138,8 @@ namespace sema {
                            const std::string& callee);
 
         // Reports an error if 'tenta' or 'lansa' is used outside a function
-        // that declares an error type and outside a spia body or oops.
+        // that declares an error type and outside a spia body or oops, or
+        // where its error would leave a sempri.
         void requireFallibleFunction(const std::string& keyword, int lineNum);
         void reportJumpOutOfSempri(const std::string& keyword, int lineNum);
 

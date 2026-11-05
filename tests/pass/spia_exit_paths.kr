@@ -147,28 +147,6 @@ fn sempri_ao_relansar() int : Erru {
     divolvi 0;
 }
 
-fn sempri_substitui_o_valor() int : Erru {
-    spia {
-        divolvi 1;
-    } sempri {
-        lansa Erru{mensagem = "do sempri"};
-    }
-}
-
-fn sempri_falha_para_o_exterior() int {
-    spia {
-        spia {
-            divolvi 1;
-        } sempri {
-            mostran("sempri interior antes de falhar");
-            lansa Erru{mensagem = "interior"};
-        }
-    } oops (err) {
-        mostran(f"exterior apanhou {err.mensagem}");
-    }
-    divolvi 2;
-}
-
 molda Pontu {
     int x;
     int y;
@@ -210,6 +188,4 @@ fn inisiu() {
     mostran(sempri_ve_o_seu_ambito());
     mostran(sempri_fora_do_oops() sinon 99);
     mostran(sempri_ao_relansar() sinon 98);
-    mostran(sempri_substitui_o_valor() sinon 99);
-    mostran(sempri_falha_para_o_exterior());
 }

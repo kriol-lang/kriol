@@ -1,0 +1,46 @@
+// Locals written outside a guarded spia body keep fast registers; those written in it stay in memory.
+// Every value read after an error jumps back must be the latest one, at any optimization level.
+fn zero() int {
+    divolvi 0;
+}
+
+fn fundu(int n) int {
+    si n == 0 {
+        divolvi 1 / zero();
+    }
+    divolvi fundu(n - 1);
+}
+
+fn inisiu() {
+    int antis = 0;
+    pa int i = 1; i <= 4; i += 1 {
+        antis = antis * 10 + i;
+    }
+    num metadi = 0.5;
+    int soma = 0;
+    pa int k = 0; k < 4; k += 1 {
+        spia {
+            soma += k;
+            si k % 2 == 1 {
+                soma += fundu(k);
+            }
+        } oops (e) {
+            mostran(f"k={k} soma={soma} antis={antis} metadi={metadi}");
+        }
+        metadi = metadi * 2.0;
+    }
+
+    int marka = 0;
+    spia {
+        spia {
+            lansa Erru{mensagem = "primeiru"};
+        } oops (e) {
+            marka = 7;
+            int x = fundu(3);
+        } sempri {
+            mostran(f"sempri marka={marka}");
+        }
+    } oops (e) {
+        mostran(f"oops marka={marka} {e.tipu}");
+    }
+}

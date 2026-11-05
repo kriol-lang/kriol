@@ -116,7 +116,7 @@
              function_declaration declaration control_initializer control_initializer_statement
              if_initializer molda_declaration statement import_statement spia_statement
 %type<block> compound_statement statements else_then
-%type<string> declarator identifier type_specifier assignment_operator single_import
+%type<string> declarator identifier type_specifier assignment_operator single_import oops_binding
 %type<vardecl> parameter_declaration molda_field_declaration
 %type<dims> array_dims
 %type<molda> molda_field_declarations
@@ -132,6 +132,7 @@
 %start program
 
 %define parse.error custom
+%define lr.type ielr
 
 %%
 
@@ -173,7 +174,8 @@ declaration : control_initializer SEMIC { $$ = $1; }
             ;
 
 control_initializer : type_specifier declarator ASSIGN initializer { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
-                    | type_specifier array_dims declarator ASSIGN initializer { auto d = kriol_make_array_decl(*$1, *$2, *$3); d->Value = std::unique_ptr<ast::Expr>($5); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; delete $3; }
+                    | if_initializer_type_specifier array_dims declarator ASSIGN initializer { auto d = kriol_make_array_decl(*$1, *$2, *$3); d->Value = std::unique_ptr<ast::Expr>($5); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; delete $3; }
+                    | TYPE_IDENT array_dims declarator ASSIGN initializer { auto d = kriol_make_array_decl(*$1, *$2, *$3); d->Value = std::unique_ptr<ast::Expr>($5); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; delete $3; }
                     ;
 
 control_initializer_statement : expression { auto n = new ast::ExprSttmt(std::unique_ptr<ast::Expr>($1)); n->LineNum = @$.first_line; $$ = n; }
@@ -413,6 +415,8 @@ compound_statement : LCURLY statements RCURLY { $$ = $2; $$->UseBrackets(); }
 
 selection_statement : SI if_initializer expression compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = @$.first_line; $$ = n; }
                     | SI if_initializer expression compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; }
+                    | SI LPAR if_initializer expression RPAR compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::BlockSttmt>($6), nullptr); n->LineNum = @$.first_line; $$ = n; }
+                    | SI LPAR if_initializer expression RPAR compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::BlockSttmt>($6), std::unique_ptr<ast::BlockSttmt>($8)); n->LineNum = @$.first_line; $$ = n; }
                     | SI expression compound_statement { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), nullptr); n->LineNum = @$.first_line; $$ = n; }
                     | SI expression compound_statement SINON else_then { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
                     ;
@@ -432,14 +436,20 @@ else_then : compound_statement { $$ = $1; }
           | selection_statement { $$ = new ast::BlockSttmt(); $$->AddSttmt(std::unique_ptr<ast::Sttmt>($1)); }
           ;
 
-spia_statement : SPIA compound_statement OOPS LPAR IDENT RPAR compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$5, std::unique_ptr<ast::BlockSttmt>($7), nullptr); n->LineNum = @$.first_line; $$ = n; delete $5; }
-               | SPIA compound_statement OOPS LPAR IDENT RPAR compound_statement SEMPRI compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$5, std::unique_ptr<ast::BlockSttmt>($7), std::unique_ptr<ast::BlockSttmt>($9)); n->LineNum = @$.first_line; $$ = n; delete $5; }
+spia_statement : SPIA compound_statement oops_binding compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$3, std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = @$.first_line; $$ = n; delete $3; }
+               | SPIA compound_statement oops_binding compound_statement SEMPRI compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), *$3, std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; delete $3; }
                | SPIA compound_statement SEMPRI compound_statement { auto n = new ast::SpiaSttmt(std::unique_ptr<ast::BlockSttmt>($2), "", nullptr, std::unique_ptr<ast::BlockSttmt>($4)); n->LineNum = @$.first_line; $$ = n; }
                ;
+
+oops_binding : OOPS IDENT { $$ = $2; }
+             | OOPS LPAR IDENT RPAR { $$ = $3; }
+             ;
 
 iteration_statement : NKUANTU expression compound_statement { auto n = new ast::WhileSttmt(std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3)); n->LineNum = @$.first_line; $$ = n; }
                     | PA control_initializer_statement SEMIC expression SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::Expr>($6), std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; }
                     | PA control_initializer_statement SEMIC expression compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($4), nullptr, std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
+                    | PA LPAR control_initializer_statement SEMIC expression SEMIC expression RPAR compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($5), std::unique_ptr<ast::Expr>($7), std::unique_ptr<ast::BlockSttmt>($9)); n->LineNum = @$.first_line; $$ = n; }
+                    | PA LPAR control_initializer_statement SEMIC expression RPAR compound_statement { auto n = new ast::ForSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($5), nullptr, std::unique_ptr<ast::BlockSttmt>($7)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
 jump_statement : KEBRA SEMIC { auto n = new ast::JumpSttmt("kebra"); n->LineNum = @$.first_line; $$ = n; }
@@ -454,7 +464,8 @@ record_literal : TYPE_IDENT LCURLY record_field_initializers RCURLY { auto* n = 
                | TYPE_IDENT LCURLY RCURLY { auto n = new ast::RecordLiteralExpr(*$1); n->LineNum = @$.first_line; $$ = n; delete $1; }
                ;
 
-typed_array_initializer : LPAR type_specifier LBRAC RBRAC RPAR array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($6); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
+typed_array_initializer : LPAR if_initializer_type_specifier LBRAC RBRAC RPAR array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($6); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
+                        | LPAR TYPE_IDENT LBRAC RBRAC RPAR array_initializer { auto* lit = static_cast<ast::ArrayLiteralExpr*>($6); lit->SetExplicitElementType(Type::FromName(*$2)); lit->LineNum = @$.first_line; $$ = lit; delete $2; }
                         ;
 
 record_field_initializers : IDENT ASSIGN initializer { auto n = new ast::RecordLiteralExpr(""); n->AddField(*$1, std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $1; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
@@ -525,6 +536,11 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
     };
     const yysymbol_kind_t found = yypcontext_token(context);
     const int line = yypcontext_location(context)->first_line;
+
+    if (found == YYSYMBOL_LCURLY && expects(YYSYMBOL_RPAR)) {
+        kriol::cli::ReportParseError(line, "falta ')' antes de '{'");
+        return 0;
+    }
 
     // A statement that ends without ';' is noticed only at the next line.
     if (expects(YYSYMBOL_SEMIC) && found != YYSYMBOL_YYEOF && kriol_previous_token_line > 0

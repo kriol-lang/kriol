@@ -1,0 +1,16 @@
+// expect: divisão por zero
+// An error a sempri does not catch stops the program; the enclosing oops never sees it.
+fn inisiu() {
+    int zero = 0;
+    spia {
+        spia {
+            mostran("korpu");
+        } sempri {
+            mostran("antis");
+            int x = 1 / zero;
+            mostran("dipos");
+        }
+    } oops (e) {
+        mostran("nunca");
+    }
+}

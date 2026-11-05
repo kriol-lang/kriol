@@ -219,12 +219,14 @@ foreach ($level in '0', '3') {
     Write-Result "optimization level $level" ($output -eq '3')
 }
 
-$locals = Get-Item (Join-Path $Root 'tests/pass/spia_locals_survive_longjmp.kr')
-$exe = Join-Path $Work 'locals.exe'
-$ok = Invoke-Kriol @('--opt-lvl', '3', $locals.FullName, '-o', $exe)
-$run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
-Write-Result 'spia keeps locals at --opt-lvl 3' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
-    (Test-Stdout $locals $run.Stdout))
+foreach ($program in 'spia_locals_survive_longjmp', 'spia_locals_survive_longjmp_outside') {
+    $locals = Get-Item (Join-Path $Root "tests/pass/$program.kr")
+    $exe = Join-Path $Work "$program.exe"
+    $ok = Invoke-Kriol @('--opt-lvl', '3', $locals.FullName, '-o', $exe)
+    $run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
+    Write-Result "spia keeps locals at --opt-lvl 3: $program" ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
+        (Test-Stdout $locals $run.Stdout))
+}
 
 $sempri = Get-Item (Join-Path $Root 'tests/pass/spia_sempri_large_local_many_exits.kr')
 $exe = Join-Path $Work 'sempri.exe'
@@ -252,7 +254,12 @@ Write-Result 'unhandled call in oops warns of the return' ($warning.Output.Conta
 $strictRejected = -not (Invoke-Kriol @('--strict', $oopsCall, '-o', (Join-Path $Work 'oops_call_strict.exe')))
 Write-Result '--strict rejects an unhandled call in oops' $strictRejected
 
-foreach ($program in 'spia_lexical', 'spia_value_error_from_callee') {
+foreach ($program in 'spia_sempri_unhandled_call_is_fatal', 'spia_sempri_unhandled_call_in_oops_is_fatal') {
+    $warning = Get-KriolResult @((Join-Path $Root "tests/panic/$program.kr"), '-o', (Join-Path $Work "$program.exe"))
+    Write-Result "unhandled call in sempri warns of the stop: $program" ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar"))
+}
+
+foreach ($program in 'spia_lexical', 'spia_value_error_from_callee', 'spia_sempri_catches_its_own') {
     $ok = Invoke-Kriol @('--strict', (Join-Path $Root "tests/pass/$program.kr"), '-o', (Join-Path $Work "strict_$program.exe"))
     Write-Result "--strict accepts $program" $ok
 }

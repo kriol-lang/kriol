@@ -36,4 +36,9 @@
 // Largest local variable or parameter, in bytes; programs get an 8 MiB stack.
 #define KR_MAX_LOCAL_BYTES (1u << 20)
 
+// Room a spia keeps in its function's stack for the runtime's handler frame, a
+// jmp_buf and a few fields. The runtime checks that the frame fits on every target.
+#define KR_SPIA_FRAME_BYTES 512
+#define KR_SPIA_FRAME_ALIGN 16
+
 #endif // _KRIOL_CNST_HEADER

@@ -1,0 +1,22 @@
+// expect: o índice 5 está fora do array, que vai de 0 a 1
+// A function called from a sempri fails without a spia of its own: the caller's spia does not catch it.
+fn le(int i) int {
+    int[2] a = [1, 2];
+    divolvi a[i];
+}
+
+fn limpa() {
+    spia {
+        mostran("korpu");
+    } sempri {
+        mostran(f"{le(5)}");
+    }
+}
+
+fn inisiu() {
+    spia {
+        limpa();
+    } oops (e) {
+        mostran("nunca");
+    }
+}

@@ -1387,7 +1387,7 @@ void CodeGenVisitor::emitFailure(llvm::Value* erruValue, llvm::Value* callLine) 
         emitFailureToSpia(erruValue, callLine);
         return;
     }
-    if (!CurrentCanFail || CurrentIsMain) {
+    if (!CurrentCanFail || CurrentIsMain || SempriDepth > 0) {
         emitRaise(erruValue, callLine);
         return;
     }

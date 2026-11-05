@@ -1,0 +1,15 @@
+// expect: divisão por zero
+// The sempri runs while an error leaves its spia; its own error stops the program.
+fn inisiu() {
+    int zero = 0;
+    spia {
+        spia {
+            lansa Erru{mensagem = "orijinal"};
+        } sempri {
+            mostran("limpa");
+            int x = 1 / zero;
+        }
+    } oops (e) {
+        mostran(f"nunca: {e.mensagem}");
+    }
+}

@@ -16,7 +16,10 @@ The `check` target runs:
 
 - `tests/api/compile_memory.cc`
 - `tests/api/type_model.cc`
+- `tests/api/spia_unreachable_throw.cc`
+- `tests/api/spia_volatile_locals.cc`
 - `tests/runtime/gc_stress.c`
+- `tests/runtime/spia_runtime.c`
 - `tests/fuzz/compile_fuzz_smoke.cc`
 - `run_tests.sh`
 
