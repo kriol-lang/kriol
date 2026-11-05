@@ -18,6 +18,7 @@
 
 %code {
     extern int yylex();
+    extern char* yytext;
     void yyerror(kriol::ast::BlockSttmt** Program, const char* err);
 
     // Reads tokens through kriol_lex, which remembers the line of the token
@@ -101,7 +102,7 @@
 %token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
 %token<token>  DIVOLVI "divolvi" PA "pa" TENTA "tenta" LANSA "lansa"
 %token<token>  SPIA "spia" OOPS "oops" SEMPRI "sempri"
-%token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
+%token<token>  NKUANTU "nkuantu" SI "si" SINAU "sinau" IMPRISTAN "inpristan"
 %token<token> KEBRA "kebra" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
 %token<token> FN "fn" MOLDA "molda" NOT "!"
 %token<token> FSTR_START "f-string" FSTR_END "end of f-string" FSTR_LBRACE "start of interpolation" FSTR_RBRACE "end of interpolation"
@@ -217,7 +218,7 @@ value_expression : constant_expression { $$ = $1; }
                  ;
 
 // An array initializer where an array value is expected: a return value, an
-// argument, the value of an assignment or the fallback of 'sinon'.
+// argument, the value of an assignment or the fallback of 'sinau'.
 array_value : array_initializer { $$ = $1; }
             | repeat_initializer { $$ = $1; }
             ;
@@ -325,8 +326,8 @@ primary_atom : record_literal { $$ = $1; }
              ;
 
 assignment_expression : constant_expression { $$ = $1; }
-                      | constant_expression SINON constant_expression { auto n = new ast::BinExpr("sinon", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                      | constant_expression SINON array_value { auto n = new ast::BinExpr("sinon", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | constant_expression SINAU constant_expression { auto n = new ast::BinExpr("sinau", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                      | constant_expression SINAU array_value { auto n = new ast::BinExpr("sinau", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       | primary_expression assignment_operator array_value { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
@@ -414,11 +415,11 @@ compound_statement : LCURLY statements RCURLY { $$ = $2; $$->UseBrackets(); }
                    ;
 
 selection_statement : SI if_initializer expression compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), nullptr); n->LineNum = @$.first_line; $$ = n; }
-                    | SI if_initializer expression compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; }
+                    | SI if_initializer expression compound_statement SINAU else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($2), std::unique_ptr<ast::Expr>($3), std::unique_ptr<ast::BlockSttmt>($4), std::unique_ptr<ast::BlockSttmt>($6)); n->LineNum = @$.first_line; $$ = n; }
                     | SI LPAR if_initializer expression RPAR compound_statement { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::BlockSttmt>($6), nullptr); n->LineNum = @$.first_line; $$ = n; }
-                    | SI LPAR if_initializer expression RPAR compound_statement SINON else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::BlockSttmt>($6), std::unique_ptr<ast::BlockSttmt>($8)); n->LineNum = @$.first_line; $$ = n; }
+                    | SI LPAR if_initializer expression RPAR compound_statement SINAU else_then { auto n = new ast::IfSttmt(std::unique_ptr<ast::Sttmt>($3), std::unique_ptr<ast::Expr>($4), std::unique_ptr<ast::BlockSttmt>($6), std::unique_ptr<ast::BlockSttmt>($8)); n->LineNum = @$.first_line; $$ = n; }
                     | SI expression compound_statement { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), nullptr); n->LineNum = @$.first_line; $$ = n; }
-                    | SI expression compound_statement SINON else_then { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
+                    | SI expression compound_statement SINAU else_then { auto n = new ast::IfSttmt(nullptr, std::unique_ptr<ast::Expr>($2), std::unique_ptr<ast::BlockSttmt>($3), std::unique_ptr<ast::BlockSttmt>($5)); n->LineNum = @$.first_line; $$ = n; }
                     ;
 
 if_initializer : if_initializer_type_specifier declarator ASSIGN initializer SEMIC { auto d = new ast::VarDeclSttmt(Type::FromName(*$1), *$2, std::unique_ptr<ast::Expr>($4)); d->LineNum = @$.first_line; $$ = d; delete $1; delete $2; }
@@ -512,6 +513,13 @@ static std::string kriol_describe_symbol(yysymbol_kind_t symbol) {
     return "'" + name + "'";
 }
 
+// The lookahead as the code spells it, so an old spelling of a renamed keyword
+// such as 'sinon' is named as written.
+static std::string kriol_describe_found(yysymbol_kind_t found) {
+    if (found == YYSYMBOL_SINAU) return "'" + std::string(yytext) + "'";
+    return kriol_describe_symbol(found);
+}
+
 static int kriol_previous_token_line = 0;
 static int kriol_token_line = 0;
 
@@ -551,12 +559,12 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
 
     // A keyword where a name is expected, such as 'fn si()'.
     static const yysymbol_kind_t keywords[] = {
-        YYSYMBOL_FN, YYSYMBOL_MOLDA, YYSYMBOL_SI, YYSYMBOL_SINON, YYSYMBOL_PA, YYSYMBOL_NKUANTU,
+        YYSYMBOL_FN, YYSYMBOL_MOLDA, YYSYMBOL_SI, YYSYMBOL_SINAU, YYSYMBOL_PA, YYSYMBOL_NKUANTU,
         YYSYMBOL_KEBRA, YYSYMBOL_CONTINUA, YYSYMBOL_DIVOLVI, YYSYMBOL_TENTA, YYSYMBOL_LANSA,
         YYSYMBOL_IMPRISTAN, YYSYMBOL_SPIA, YYSYMBOL_OOPS, YYSYMBOL_SEMPRI,
     };
     if (expects(YYSYMBOL_IDENT) && std::find(std::begin(keywords), std::end(keywords), found) != std::end(keywords)) {
-        kriol::cli::ReportParseError(line, kriol_describe_symbol(found)
+        kriol::cli::ReportParseError(line, kriol_describe_found(found)
             + " é uma palavra reservada do Kriol e não pode ser usada como nome");
         return 0;
     }
@@ -571,7 +579,7 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
             + (expects(YYSYMBOL_RCURLY) ? "; falta fechar um bloco com '}'"
                : expects(YYSYMBOL_SEMIC) ? "; falta ';'" : "");
     else
-        message = "não se esperava " + kriol_describe_symbol(found) + " aqui";
+        message = "não se esperava " + kriol_describe_found(found) + " aqui";
 
     // Past a few alternatives the list stops helping.
     if (found != YYSYMBOL_YYEOF && count > 0 && count <= 4) {

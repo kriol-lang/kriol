@@ -1,5 +1,5 @@
 num dez = 10; // int literal assigned to num var: should autocast to double
 
 fn inisiu() {
-    mostran(dez);
+    mostraln(dez);
 }

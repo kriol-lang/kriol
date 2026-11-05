@@ -11,11 +11,11 @@ fn inisiu() {
 
   si int res = get_res(); res == 1 {
     total += 100;
-  } sinon si res == 2 {
+  } sinau si res == 2 {
     total += 200;
-  } sinon {
+  } sinau {
     total += res;
   }
 
-  mostran(total);
+  mostraln(total);
 }

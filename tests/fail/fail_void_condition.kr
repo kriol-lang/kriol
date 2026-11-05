@@ -2,6 +2,6 @@
 fn f() {}
 fn inisiu() {
     si f() {
-        mostran(1);
+        mostraln(1);
     }
 }

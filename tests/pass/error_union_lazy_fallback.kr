@@ -14,11 +14,11 @@ fn pode_falhar(bool falha) int : Erru {
 
 fn inisiu() {
     // The fallback is only evaluated when the call fails.
-    int a = pode_falhar(nau) sinon fallback();
+    int a = pode_falhar(nau) sinau fallback();
     konfirma(a == 1);
     konfirma(chamadas == 0);
 
-    int b = pode_falhar(sin) sinon fallback();
+    int b = pode_falhar(sin) sinau fallback();
     konfirma(b == 7);
     konfirma(chamadas == 1);
 }

@@ -6,6 +6,6 @@ fn soma_ate(int[4] v, int n) int {
 }
 
 fn inisiu() {
-    mostran(soma_ate([1, 2, 3, 4], 3));
-    mostran(soma_ate([1, 2, 3, 4], 4));
+    mostraln(soma_ate([1, 2, 3, 4], 3));
+    mostraln(soma_ate([1, 2, 3, 4], 4));
 }

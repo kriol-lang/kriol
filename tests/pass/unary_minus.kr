@@ -7,8 +7,8 @@ fn inisiu() {
     konfirma(a == -42);
     konfirma(c == 42);
 
-    mostran(a);
-    mostran(b);
-    mostran(c);
-    mostran(d);
+    mostraln(a);
+    mostraln(b);
+    mostraln(c);
+    mostraln(d);
 }

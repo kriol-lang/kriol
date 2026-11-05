@@ -1,4 +1,4 @@
 // expect: o operador '&&' precisa de valores lógicos ou de números, mas recebeu um valor do tipo 'textu'
 fn inisiu() {
-    mostran(sin && "nau");
+    mostraln(sin && "nau");
 }

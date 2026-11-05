@@ -1,4 +1,4 @@
 // expect: 'int::konverti' recebe 1 argumento, o texto a converter, mas foram dados 0
 fn inisiu() {
-    int n = int::konverti() sinon 0;
+    int n = int::konverti() sinau 0;
 }

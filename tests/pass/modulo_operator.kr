@@ -13,5 +13,5 @@ fn inisiu() {
     f %= 3.0;
     konfirma(f == 1.5);
 
-    mostran(10 % 3);
+    mostraln(10 % 3);
 }

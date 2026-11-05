@@ -44,8 +44,8 @@ fn inisiu() {
 
     konfirma(identidade()[1][1] == 1 && dobra([5; 3])[2] == 10);
 
-    int[3] r = repeti(4) sinon [0; 3];
+    int[3] r = repeti(4) sinau [0; 3];
     konfirma(r[2] == 4);
-    r = repeti(-1) sinon (int[])[7, 7, 7];
+    r = repeti(-1) sinau (int[])[7, 7, 7];
     konfirma(r[0] == 7);
 }

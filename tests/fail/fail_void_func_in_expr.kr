@@ -1,6 +1,6 @@
 // expect: uma função que não devolve nenhum valor não pode ser usada numa operação
 fn printHello() {
-    mostran("Hello");
+    mostraln("Hello");
 }
 
 fn inisiu() {

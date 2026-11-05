@@ -40,6 +40,7 @@ extern void yy_delete_buffer(YY_BUFFER_STATE b);
 
 static std::string g_source_file;
 static std::vector<std::string> g_parse_errors;
+static std::vector<std::string> g_parse_warnings;
 
 // Paths arrive as UTF-8 (main.cc converts the Windows command line), but
 // std::filesystem and the CRT read narrow strings in the ANSI code page there.
@@ -97,7 +98,7 @@ static std::string HelpText()
         "  kriol ola.kriol\n"
         "  kriol ola.kriol -o ola\n"
         "  kriol ola.kriol --target wasm32-wasi -o ola.wasm\n"
-        "  kriol --text 'fn inisiu() { mostran(\"Oi\"); }' --emit-ir\n";
+        "  kriol --text 'fn inisiu() { mostraln(\"Oi\"); }' --emit-ir\n";
 }
 
 // Rewrites the argument parser's own errors in Portuguese.
@@ -161,6 +162,15 @@ void cli::ReportParseError(int line, const std::string& message) {
 
 bool cli::HasParseErrors() {
     return !g_parse_errors.empty();
+}
+
+void cli::ReportParseWarning(int line, const std::string& message) {
+    g_parse_warnings.push_back(DiagnosticPrefix(g_source_file, line, "aviso") + message);
+}
+
+static void ClearParseDiagnostics() {
+    g_parse_errors.clear();
+    g_parse_warnings.clear();
 }
 
 void cli::PrintErr(std::string message)
@@ -311,7 +321,7 @@ void cli::KriolLangParserWrapper::ParseFile(
     yyrestart(file);
     kriol_scanner_reset_state();
     cli::SetSourceFile(filename);
-    g_parse_errors.clear();
+    ClearParseDiagnostics();
     yylineno = 1;
     try {
         yyparse(program);
@@ -332,7 +342,7 @@ void cli::KriolLangParserWrapper::ParseText(
     if (!buffer)
         cli::PrintErr("não foi possível ler o código indicado", 1);
 
-    g_parse_errors.clear();
+    ClearParseDiagnostics();
     yylineno = 1;
     try {
         yyparse(program);
@@ -372,12 +382,14 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
     );
     std::unique_ptr<ast::BlockSttmt> ProgramNode(ProgramAST);
 
+    std::vector<std::string> warnings = std::move(g_parse_warnings);
     if (!g_parse_errors.empty())
     {
         result.diagnostics = std::move(g_parse_errors);
-        g_parse_errors.clear();
+        ClearParseDiagnostics();
         return result;
     }
+    ClearParseDiagnostics();
 
     if (ProgramNode)
     {
@@ -389,13 +401,15 @@ cli::CompileResult cli::Compile(const cli::CompileOptions& options)
             result.diagnostics = sema.GetErrors();
             return result;
         }
-        if (options.strict && !sema.GetWarnings().empty())
-        {
-            result.diagnostics = sema.GetWarnings();
-            return result;
-        }
-        result.warnings = sema.GetWarnings();
+        const auto& semaWarnings = sema.GetWarnings();
+        warnings.insert(warnings.end(), semaWarnings.begin(), semaWarnings.end());
     }
+    if (options.strict && !warnings.empty())
+    {
+        result.diagnostics = std::move(warnings);
+        return result;
+    }
+    result.warnings = std::move(warnings);
 
     ast::CodegenTarget Target = ResolveTarget(options.target);
 

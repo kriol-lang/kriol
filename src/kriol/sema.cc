@@ -81,7 +81,7 @@ private:
 
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
-    "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
+    "si", "sinau", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
     "kebra", "kontinua", "tenta", "lansa", "spia", "oops", "sempri",
 
     // Type names and literals.
@@ -787,9 +787,12 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     const std::string loc = errLoc(node.LineNum);
     size_t got = node.Args ? node.Args->Args.size() : 0;
 
+    if (auto currentName = deprecated::currentNameOf(callee->Name))
+        addWarning(warnLoc(node.LineNum) + deprecated::renamedWordWarning(callee->Name, *currentName));
+
     switch (prelude::lookupBuiltin(callee->Name)) {
         case prelude::Builtin::Mostra:
-        case prelude::Builtin::Mostran:
+        case prelude::Builtin::Mostraln:
             if (node.Args) {
                 for (auto& arg : node.Args->Args) {
                     if (!arg) continue;
@@ -899,7 +902,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             ? "é devolvido a quem chamou esta função"
             : "o programa termina se a função falhar";
         addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso "
-                   + consequence + "; usa 'tenta' ou 'sinon'");
+                   + consequence + "; usa 'tenta' ou 'sinau'");
     }
 
     size_t want = info.paramTypes.size();
@@ -948,11 +951,11 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
 }
 
 void SemanticAnalyzer::visit(BinExpr& node) {
-    if (node.Op == "sinon") {
-        const bool valid = visitFallibleOperand(node.LHS.get(), "sinon", node.LineNum);
+    if (node.Op == "sinau") {
+        const bool valid = visitFallibleOperand(node.LHS.get(), "sinau", node.LineNum);
         const Type& valueType = node.LHS->ResolvedType;
         if (valid && valueType.isArray()) {
-            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "o valor depois de 'sinon'");
+            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "o valor depois de 'sinau'");
             node.ResolvedType = valueType;
             return;
         }
@@ -960,14 +963,14 @@ void SemanticAnalyzer::visit(BinExpr& node) {
         if (!valid) { node.ResolvedType = Type::Invalid(); return; }
 
         if (valueType.isVoid()) {
-            addError(errLoc(node.LineNum) + "'sinon' precisa de uma chamada que devolva um valor, "
+            addError(errLoc(node.LineNum) + "'sinau' precisa de uma chamada que devolva um valor, "
                      "mas esta função não devolve nenhum");
             node.ResolvedType = Type::Invalid();
             return;
         }
         if (node.RHS && node.RHS->ResolvedType.valid()
                 && !canCoerceExprTo(node.RHS.get(), valueType))
-            addError(errLoc(node.LineNum) + "o valor depois de 'sinon' "
+            addError(errLoc(node.LineNum) + "o valor depois de 'sinau' "
                      + mustBeOfType(valueType, node.RHS->ResolvedType));
         node.ResolvedType = valueType;
         return;

@@ -159,7 +159,7 @@ bool CodeGenVisitor::emitPreludeCall(ast::FunCallExpr& node, const std::string& 
             emitPrintBuiltin(node.Args.get(), false);
             return true;
 
-        case prelude::Builtin::Mostran:
+        case prelude::Builtin::Mostraln:
             emitPrintBuiltin(node.Args.get(), true);
             return true;
 

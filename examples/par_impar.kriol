@@ -7,8 +7,8 @@ fn inisiu() : Erru {
   int numeru = tenta int::konverti(entrada);
 
   si num_par(numeru) {
-    mostran(f'Númeru {numeru} é PAR.');
-  } sinon {
-    mostran(f'Númeru {numeru} é IMPAR.');
+    mostraln(f'Númeru {numeru} é PAR.');
+  } sinau {
+    mostraln(f'Númeru {numeru} é IMPAR.');
   }
 }

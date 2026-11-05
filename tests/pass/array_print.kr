@@ -9,6 +9,6 @@ fn inisiu() {
     mostra(vals);
     mostra(" ");
     mostra(flags);
-    mostran(" ");
-    mostran(names);
+    mostraln(" ");
+    mostraln(names);
 }

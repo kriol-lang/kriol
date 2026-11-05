@@ -68,7 +68,7 @@ namespace sema {
         // Whether the function being analysed declares an error type.
         bool CurrFuncCanFail = false;
 
-        // The fallible call that the enclosing 'tenta' or 'sinon' handles;
+        // The fallible call that the enclosing 'tenta' or 'sinau' handles;
         // any other fallible call is an unhandled error.
         const ast::FunCallExpr* HandledCall = nullptr;
 
@@ -155,7 +155,7 @@ namespace sema {
         // The call under any parentheses, or null if `expr` is not a call.
         static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);
 
-        // Visits the operand of 'tenta' or 'sinon' and checks it is a call to
+        // Visits the operand of 'tenta' or 'sinau' and checks it is a call to
         // a function that can fail. Returns false after reporting an error.
         bool visitFallibleOperand(ast::Expr* operand, const std::string& keyword, int lineNum);
 

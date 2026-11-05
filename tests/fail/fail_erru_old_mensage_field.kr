@@ -1,5 +1,5 @@
 // expect: não tem o campo 'mensage'
 fn inisiu() {
     Erru e = Erru{mensage = "x"};
-    mostran(e.mensagem);
+    mostraln(e.mensagem);
 }

@@ -33,6 +33,6 @@ fn inisiu() {
     konfirma(bytes[2] == 3);
     konfirma(rec.first == 255);
 
-    mostran(byte);
-    mostran(f"sum={sum} bytes={bytes}");
+    mostraln(byte);
+    mostraln(f"sum={sum} bytes={bytes}");
 }

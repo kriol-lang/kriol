@@ -1,10 +1,10 @@
 fn relata(Erru err) {
-    mostran(f"{err.tipu}: {err.mensagem} (linha {err.linha})");
+    mostraln(f"{err.tipu}: {err.mensagem} (linha {err.linha})");
 }
 
 fn divizon_interu(int b) {
     spia {
-        mostran(10 / b);
+        mostraln(10 / b);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 7);
@@ -13,7 +13,7 @@ fn divizon_interu(int b) {
 
 fn divizon_real(num b) {
     spia {
-        mostran(1.5 / b);
+        mostraln(1.5 / b);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 16);
@@ -23,7 +23,7 @@ fn divizon_real(num b) {
 fn indisi(int i) {
     int[3] a = [1, 2, 3];
     spia {
-        mostran(a[i]);
+        mostraln(a[i]);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 26);
@@ -51,7 +51,7 @@ fn paniku_apanhadu() {
 fn konverti_falhadu() {
     spia {
         int n = int::konverti("abc");
-        mostran(n);
+        mostraln(n);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 53);
@@ -61,7 +61,7 @@ fn konverti_falhadu() {
 fn toma_sem_entrada() {
     spia {
         textu linha = toma();
-        mostran(linha);
+        mostraln(linha);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 63);
@@ -71,7 +71,7 @@ fn toma_sem_entrada() {
 fn divizon_ki_ka_kabe(i8 b) {
     i8 a = -128;
     spia {
-        mostran(a / b);
+        mostraln(a / b);
     } oops (err) {
         relata(err);
         konfirma(err.linha == 74);
@@ -87,5 +87,5 @@ fn inisiu() {
     konverti_falhadu();
     toma_sem_entrada();
     divizon_ki_ka_kabe(-1);
-    mostran("fin");
+    mostraln("fin");
 }

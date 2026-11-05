@@ -88,21 +88,21 @@ fn inisiu() {
     spia {
         mudadu = antis + lidu / zero();
     } oops (e) {
-        mostran(f"{mudadu}");
+        mostraln(f"{mudadu}");
     }
     int dipos = mudadu;
     dipos += 1;
-    mostran(f"{dipos}");
+    mostraln(f"{dipos}");
 
     int soma = 0;
     pa int k = 0; k < 3; k += 1 {
         spia {
             soma += k / zero();
         } oops (e) {
-            mostran(f"{k}");
+            mostraln(f"{k}");
         }
     }
-    mostran(f"{soma + livri()}");
+    mostraln(f"{soma + livri()}");
 
     int naOops = 0;
     spia {
@@ -111,7 +111,7 @@ fn inisiu() {
         naOops = 1;
         int y = 1 / zero();
     } sempri {
-        mostran(f"{naOops}");
+        mostraln(f"{naOops}");
     }
 }
 )";

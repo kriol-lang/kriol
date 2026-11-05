@@ -1,6 +1,0 @@
-// mostran prints with a trailing newline.
-fn inisiu() {
-    mostran("Ola");
-    int x = 7;
-    mostran(x);
-}

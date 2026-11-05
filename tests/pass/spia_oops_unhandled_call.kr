@@ -7,11 +7,11 @@ fn no_oops() int : Erru {
         lansa Erru{mensagem = "primeiro"};
     } oops (err) {
         int x = falha();
-        mostran(f"nunca {x}");
+        mostraln(f"nunca {x}");
     }
     divolvi 1;
 }
 
 fn inisiu() {
-    mostran(no_oops() sinon 42);
+    mostraln(no_oops() sinau 42);
 }

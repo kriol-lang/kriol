@@ -3,7 +3,7 @@
 fn mod(num x) num {
     si x > 0 {
         divolvi x;
-    } sinon {
+    } sinau {
         divolvi 0.0 - x;
     }
 }

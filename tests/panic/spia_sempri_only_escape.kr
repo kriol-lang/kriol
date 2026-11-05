@@ -5,9 +5,9 @@ fn parti(int a, int b) int {
 
 fn inisiu() {
     spia {
-        mostran(parti(1, 0));
+        mostraln(parti(1, 0));
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
-    mostran("nunca");
+    mostraln("nunca");
 }

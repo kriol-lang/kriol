@@ -1,5 +1,5 @@
 // expect: a variável 'a' ocupa 1600000 bytes, mais do que o limite de 1048576 bytes dentro de uma função; declara-a fora das funções
 fn inisiu() {
     int[200000] a = [0; 200000];
-    mostran(a[0]);
+    mostraln(a[0]);
 }

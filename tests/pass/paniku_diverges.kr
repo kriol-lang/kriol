@@ -2,7 +2,7 @@
 fn positivu(int n) int {
     si n > 0 {
         divolvi n;
-    } sinon {
+    } sinau {
         paniku("n must be positive");
     }
 }

@@ -3,7 +3,7 @@
 fn inisiu() {
   si int res = 1; res == 1 {
     mostra(res);
-  } sinon {
+  } sinau {
     mostra(res);
   }
 

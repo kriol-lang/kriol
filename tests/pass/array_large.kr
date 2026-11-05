@@ -8,5 +8,5 @@ fn inisiu() {
     konfirma(lokal[0] == 7 && lokal[99999] == 9);
 
     textu tekstu = f"{lokal}";
-    mostran(lokal[50000]);
+    mostraln(lokal[50000]);
 }

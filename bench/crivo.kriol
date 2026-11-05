@@ -28,5 +28,5 @@ fn inisiu() {
     pa int vez = 0; vez < 10; vez += 1 {
         total = crivo(1000000);
     }
-    mostran(total);
+    mostraln(total);
 }

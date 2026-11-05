@@ -1,7 +1,7 @@
-// expect: 'sinon' precisa de uma chamada que devolva um valor, mas esta função não devolve nenhum
+// expect: 'sinau' precisa de uma chamada que devolva um valor, mas esta função não devolve nenhum
 fn f() : Erru {
 }
 
 fn inisiu() {
-    f() sinon 1;
+    f() sinau 1;
 }

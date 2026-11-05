@@ -8,10 +8,10 @@ fn isPositive(int n) bool {
 
 fn inisiu() {
     si double(3) == 6 {
-        mostran("double(3) is 6");
+        mostraln("double(3) is 6");
     }
-    mostran(f"double(5) = {double(5)}");
+    mostraln(f"double(5) = {double(5)}");
     si isPositive(double(2)) {
-        mostran("double(2) is positive");
+        mostraln("double(2) is positive");
     }
 }

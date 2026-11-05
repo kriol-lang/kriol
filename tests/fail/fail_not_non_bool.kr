@@ -1,4 +1,4 @@
 // expect: o operador '!' precisa de um valor lógico ou de um número, mas recebeu um valor do tipo 'textu'
 fn inisiu() {
-    mostran(!"sin");
+    mostraln(!"sin");
 }

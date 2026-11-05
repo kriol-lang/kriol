@@ -1,6 +1,6 @@
 // expect: a condição tem de ser um valor lógico ou um número, mas é do tipo 'textu'
 fn inisiu() {
     si "abc" {
-        mostran(1);
+        mostraln(1);
     }
 }

@@ -3,5 +3,5 @@
 // Expected output: "42 and {}"
 fn inisiu() {
     int n = 42;
-    mostran(f"{n} and \{\}");
+    mostraln(f"{n} and \{\}");
 }

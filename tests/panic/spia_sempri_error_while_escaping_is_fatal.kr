@@ -6,10 +6,10 @@ fn inisiu() {
         spia {
             lansa Erru{mensagem = "orijinal"};
         } sempri {
-            mostran("limpa");
+            mostraln("limpa");
             int x = 1 / zero;
         }
     } oops (e) {
-        mostran(f"nunca: {e.mensagem}");
+        mostraln(f"nunca: {e.mensagem}");
     }
 }

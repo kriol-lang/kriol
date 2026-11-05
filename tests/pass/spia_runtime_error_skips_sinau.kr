@@ -6,7 +6,7 @@ fn so_sempri() int : Erru {
     spia {
         divolvi 1 / zero();
     } sempri {
-        mostran("sempri do corpo");
+        mostraln("sempri do corpo");
     }
 }
 
@@ -14,10 +14,10 @@ fn oops_ku_sempri() int : Erru {
     spia {
         divolvi 2 / zero();
     } oops (err) {
-        mostran(f"oops apanhou {err.tipu}");
+        mostraln(f"oops apanhou {err.tipu}");
         divolvi 3 / zero();
     } sempri {
-        mostran("sempri do oops");
+        mostraln("sempri do oops");
     }
 }
 
@@ -26,10 +26,10 @@ fn spia_dentu_spia() int : Erru {
         spia {
             divolvi 4 / zero();
         } sempri {
-            mostran("sempri interior");
+            mostraln("sempri interior");
         }
     } sempri {
-        mostran("sempri exterior");
+        mostraln("sempri exterior");
     }
 }
 
@@ -37,31 +37,31 @@ fn lansa_ku_sempri() int : Erru {
     spia {
         lansa Erru{mensagem = "lansadu"};
     } sempri {
-        mostran("sempri do lansa");
+        mostraln("sempri do lansa");
     }
 }
 
 fn chama_so_sempri() {
     spia {
-        mostran(so_sempri() sinon 42);
+        mostraln(so_sempri() sinau 42);
     } oops (err) {
-        mostran(f"chamador apanhou {err.tipu} (linha {err.linha})");
+        mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
 }
 
 fn chama_oops_ku_sempri() {
     spia {
-        mostran(oops_ku_sempri() sinon 42);
+        mostraln(oops_ku_sempri() sinau 42);
     } oops (err) {
-        mostran(f"chamador apanhou {err.tipu} (linha {err.linha})");
+        mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
 }
 
 fn chama_spia_dentu_spia() {
     spia {
-        mostran(spia_dentu_spia() sinon 42);
+        mostraln(spia_dentu_spia() sinau 42);
     } oops (err) {
-        mostran(f"chamador apanhou {err.tipu} (linha {err.linha})");
+        mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
 }
 
@@ -69,5 +69,5 @@ fn inisiu() {
     chama_so_sempri();
     chama_oops_ku_sempri();
     chama_spia_dentu_spia();
-    mostran(lansa_ku_sempri() sinon 42);
+    mostraln(lansa_ku_sempri() sinau 42);
 }

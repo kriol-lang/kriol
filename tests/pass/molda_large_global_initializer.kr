@@ -23,5 +23,5 @@ fn inisiu() {
     konfirma(par.a.v[199999] == 1 && par.b[0] == 7);
     konfirma(lista[1].v[199999] == 4 && repetidos[1].v[0] == 6 && tipados[1].v[5] == 9);
     konfirma(linhas[1][199999] == 10);
-    mostran(global.v[0] + par.a.v[0] + par.b[199999]);
+    mostraln(global.v[0] + par.a.v[0] + par.b[199999]);
 }

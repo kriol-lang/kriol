@@ -56,8 +56,8 @@ fn inisiu() {
     ps[1].x = 30;
     konfirma(ps[0].x == 3 && ps[1].x == 30);
 
-    konfirma((kria(-1) sinon Pontu{x = -1, y = -1}).x == -1);
-    konfirma((kaminhu(4) sinon 0) == 8 && (kaminhu(-4) sinon 0) == 0);
+    konfirma((kria(-1) sinau Pontu{x = -1, y = -1}).x == -1);
+    konfirma((kaminhu(4) sinau 0) == 8 && (kaminhu(-4) sinau 0) == 0);
     konfirma(longi.x == 100 && origin.x == 0);
 
 

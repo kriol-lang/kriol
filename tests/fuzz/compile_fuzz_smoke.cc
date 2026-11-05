@@ -7,9 +7,9 @@
 int main()
 {
     const std::vector<std::string> inputs = {
-        "fn inisiu() { mostran(\"Kualeh, Mundu!\"); }",
-        "fn inisiu() { mostran(f\"unterminated { value \");",
-        std::string("fn inisiu() {\0 mostran(\"nul\"); }", 29),
+        "fn inisiu() { mostraln(\"Kualeh, Mundu!\"); }",
+        "fn inisiu() { mostraln(f\"unterminated { value \");",
+        std::string("fn inisiu() {\0 mostraln(\"nul\"); }", 29),
         "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{"
     };
 

@@ -11,5 +11,5 @@ fn primeru() int {
 }
 
 fn inisiu() {
-    mostran(a);
+    mostraln(a);
 }

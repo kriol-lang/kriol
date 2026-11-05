@@ -11,7 +11,7 @@ fn inisiu() {
     pa int n = 27; n != 1 {
         si n % 2 == 0 {
             n /= 2;
-        } sinon {
+        } sinau {
             n = 3 * n + 1;
         }
         passus += 1;

@@ -3,7 +3,7 @@ fn inisiu() {
     int[2] a = [1, 2];
     int i = 5;
     spia {
-        mostran(a[i]);
+        mostraln(a[i]);
     } oops (err) {
         paniku(f"{err.fixeru}|");
     }

@@ -18,14 +18,14 @@ fn kaminhu(int n) num : Erru {
 }
 
 fn inisiu() : Erru {
-    konfirma((metadi(7, 2) sinon 0.0) == 3.5);
-    konfirma((metadi(7, 0) sinon -1.0) == -1.0);
+    konfirma((metadi(7, 2) sinau 0.0) == 3.5);
+    konfirma((metadi(7, 0) sinau -1.0) == -1.0);
     konfirma(tenta kaminhu(10) == 3.5);
-    konfirma((kaminhu(-5) sinon 99.5) == 99.5);
+    konfirma((kaminhu(-5) sinau 99.5) == 99.5);
 
     // The error is an ordinary molda value.
     Erru e = Erru{mensagem = "x"};
-    mostran(e.mensagem);
+    mostraln(e.mensagem);
 
     // A fallible inisiu may finish without failing.
     tenta valida(1);

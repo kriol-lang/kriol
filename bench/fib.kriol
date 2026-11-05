@@ -7,5 +7,5 @@ fn fibo(int n) int {
 }
 
 fn inisiu() {
-    mostran(fibo(35));
+    mostraln(fibo(35));
 }
