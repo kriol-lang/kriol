@@ -71,6 +71,55 @@ if(UNIX)
 endif()
 
 # -----------------------------------------------------------------------------
+# macOS deployment target
+# -----------------------------------------------------------------------------
+
+# Generated programs link the embedded libgc archive compiled here; record its
+# deployment target so the link step asks for the same one instead of letting
+# whichever clang it finds apply that clang's own default. Not a user knob:
+# -DCMAKE_OSX_DEPLOYMENT_TARGET sets it, as it already sets libgc's.
+set(_KRIOL_MACOS_DEPLOYMENT_TARGET "")
+
+if(APPLE)
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(_KRIOL_MACOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+        # Probe the compiler the way the build invokes it for libgc: Apple's
+        # clang infers the default target from the sysroot and the C flags, not
+        # from the host alone, so a probe missing either measures something the
+        # archive does not have.
+        set(_KRIOL_PREDEFINE_ARGS "")
+        if(CMAKE_OSX_SYSROOT)
+            list(APPEND _KRIOL_PREDEFINE_ARGS -isysroot "${CMAKE_OSX_SYSROOT}")
+        endif()
+
+        separate_arguments(_KRIOL_C_FLAGS NATIVE_COMMAND "${CMAKE_C_FLAGS}")
+        list(APPEND _KRIOL_PREDEFINE_ARGS ${_KRIOL_C_FLAGS} -dM -E -x c /dev/null)
+
+        execute_process(
+            COMMAND "${CMAKE_C_COMPILER}" ${_KRIOL_PREDEFINE_ARGS}
+            OUTPUT_VARIABLE _KRIOL_C_PREDEFINES
+            ERROR_QUIET
+        )
+
+        if(_KRIOL_C_PREDEFINES MATCHES "__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ ([0-9]+)")
+            math(EXPR _KRIOL_MACOS_MAJOR "${CMAKE_MATCH_1} / 10000")
+            math(EXPR _KRIOL_MACOS_MINOR "${CMAKE_MATCH_1} / 100 % 100")
+            set(_KRIOL_MACOS_DEPLOYMENT_TARGET "${_KRIOL_MACOS_MAJOR}.${_KRIOL_MACOS_MINOR}")
+        endif()
+    endif()
+
+    if(_KRIOL_MACOS_DEPLOYMENT_TARGET)
+        message(STATUS "macOS deployment target ${_KRIOL_MACOS_DEPLOYMENT_TARGET}")
+    else()
+        message(WARNING
+            "Could not read the macOS deployment target of ${CMAKE_C_COMPILER}; "
+            "linking generated programs may warn about the embedded libgc archive."
+        )
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # Tools
 # -----------------------------------------------------------------------------
 
@@ -401,6 +450,7 @@ function(kriol_configure_target TARGET_NAME)
         KRIOL_USE_EMBEDDED_LLD=$<BOOL:${KRIOL_USE_EMBEDDED_LLD}>
         KRIOL_ENABLE_WINDOWS_TARGET=$<BOOL:${KRIOL_ENABLE_WINDOWS_TARGET}>
         KRIOL_WASI_TARGET="${KRIOL_WASI_TARGET}"
+        KRIOL_MACOS_DEPLOYMENT_TARGET="${_KRIOL_MACOS_DEPLOYMENT_TARGET}"
     )
 endfunction()
 

@@ -473,6 +473,10 @@ static bool isWindowsTriple(const std::string& triple) {
     return llvm::Triple(triple).isOSWindows();
 }
 
+static bool isDarwinTriple(const std::string& triple) {
+    return llvm::Triple(triple).isOSDarwin();
+}
+
 static std::string writeGcArchive(CodegenTarget target,
                                   const std::string& targetTriple,
                                   EmbeddedBlob gcBlob) {
@@ -493,10 +497,14 @@ static void linkNativeExecutable(const std::string& objPath,
                                  const std::string& outputPath,
                                  const std::string& targetTriple) {
     const bool windows = isWindowsTriple(targetTriple);
+    const bool darwin = isDarwinTriple(targetTriple);
     std::string ccPath = findProgram({"clang", "cc"}, "linker 'clang' ou 'cc'");
     std::vector<std::string> linkArgs = {ccPath};
-    if (!windows)
+    if (!windows && !darwin)
         linkArgs.push_back("-no-pie");
+    // Match the deployment target the embedded libgc archive was built with.
+    if (darwin && KRIOL_MACOS_DEPLOYMENT_TARGET[0] != '\0')
+        linkArgs.push_back(std::string("-mmacosx-version-min=") + KRIOL_MACOS_DEPLOYMENT_TARGET);
     linkArgs.push_back(objPath);
     if (!tempLibGc.empty())
         linkArgs.push_back(tempLibGc);
