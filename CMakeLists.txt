@@ -614,15 +614,18 @@ install(FILES licenses/LLVM.txt DESTINATION ${_KRIOL_LICENSE_DIR})
 install(FILES ${BDWGC_DIR}/README.QUICK DESTINATION ${_KRIOL_LICENSE_DIR} RENAME bdwgc.txt)
 
 # The zstd archive linked on macOS comes from Homebrew, which keeps the
-# license at the root of the package, next to lib/.
+# license at the root of the package, next to lib/. The archive found is
+# usually a link from the Homebrew prefix into that package.
 if(_KRIOL_ZSTD_STATIC)
-    get_filename_component(_KRIOL_ZSTD_PREFIX "${_KRIOL_ZSTD_STATIC}" DIRECTORY)
+    file(REAL_PATH "${_KRIOL_ZSTD_STATIC}" _KRIOL_ZSTD_ARCHIVE)
+    get_filename_component(_KRIOL_ZSTD_PREFIX "${_KRIOL_ZSTD_ARCHIVE}" DIRECTORY)
     get_filename_component(_KRIOL_ZSTD_PREFIX "${_KRIOL_ZSTD_PREFIX}" DIRECTORY)
     set(_KRIOL_ZSTD_LICENSE ${_KRIOL_ZSTD_PREFIX}/LICENSE)
-    if(NOT EXISTS ${_KRIOL_ZSTD_LICENSE})
-        message(FATAL_ERROR "zstd license not found at ${_KRIOL_ZSTD_LICENSE}; it is installed with the statically linked zstd")
+    if(EXISTS ${_KRIOL_ZSTD_LICENSE})
+        install(FILES ${_KRIOL_ZSTD_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME zstd.txt)
+    else()
+        message(WARNING "zstd license not found at ${_KRIOL_ZSTD_LICENSE}; it will be missing from installs")
     endif()
-    install(FILES ${_KRIOL_ZSTD_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME zstd.txt)
 endif()
 
 if(KRIOL_ENABLE_WINDOWS_TARGET)
