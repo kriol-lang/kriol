@@ -607,11 +607,23 @@ if(WIN32 AND KRIOL_ENABLE_WINDOWS_TARGET)
     install(PROGRAMS ${KRIOL_BUNDLED_LLD} DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-install(FILES LICENSE README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES LICENSE README.md CHANGELOG.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 set(_KRIOL_LICENSE_DIR ${CMAKE_INSTALL_DOCDIR}/licenses)
 install(FILES licenses/LLVM.txt DESTINATION ${_KRIOL_LICENSE_DIR})
 install(FILES ${BDWGC_DIR}/README.QUICK DESTINATION ${_KRIOL_LICENSE_DIR} RENAME bdwgc.txt)
+
+# The zstd archive linked on macOS comes from Homebrew, which keeps the
+# license at the root of the package, next to lib/.
+if(_KRIOL_ZSTD_STATIC)
+    get_filename_component(_KRIOL_ZSTD_PREFIX "${_KRIOL_ZSTD_STATIC}" DIRECTORY)
+    get_filename_component(_KRIOL_ZSTD_PREFIX "${_KRIOL_ZSTD_PREFIX}" DIRECTORY)
+    set(_KRIOL_ZSTD_LICENSE ${_KRIOL_ZSTD_PREFIX}/LICENSE)
+    if(NOT EXISTS ${_KRIOL_ZSTD_LICENSE})
+        message(FATAL_ERROR "zstd license not found at ${_KRIOL_ZSTD_LICENSE}; it is installed with the statically linked zstd")
+    endif()
+    install(FILES ${_KRIOL_ZSTD_LICENSE} DESTINATION ${_KRIOL_LICENSE_DIR} RENAME zstd.txt)
+endif()
 
 if(KRIOL_ENABLE_WINDOWS_TARGET)
     set(_KRIOL_MINGW_LICENSE

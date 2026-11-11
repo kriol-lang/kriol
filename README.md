@@ -271,7 +271,9 @@ cmake --install build/release --prefix ~/.local
 ```
 
 The release archives use a flat layout instead (configure with
-`-DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.`).
+`-DCMAKE_INSTALL_BINDIR=. -DCMAKE_INSTALL_DOCDIR=.`). Every archive holds the
+compiler, `LICENSE`, `README.md`, `CHANGELOG.md` and a `licenses/` folder with
+the license of each library that build embeds.
 
 ### Building on Windows
 
