@@ -331,7 +331,7 @@ you spend time on it.
 ## Contributors
 
 Kriol is currently maintained by
-[@anaximeno](https://github.com/anaximeno), with contributions from everyone
+[@anaximeno](https://github.com/anaximeno) and [@kidiatoliny](https://github.com/kidiatoliny), with contributions from everyone
 below:
 
 <a href="https://github.com/kriol-lang/kriol/graphs/contributors">
