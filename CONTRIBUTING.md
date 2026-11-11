@@ -162,8 +162,9 @@ whether the commit message explains why it was needed.
 [`CHANGELOG.md`](CHANGELOG.md) follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). You do not have to
 update it in your pull request, and it is fine if you do. Either way, the entry
-is written when a release is cut, under **Added**, **Changed**, **Fixed** or
-**Documentation**, and references the pull request that made the change.
+is written when a release is cut, under **Added**, **Changed**, **Deprecated**,
+**Fixed** or **Documentation**, and references the pull request that made the
+change.
 
 ## Credit
 

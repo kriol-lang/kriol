@@ -4,6 +4,82 @@ All notable changes to the Kriol compiler are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.17.0] - 2026-11-10
+
+### Added
+
+- Add `spia { } oops (err) { } sempri { }`, the Kriol try/catch/finally. The
+  `oops` block catches an `Erru` raised with `lansa` inside the `spia`, one
+  returned by a call at any depth, a failed `toma()` or `konverti()`, and the
+  runtime errors that used to end the program: division by zero, a division
+  result that does not fit its type, an index out of bounds, a failed
+  `konfirma` and `paniku`. The program continues after the block, `lansa err;`
+  inside `oops` raises the error again, and `sempri` runs on every way out of
+  the block, including `divolvi`, `kebra` and `kontinua`. `sai(n)` and
+  out-of-memory are never caught. Programs without `spia` compile to the same
+  code and print the same messages as before. `spia` works in native,
+  `x86_64-windows` and `wasm32-wasi` builds. A WebAssembly program that uses
+  `spia` needs a host with WebAssembly exception handling; one that does not
+  use `spia` is unchanged. ([#32], [e93ac82])
+- Give `Erru` three new fields after `mensagem`: `tipu` (`textu`, one of
+  `"lansa"`, `"paniku"`, `"divizon"`, `"indisi"`, `"konfirma"`, `"konverti"`
+  and `"toma"`), `fixeru` (`textu`) and `linha` (`int`). `Erru{mensagem = "x"}`
+  still compiles, and the compiler fills the new fields. ([#32])
+- Pass the error of a call on to the caller with `spia f()`. It takes the place
+  of `tenta f()`, with the same rules: only in a function declared with
+  `: Erru`, in a `spia` body or in an `oops`, and only on a call that can fail.
+  ([#35], [#37])
+- Accept parentheses around the whole header of a `si` with an initializer and
+  of a `pa`, as in `si (int y = f(); y > 0) { }` and
+  `pa (int i = 0; i < 10; i += 1) { }`, so every statement header may be
+  wrapped in them. Braces are still required. ([e93ac82])
+- Accept `oops err { }`, without parentheses around the name. ([e93ac82])
+- Ship `CHANGELOG.md` in every release archive, and the zstd license in the
+  macOS archive, which links zstd statically.
+
+### Changed
+
+- **Breaking:** remove `tenta`. Write `spia f()` instead; `tenta` is no longer a
+  keyword, so it can be used as a name. ([#35], [#37])
+- **Breaking:** remove the `f() sinon valor` fallback, also for `toma()` and
+  `konverti()`. Handle the error with `spia { } oops (err) { }`; `sinon` is now
+  only the `else` of `si`. A leftover `tenta f()` or `f() sinon valor` fails
+  with a message that points to `spia`, and the warning for an unhandled call
+  now suggests `spia`. ([#35], [#37])
+- **Breaking:** the `mensage` field of `Erru` is now `mensagem`, so every
+  `Erru{mensage = ...}` and `err.mensage` has to be rewritten. ([#32])
+- **Breaking:** `spia`, `oops` and `sempri` are now reserved words, so a
+  program that uses one of them as a name no longer compiles. ([#32])
+- Rename the built-in `mostran` to `mostraln`. ([#37])
+- Pin every GitHub Action to a commit SHA, and the SHA256 of the LLVM and
+  llvm-mingw archives the Windows build downloads, since `ld.lld.exe` and the
+  MinGW runtime ship in the release. ([#22], [#24])
+
+### Deprecated
+
+- `mostran` still compiles, with a warning that names `mostraln`, and
+  `--strict` turns the warning into an error. It stays a reserved name while
+  the compiler accepts it. ([#37])
+
+### Fixed
+
+- Reject an exit code outside 0 to 255 in `sai`. A literal one is a compile
+  error and a computed one stops the program with an error, on native and wasm
+  targets; before, `sai(256)` exited with 0 and reported success. ([#23])
+- Apply the local size limit to functions that return a large `molda`, and to
+  array and `molda` literals used as temporaries. They crashed with a
+  segmentation fault instead of being rejected. ([#30])
+- Link macOS programs without a clang warning and one ld warning per object of
+  the embedded libgc. ([#34])
+- Fail the `check` target when the wasm tests cannot run, instead of silently
+  skipping them. ([#25])
+
+### Documentation
+
+- Put the license in the name of the Kriol Lang Project Contributors.
+  ([6e20356])
+- Add the macOS install instructions to the README. ([f5150c7])
+
 ## [1.16.2] - 2026-10-25
 
 ### Added
@@ -119,12 +195,25 @@ Releases before 1.14.0 are not covered here. See the
 [#19]: https://github.com/kriol-lang/kriol/pull/19
 [#20]: https://github.com/kriol-lang/kriol/pull/20
 [#21]: https://github.com/kriol-lang/kriol/pull/21
+[#22]: https://github.com/kriol-lang/kriol/pull/22
+[#23]: https://github.com/kriol-lang/kriol/pull/23
+[#24]: https://github.com/kriol-lang/kriol/pull/24
+[#25]: https://github.com/kriol-lang/kriol/pull/25
+[#30]: https://github.com/kriol-lang/kriol/pull/30
+[#32]: https://github.com/kriol-lang/kriol/pull/32
+[#34]: https://github.com/kriol-lang/kriol/pull/34
+[#35]: https://github.com/kriol-lang/kriol/issues/35
+[#37]: https://github.com/kriol-lang/kriol/pull/37
 [4d11ab4]: https://github.com/kriol-lang/kriol/commit/4d11ab414aeeec30c60071006d34fea38a44f020
 [4e2da1b]: https://github.com/kriol-lang/kriol/commit/4e2da1b69890b3dd9f9e65136e5b9bd032e2285a
+[6e20356]: https://github.com/kriol-lang/kriol/commit/6e203562174608538d81a7ba02a414e1376bd7b9
 [8a99934]: https://github.com/kriol-lang/kriol/commit/8a99934e7781e35ccbe8e8f24c9593d1f4695f54
 [8ef3598]: https://github.com/kriol-lang/kriol/commit/8ef35984c1d0bbacb2ce281083b3fd85e1309778
 [c5c1f41]: https://github.com/kriol-lang/kriol/commit/c5c1f4197c4c8e2ce9f53806ee134878cd1aa402
+[e93ac82]: https://github.com/kriol-lang/kriol/commit/e93ac823a1739876b7e58e14c1e55246fd687e48
 [ed0d3e5]: https://github.com/kriol-lang/kriol/commit/ed0d3e5ffc2f83f67db58ef326f10c8a5cee89d1
+[f5150c7]: https://github.com/kriol-lang/kriol/commit/f5150c786cc7ea04f9a8d0bc786690013ac86b2e
+[1.17.0]: https://github.com/kriol-lang/kriol/compare/v1.16.2-alpha+build1...v1.17.0-alpha+build1
 [1.16.2]: https://github.com/kriol-lang/kriol/compare/v1.16.1-alpha+build2...v1.16.2-alpha+build1
 [1.16.1]: https://github.com/kriol-lang/kriol/compare/v1.16.0-alpha+build2...v1.16.1-alpha+build2
 [1.16.0]: https://github.com/kriol-lang/kriol/compare/v1.15.0-alpha+build1...v1.16.0-alpha+build2
