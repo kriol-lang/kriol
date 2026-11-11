@@ -5,11 +5,11 @@ fn metadi(int a, int b) num : Erru {
 }
 
 fn media(int a, int b) num : Erru {
-    divolvi tenta metadi(a + b, 2) + tenta metadi(a, b);
+    divolvi spia metadi(a + b, 2) + spia metadi(a, b);
 }
 
 fn inisiu() : Erru {
-    mostran(tenta media(4, 2));
-    mostran(tenta media(4, 0));
-    mostran("never");
+    mostraln(spia media(4, 2));
+    mostraln(spia media(4, 0));
+    mostraln("never");
 }

@@ -1,5 +1,5 @@
 // expect: o índice de um array tem de ser um número inteiro
 fn inisiu() {
     int[2] a = [1, 2];
-    mostran(a[1.5]);
+    mostraln(a[1.5]);
 }

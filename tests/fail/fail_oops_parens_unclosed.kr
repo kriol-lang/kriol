@@ -1,8 +1,8 @@
 // expect: falta ')' antes de '{'
 fn inisiu() {
     spia {
-        mostran("x");
+        mostraln("x");
     } oops (err {
-        mostran("y");
+        mostraln("y");
     }
 }

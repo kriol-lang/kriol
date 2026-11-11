@@ -9,5 +9,5 @@ fn valor() int {
 }
 
 fn inisiu() {
-    mostran(valor());
+    mostraln(valor());
 }

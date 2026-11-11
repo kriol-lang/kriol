@@ -1,7 +1,7 @@
 // expect: :5: erro não tratado: a entrada terminou e não há mais linhas para ler
 fn inisiu() : Erru {
-    textu linha = tenta toma();
-    mostran(linha);
-    textu outra = tenta toma();
-    mostran("never");
+    textu linha = spia toma();
+    mostraln(linha);
+    textu outra = spia toma();
+    mostraln("never");
 }

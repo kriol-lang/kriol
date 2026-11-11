@@ -1,2 +1,2 @@
 // expect: não se esperava '(' aqui; esperava-se '='
-int mostran() = 9;
+int mostraln() = 9;

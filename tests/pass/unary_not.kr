@@ -7,5 +7,5 @@ fn inisiu() {
     konfirma(b == nau);
     konfirma(c == sin);
 
-    mostran(f"{a} {b} {c}");
+    mostraln(f"{a} {b} {c}");
 }

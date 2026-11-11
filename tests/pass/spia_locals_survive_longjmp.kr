@@ -17,12 +17,12 @@ fn inisiu() {
         contador = contador + 10 / zero();
         estado = "nunca";
     } oops (err) {
-        mostran(contador);
-        mostran(total);
-        mostran(f"{valores[0]} {valores[1]} {valores[2]}");
-        mostran(estado);
+        mostraln(contador);
+        mostraln(total);
+        mostraln(f"{valores[0]} {valores[1]} {valores[2]}");
+        mostraln(estado);
         contador += 100;
     } sempri {
-        mostran(contador);
+        mostraln(contador);
     }
 }

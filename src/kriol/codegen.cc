@@ -1480,16 +1480,16 @@ void CodeGenVisitor::emitUnhandledFailureCheck(FunCallExpr& node) {
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
 }
 
-void CodeGenVisitor::emitTenta(UnaryExpr& node) {
+void CodeGenVisitor::emitSpia(UnaryExpr& node) {
     node.Operand->accept(*this);
     llvm::Value* result = LastValue;
     if (!result)
-        throw std::runtime_error("erro interno: falhou a geração da chamada depois de 'tenta'");
+        throw std::runtime_error("erro interno: falhou a geração da chamada depois de 'spia'");
 
     auto* resultTy = llvm::cast<llvm::StructType>(result->getType());
     auto* fn = Builder->GetInsertBlock()->getParent();
-    auto* failBB = llvm::BasicBlock::Create(Context, "tenta.fail", fn);
-    auto* okBB = llvm::BasicBlock::Create(Context, "tenta.ok", fn);
+    auto* failBB = llvm::BasicBlock::Create(Context, "spia.fail", fn);
+    auto* okBB = llvm::BasicBlock::Create(Context, "spia.ok", fn);
     llvm::Value* failed = Builder->CreateExtractValue(result, {0u}, "failed");
     Builder->CreateCondBr(failed, failBB, okBB);
 
@@ -1499,38 +1499,6 @@ void CodeGenVisitor::emitTenta(UnaryExpr& node) {
 
     Builder->SetInsertPoint(okBB);
     LastValue = node.ResolvedType.isVoid() ? nullptr : Builder->CreateExtractValue(result, {1u}, "value");
-}
-
-void CodeGenVisitor::emitSinon(BinExpr& node) {
-    node.LHS->accept(*this);
-    llvm::Value* result = LastValue;
-    if (!result)
-        throw std::runtime_error("erro interno: falhou a geração da chamada antes de 'sinon'");
-
-    auto* fn = Builder->GetInsertBlock()->getParent();
-    auto* fallbackBB = llvm::BasicBlock::Create(Context, "sinon.fallback", fn);
-    auto* mergeBB = llvm::BasicBlock::Create(Context, "sinon.merge", fn);
-    llvm::Value* failed = Builder->CreateExtractValue(result, {0u}, "failed");
-    llvm::Value* value = Builder->CreateExtractValue(result, {1u}, "value");
-    llvm::BasicBlock* okEndBB = Builder->GetInsertBlock();
-    Builder->CreateCondBr(failed, fallbackBB, mergeBB);
-
-    // The fallback is only evaluated when the call failed.
-    Builder->SetInsertPoint(fallbackBB);
-    node.RHS->accept(*this);
-    if (!LastValue)
-        throw std::runtime_error("erro interno: falhou a geração do valor depois de 'sinon'");
-    llvm::Value* fallback = isAggregate(node.ResolvedType)
-        ? LastValue
-        : coerceToType(LastValue, node.RHS->ResolvedType, node.ResolvedType);
-    llvm::BasicBlock* fallbackEndBB = Builder->GetInsertBlock();
-    Builder->CreateBr(mergeBB);
-
-    Builder->SetInsertPoint(mergeBB);
-    auto* phi = Builder->CreatePHI(value->getType(), 2, "sinon.value");
-    phi->addIncoming(value, okEndBB);
-    phi->addIncoming(fallback, fallbackEndBB);
-    LastValue = phi;
 }
 
 CodeGenVisitor::FuncSig CodeGenVisitor::makeFuncSig(const ast::FuncDeclSttmt& node) const {
@@ -1947,7 +1915,6 @@ void CodeGenVisitor::emitShortCircuit(BinExpr& node) {
 void CodeGenVisitor::visit(BinExpr& node) {
     const auto& op = node.Op;
     if (op == "&&" || op == "||") { emitShortCircuit(node); return; }
-    if (op == "sinon") { emitSinon(node); return; }
 
     node.LHS->accept(*this);
     llvm::Value* lhs = LastValue;
@@ -2138,7 +2105,7 @@ void CodeGenVisitor::visit(CastExpr& node) {
 
 void CodeGenVisitor::visit(UnaryExpr& node) {
     if (!node.Operand) { LastValue = nullptr; return; }
-    if (node.Op == "tenta") { emitTenta(node); return; }
+    if (node.Op == "spia") { emitSpia(node); return; }
     node.Operand->accept(*this);
 
     llvm::Value* v = LastValue;

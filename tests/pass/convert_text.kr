@@ -1,38 +1,102 @@
 fn valor(textu t) int : Erru {
-    divolvi tenta int::konverti(t);
+    divolvi spia int::konverti(t);
+}
+
+// Whether the text is not a value of the type: the conversion fails.
+fn rejeita_int(textu t) bool {
+    spia {
+        int n = int::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_u8(textu t) bool {
+    spia {
+        u8 n = u8::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_i8(textu t) bool {
+    spia {
+        i8 n = i8::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_num(textu t) bool {
+    spia {
+        num n = num::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_f32(textu t) bool {
+    spia {
+        f32 n = f32::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_bool(textu t) bool {
+    spia {
+        bool b = bool::konverti(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
+}
+
+fn rejeita_valor(textu t) bool {
+    spia {
+        int n = valor(t);
+    } oops (err) {
+        divolvi sin;
+    }
+    divolvi nau;
 }
 
 fn inisiu() : Erru {
     // Integers: sign, surrounding white space, exact range of each width.
-    konfirma((int::konverti("42") sinon -1) == 42);
-    konfirma((int::konverti("  -17 ") sinon 0) == -17);
-    konfirma((int::konverti("+5") sinon 0) == 5);
-    konfirma((int::konverti("9223372036854775807") sinon 0) == 9223372036854775807);
-    konfirma((u8::konverti("255") sinon 0) == 255);
-    konfirma((i8::konverti("-128") sinon 0) == -128);
-    konfirma((u64::konverti("18446744073709551615") sinon 0) == (u64) -1);
+    konfirma(spia int::konverti("42") == 42);
+    konfirma(spia int::konverti("  -17 ") == -17);
+    konfirma(spia int::konverti("+5") == 5);
+    konfirma(spia int::konverti("9223372036854775807") == 9223372036854775807);
+    konfirma(spia u8::konverti("255") == 255);
+    konfirma(spia i8::konverti("-128") == -128);
+    konfirma(spia u64::konverti("18446744073709551615") == (u64) -1);
 
-    // Invalid or out-of-range text takes the fallback.
-    konfirma((int::konverti("abc") sinon -1) == -1);
-    konfirma((int::konverti("") sinon -1) == -1);
-    konfirma((int::konverti("12x") sinon -1) == -1);
-    konfirma((int::konverti("9223372036854775808") sinon -1) == -1);
-    konfirma((u8::konverti("256") sinon 7) == 7);
-    konfirma((u8::konverti("-1") sinon 7) == 7);
-    konfirma((i8::konverti("128") sinon 7) == 7);
+    // Invalid or out-of-range text fails.
+    konfirma(rejeita_int("abc"));
+    konfirma(rejeita_int(""));
+    konfirma(rejeita_int("12x"));
+    konfirma(rejeita_int("9223372036854775808"));
+    konfirma(rejeita_u8("256"));
+    konfirma(rejeita_u8("-1"));
+    konfirma(rejeita_i8("128"));
 
     // Reals and booleans.
-    konfirma((num::konverti("3.25") sinon -1.0) == 3.25);
-    konfirma((num::konverti(" -2e3 ") sinon 0.0) == -2000.0);
-    konfirma((num::konverti("1.") sinon -1.0) == -1.0);
-    konfirma((num::konverti("nan") sinon -1.0) == -1.0);
-    konfirma((f32::konverti("0.5") sinon -1.0) == 0.5);
-    konfirma((f32::konverti("1e300") sinon -1.0) == -1.0);
-    konfirma(bool::konverti("sin") sinon nau);
-    konfirma(!(bool::konverti("nau") sinon sin));
-    konfirma(bool::konverti("true") sinon sin);
+    konfirma(spia num::konverti("3.25") == 3.25);
+    konfirma(spia num::konverti(" -2e3 ") == -2000.0);
+    konfirma(rejeita_num("1."));
+    konfirma(rejeita_num("nan"));
+    konfirma(spia f32::konverti("0.5") == 0.5);
+    konfirma(rejeita_f32("1e300"));
+    konfirma(spia bool::konverti("sin"));
+    konfirma(!spia bool::konverti("nau"));
+    konfirma(rejeita_bool("true"));
 
-    // tenta propagates the error of an invalid conversion.
-    konfirma((valor("12") sinon 0) == 12);
-    konfirma((valor("doze") sinon 0) == 0);
+    // spia passes the error of an invalid conversion on to the caller.
+    konfirma(spia valor("12") == 12);
+    konfirma(rejeita_valor("doze"));
 }

@@ -20,8 +20,8 @@ fn inisiu() {
     konfirma(dobru(dobru) == 12);
     konfirma(nums[i] == 30);
 
-    mostran(printf);
-    mostran(f"{exit} {__kriol_check_bounds} {main} {nums[i]}");
+    mostraln(printf);
+    mostraln(f"{exit} {__kriol_check_bounds} {main} {nums[i]}");
 
     sai(0);
 }

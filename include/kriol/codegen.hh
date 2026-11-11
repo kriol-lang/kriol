@@ -206,9 +206,8 @@ namespace ast {
         // 'T::konverti(text)'.
         void emitConversionCall(ast::TypeCallExpr& node);
 
-        // 'tenta call' and 'call sinon fallback'.
-        void emitTenta(ast::UnaryExpr& node);
-        void emitSinon(ast::BinExpr& node);
+        // 'spia call': passes the error of the call on to the caller.
+        void emitSpia(ast::UnaryExpr& node);
 
         void pushScope() { Scopes.push_back({}); }
         void popScope()  { if (!Scopes.empty()) Scopes.pop_back(); }

@@ -2,9 +2,9 @@
 fn inisiu() {
     pa int i = 0; i < 3; i += 1 {
         spia {
-            mostran(i);
+            mostraln(i);
         } oops (err) {
-            mostran(err.mensagem);
+            mostraln(err.mensagem);
         } sempri {
             kontinua;
         }

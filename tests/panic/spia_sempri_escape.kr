@@ -6,9 +6,9 @@ fn falha() int : Erru {
 fn inisiu() {
     spia {
         int x = falha();
-        mostran(x);
+        mostraln(x);
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
-    mostran("nunca");
+    mostraln("nunca");
 }

@@ -1,0 +1,6 @@
+// expect: 'mostraln' é um nome reservado do Kriol e não pode ser usado como nome de função
+fn mostraln() {
+}
+
+fn inisiu() {
+}

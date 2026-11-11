@@ -1,0 +1,5 @@
+// expect: 'spia' tem de ser usado com a chamada de uma função que pode falhar
+fn inisiu() : Erru {
+    int y = 1;
+    int x = spia y;
+}

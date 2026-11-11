@@ -1,4 +1,4 @@
 // expect: 'toma' recebe no máximo 1 argumento, a mensagem a mostrar, mas foram dados 2
 fn inisiu() : Erru {
-    textu t = tenta toma("a", "b");
+    textu t = spia toma("a", "b");
 }

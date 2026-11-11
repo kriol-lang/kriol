@@ -4,14 +4,14 @@ fn g() int : Erru {
 
 fn sem_erru() {
     spia {
-        int x = tenta g();
-        mostran("nunca ", x);
+        int x = spia g();
+        mostraln("nunca ", x);
     } oops (err) {
-        mostran("oops: ", err.mensagem);
+        mostraln("oops: ", err.mensagem);
     }
 }
 
 fn inisiu() {
     sem_erru();
-    mostran("fin");
+    mostraln("fin");
 }

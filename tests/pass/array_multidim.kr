@@ -27,7 +27,7 @@ fn inisiu() {
     int[3] linha = m[1];
     linha[0] = 0;
     konfirma(m[1][0] == 4);
-    mostran(m, " ", m[0], " ", f"{zeros}");
+    mostraln(m, " ", m[0], " ", f"{zeros}");
 
     bool[2][2] logicus = [[sin, nau], [nau, sin]];
     konfirma(logicus[1][1]);

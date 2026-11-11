@@ -1,6 +1,6 @@
 // expect: :4: erro de execução: algo correu mal
 fn inisiu() {
-    mostran("antes");
+    mostraln("antes");
     paniku("algo correu mal");
-    mostran("never");
+    mostraln("never");
 }

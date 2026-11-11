@@ -17,5 +17,5 @@ fn inisiu() {
     total += res;
   }
 
-  mostran(total);
+  mostraln(total);
 }

@@ -1,0 +1,11 @@
+// expect: 'spia' só serve para chamadas que podem falhar, e esta não pode
+fn f() int {
+    divolvi 1;
+}
+
+fn g() int : Erru {
+    divolvi spia f();
+}
+
+fn inisiu() {
+}

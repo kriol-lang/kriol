@@ -7,9 +7,9 @@
 ```kriol
 fn ola(textu nomi, bool na_kriolu) {
   si na_kriolu {
-    mostran(f"👋 Olá {nomi}, ami nta programa na Kriol!");
+    mostraln(f"👋 Olá {nomi}, ami nta programa na Kriol!");
   } sinon {
-    mostran(f"👋 Hello {nomi}, I program in Kriol!");
+    mostraln(f"👋 Hello {nomi}, I program in Kriol!");
   }
 }
 
@@ -197,7 +197,7 @@ kriol examples/mensage_special.kriol --emit-ir
 Source text can also be compiled directly without creating a source file:
 
 ```sh
-kriol --text 'fn inisiu() { mostran("Kualeh, Mundu!"); }' -o hello
+kriol --text 'fn inisiu() { mostraln("Kualeh, Mundu!"); }' -o hello
 ```
 
 To compile a Kriol program to a WASI WebAssembly module:
@@ -208,7 +208,7 @@ kriol examples/hello_world.kriol --target wasm32-wasi -o hello.wasm
 
 The generated module is a WASI command module. For a browser playground, run it
 through a WASI preview1 JavaScript shim and capture stdout to display
-`mostra`/`mostran` output.
+`mostra`/`mostraln` output.
 
 Native formatted strings use the embedded Boehm GC runtime. The default WASI
 configuration currently uses `malloc` instead: formatted strings are not

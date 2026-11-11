@@ -1,4 +1,4 @@
 // expect: não se pode converter texto em 'textu'; 'konverti' só converte texto em números e em 'bool'
-fn inisiu() {
-    textu t = textu::konverti("x") sinon "";
+fn inisiu() : Erru {
+    textu t = spia textu::konverti("x");
 }

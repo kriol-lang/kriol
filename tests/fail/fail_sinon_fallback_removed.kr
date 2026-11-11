@@ -1,0 +1,8 @@
+// expect: 'sinon' só pode vir depois do bloco de um 'si'; para tratar o erro de uma chamada usa 'spia { ... } oops (err) { ... }'
+fn f() int : Erru {
+    divolvi 1;
+}
+
+fn inisiu() {
+    int x = f() sinon 2;
+}

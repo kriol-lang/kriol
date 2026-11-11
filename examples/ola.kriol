@@ -1,8 +1,8 @@
 fn ola(textu nomi, bool na_kriolu) {
   si na_kriolu {
-    mostran(f"👋 Olá {nomi}, ami nta programa na Kriol!");
+    mostraln(f"👋 Olá {nomi}, ami nta programa na Kriol!");
   } sinon {
-    mostran(f"👋 Hello {nomi}, I program in Kriol!");
+    mostraln(f"👋 Hello {nomi}, I program in Kriol!");
   }
 }
 

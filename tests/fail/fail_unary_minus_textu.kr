@@ -1,4 +1,4 @@
 // expect: o operador '-' só funciona com números, mas recebeu um valor do tipo 'textu'
 fn inisiu() {
-    mostran(-"abc");
+    mostraln(-"abc");
 }

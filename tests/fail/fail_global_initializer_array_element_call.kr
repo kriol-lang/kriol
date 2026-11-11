@@ -7,5 +7,5 @@ fn le() int {
 }
 
 fn inisiu() {
-    mostran(a[0]);
+    mostraln(a[0]);
 }

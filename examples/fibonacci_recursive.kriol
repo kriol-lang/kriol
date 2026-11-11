@@ -15,5 +15,5 @@ fn inisiu() {
         seq[i] = fibo(i);
     }
 
-    mostran(f"A sequência de Fibonacci até o 10º elemento é {seq}");
+    mostraln(f"A sequência de Fibonacci até o 10º elemento é {seq}");
 }

@@ -7,7 +7,7 @@ fn protejidu(int zero) {
     spia {
         int x = 1 / zero;
     } oops (e) {
-        mostran(f"protejidu: {e.tipu}");
+        mostraln(f"protejidu: {e.tipu}");
     }
 }
 
@@ -16,31 +16,31 @@ fn inisiu() {
     spia {
         int zero = 0;
         spia {
-            mostran("korpu");
+            mostraln("korpu");
         } sempri {
             spia {
                 lansa Erru{mensagem = "lansa"};
             } oops (e) {
-                mostran(f"sempri: {e.mensagem}");
+                mostraln(f"sempri: {e.mensagem}");
             }
             spia {
-                int v = tenta falha();
+                int v = spia falha();
             } oops (e) {
-                mostran(f"sempri: {e.mensagem}");
+                mostraln(f"sempri: {e.mensagem}");
             }
             spia {
                 spia {
                     int x = 1 / zero;
                 } sempri {
-                    mostran("sempri dentu");
+                    mostraln("sempri dentu");
                 }
             } oops (e) {
-                mostran(f"sempri: {e.tipu}");
+                mostraln(f"sempri: {e.tipu}");
             }
             protejidu(zero);
-            mostran("fin");
+            mostraln("fin");
         }
     } oops (e) {
-        mostran("nunca");
+        mostraln("nunca");
     }
 }

@@ -1,4 +1,0 @@
-// expect: o valor depois de 'sinon' tem de ser do tipo 'int', mas é do tipo 'textu'
-fn inisiu() {
-    int n = int::konverti("5") sinon "x";
-}

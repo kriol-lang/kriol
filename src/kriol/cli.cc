@@ -97,7 +97,7 @@ static std::string HelpText()
         "  kriol ola.kriol\n"
         "  kriol ola.kriol -o ola\n"
         "  kriol ola.kriol --target wasm32-wasi -o ola.wasm\n"
-        "  kriol --text 'fn inisiu() { mostran(\"Oi\"); }' --emit-ir\n";
+        "  kriol --text 'fn inisiu() { mostraln(\"Oi\"); }' --emit-ir\n";
 }
 
 // Rewrites the argument parser's own errors in Portuguese.

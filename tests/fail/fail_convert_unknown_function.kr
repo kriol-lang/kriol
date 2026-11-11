@@ -1,4 +1,4 @@
 // expect: a função 'int::parsa' não existe; a única função de um tipo é 'konverti', como em 'int::konverti(texto)'
-fn inisiu() {
-    int n = int::parsa("5") sinon 0;
+fn inisiu() : Erru {
+    int n = spia int::parsa("5");
 }

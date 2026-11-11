@@ -1,6 +1,6 @@
 // expect: fora das funções só se podem declarar variáveis, funções e moldes; coloca esta instrução dentro de uma função, por exemplo em 'inisiu'
-mostran("no function here");
+mostraln("no function here");
 
 fn inisiu() {
-    mostran("ola");
+    mostraln("ola");
 }

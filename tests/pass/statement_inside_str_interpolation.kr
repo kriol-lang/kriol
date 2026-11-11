@@ -1,6 +1,6 @@
 fn inisiu() {
-    mostran(f"1 + 1 = {1 + 1}");
+    mostraln(f"1 + 1 = {1 + 1}");
     int a = 90;
     int b = 20;
-    mostran(f"{a} + {b} = {a + b}");
+    mostraln(f"{a} + {b} = {a + b}");
 }

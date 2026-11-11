@@ -1,0 +1,6 @@
+// mostraln prints with a trailing newline.
+fn inisiu() {
+    mostraln("Ola");
+    int x = 7;
+    mostraln(x);
+}

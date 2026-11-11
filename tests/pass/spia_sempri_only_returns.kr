@@ -2,7 +2,7 @@ fn so_sempri() int {
     spia {
         divolvi 1;
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 
@@ -13,12 +13,20 @@ fn falivel(int b) int : Erru {
         }
         divolvi 10 / b;
     } sempri {
-        mostran(f"sempri de {b}");
+        mostraln(f"sempri de {b}");
     }
 }
 
 fn inisiu() {
-    mostran(so_sempri());
-    mostran(falivel(2) sinon 0);
-    mostran(falivel(0) sinon 7);
+    mostraln(so_sempri());
+    spia {
+        mostraln(falivel(2));
+    } oops (err) {
+        mostraln(0);
+    }
+    spia {
+        mostraln(falivel(0));
+    } oops (err) {
+        mostraln(7);
+    }
 }

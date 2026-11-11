@@ -2,5 +2,5 @@
 inpristan "std";
 
 fn inisiu() {
-    mostran("unused");
+    mostraln("unused");
 }

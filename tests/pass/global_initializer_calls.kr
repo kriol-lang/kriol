@@ -49,5 +49,5 @@ fn terceru(int n) int {
 }
 
 fn inisiu() {
-    mostran(f"{a} {c} {e} {f} {s} {d} {x} {v[1]}");
+    mostraln(f"{a} {c} {e} {f} {s} {d} {x} {v[1]}");
 }

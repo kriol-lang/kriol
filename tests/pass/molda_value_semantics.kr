@@ -22,7 +22,7 @@ fn kria(int x) Pontu : Erru {
 }
 
 fn kaminhu(int x) int : Erru {
-    Pontu p = tenta kria(x);
+    Pontu p = spia kria(x);
     divolvi p.y;
 }
 
@@ -34,7 +34,7 @@ fn falha() : Erru {
 Pontu origin = Pontu{x = 0, y = 0};
 Pontu longi = move(origin, 100);
 
-fn inisiu() {
+fn inisiu() : Erru {
     Pontu a = Pontu{x = 1, y = 2};
     Pontu b = a;
     b.x = 9;
@@ -56,8 +56,8 @@ fn inisiu() {
     ps[1].x = 30;
     konfirma(ps[0].x == 3 && ps[1].x == 30);
 
-    konfirma((kria(-1) sinon Pontu{x = -1, y = -1}).x == -1);
-    konfirma((kaminhu(4) sinon 0) == 8 && (kaminhu(-4) sinon 0) == 0);
+    konfirma((spia kria(1)).y == 2);
+    konfirma(spia kaminhu(4) == 8);
     konfirma(longi.x == 100 && origin.x == 0);
 
 

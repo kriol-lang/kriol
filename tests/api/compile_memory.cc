@@ -18,11 +18,11 @@ static int checkFileCompileAfterSyntaxError() {
     fs::path bad = writeSource("kriol_api_bad.kriol",
         "fn inisiu() {\n"
         "    int x = ;\n"
-        "    mostran(\"text left in the scanner buffer\");\n"
+        "    mostraln(\"text left in the scanner buffer\");\n"
         "}\n");
     fs::path good = writeSource("kriol_api_good.kriol",
         "fn inisiu() {\n"
-        "    mostran(\"Kualeh, Mundu!\");\n"
+        "    mostraln(\"Kualeh, Mundu!\");\n"
         "}\n");
 
     int status = 0;
@@ -66,7 +66,7 @@ int main() {
     options.inputKind = kriol::cli::CompileInputKind::SourceText;
     options.input =
         "fn inisiu() {\n"
-        "    mostran(\"Kualeh, Mundu!\");\n"
+        "    mostraln(\"Kualeh, Mundu!\");\n"
         "}\n";
     options.sourceName = "<api-memory-test>";
     options.target = "wasm32-wasi";

@@ -15,7 +15,7 @@ fn mensage_special(textu mensage, int tamanhu_maximu) {
     }
 
     linha(i, nau);
-    mostran(f"\t{mensage}");
+    mostraln(f"\t{mensage}");
 
     pa i -= 1 ; i > 0 ; i -= 1 {
         linha(i, sin);

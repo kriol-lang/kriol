@@ -1,0 +1,9 @@
+// expect: 'spia' só pode ser usado numa função que pode falhar, declarada com ': Erru', como 'fn f(...) : Erru'
+fn valor() int : Erru {
+    divolvi 1;
+}
+
+int global = spia valor();
+
+fn inisiu() {
+}

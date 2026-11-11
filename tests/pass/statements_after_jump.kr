@@ -20,5 +20,5 @@ fn count() int {
 fn inisiu() {
     konfirma(count() == 2);
     divolvi;
-    mostran("unreachable"); // dead
+    mostraln("unreachable"); // dead
 }

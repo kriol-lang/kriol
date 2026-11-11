@@ -19,5 +19,5 @@ fn inisiu() {
     Pessoa pessoa = identidade(novu_pessoa());
     mostra(pessoa.nomi);
     mostra(" ");
-    mostran(proxima_idadi(pessoa));
+    mostraln(proxima_idadi(pessoa));
 }

@@ -8,5 +8,5 @@ fn soma(int a, int b) int {
 }
 
 fn inisiu() {
-    mostran(soma(1, 2));
+    mostraln(soma(1, 2));
 }

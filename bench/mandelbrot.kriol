@@ -25,5 +25,5 @@ fn inisiu() {
             }
         }
     }
-    mostran(total);
+    mostraln(total);
 }

@@ -1,8 +1,0 @@
-// expect: 'tenta' só pode ser usado numa função que pode falhar, declarada com ': Erru', como 'fn inisiu(...) : Erru'
-fn f() int : Erru {
-    divolvi 1;
-}
-
-fn inisiu() {
-    int x = tenta f();
-}

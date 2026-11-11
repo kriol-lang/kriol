@@ -5,6 +5,7 @@
 #include <string>
 
 #include "ast.hh"
+#include "deprecated.hh"
 
 namespace kriol {
 namespace prelude {
@@ -32,16 +33,19 @@ inline std::unique_ptr<ast::MoldaDeclSttmt> makeErrorTypeDecl() {
 enum class Builtin {
     None,
     Mostra,
-    Mostran,
+    Mostraln,
     Toma,
     Sai,
     Konfirma,
     Paniku
 };
 
+// The built-in a name calls; an old spelling of a renamed built-in calls it too.
 inline Builtin lookupBuiltin(const std::string& name) {
+    if (auto currentName = deprecated::currentNameOf(name))
+        return lookupBuiltin(std::string(*currentName));
     if (name == "mostra") return Builtin::Mostra;
-    if (name == "mostran") return Builtin::Mostran;
+    if (name == "mostraln") return Builtin::Mostraln;
     if (name == "toma") return Builtin::Toma;
     if (name == "sai") return Builtin::Sai;
     if (name == "konfirma") return Builtin::Konfirma;

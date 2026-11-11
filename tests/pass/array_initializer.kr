@@ -3,5 +3,5 @@ fn inisiu() {
     mostra(array[0]);
     mostra(" ");
     mostra(array[1]);
-    mostran();
+    mostraln();
 }

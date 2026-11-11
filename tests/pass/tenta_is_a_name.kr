@@ -1,0 +1,9 @@
+// 'tenta' is no longer a keyword, so it is an ordinary name.
+fn tenta(int vezes) int {
+    divolvi vezes * 2;
+}
+
+fn inisiu() {
+    int tentativa = tenta(3);
+    mostraln(tentativa);
+}
