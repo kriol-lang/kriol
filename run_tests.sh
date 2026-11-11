@@ -297,7 +297,7 @@ rm -f "$tmpbin"
 
 OOPS_CALL="$ROOT/tests/pass/spia_oops_unhandled_call.kr"
 printf "  %-44s" "unhandled call in oops warns of the return"
-if "$KRIOL" "$OOPS_CALL" -o /dev/null 2>&1 | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função"; then
+if "$KRIOL" "$OOPS_CALL" -o /dev/null 2>&1 | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função; usa 'spia'"; then
     echo " PASS"; pass=$((pass+1))
 else
     echo " FAIL"; record_failure "unhandled call in oops warns of the return"
@@ -313,7 +313,7 @@ fi
 for program in spia_sempri_unhandled_call_is_fatal spia_sempri_unhandled_call_in_oops_is_fatal; do
     printf "  %-44s" "unhandled call in sempri warns of the stop: ${program#spia_sempri_}"
     if "$KRIOL" "$ROOT/tests/panic/$program.kr" -o /dev/null 2>&1 \
-            | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar"; then
+            | grep -Fq "aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar; usa 'spia'"; then
         echo " PASS"; pass=$((pass+1))
     else
         echo " FAIL"; record_failure "unhandled call in sempri warns of the stop: $program"

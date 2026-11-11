@@ -13,22 +13,22 @@ fn lansa_direto() {
     }
 }
 
-fn tenta_no_spia() int : Erru {
+fn propaga_no_spia() int : Erru {
     spia {
-        int x = tenta falha("tenta");
+        int x = spia falha("propagadu");
         mostraln(x);
     } oops (err) {
-        mostraln(f"oops do tenta: {err.mensagem}");
+        mostraln(f"oops do spia: {err.mensagem}");
     }
     divolvi 7;
 }
 
-fn chamada_sem_tenta() {
+fn chamada_sem_spia() {
     spia {
-        int x = falha("sem tenta");
+        int x = falha("sem spia");
         mostraln(x);
     } oops (err) {
-        mostraln(f"oops sem tenta: {err.mensagem}");
+        mostraln(f"oops sem spia: {err.mensagem}");
     }
 }
 
@@ -90,11 +90,15 @@ fn konverti_sem_tratamento() {
     }
 }
 
-fn inisiu() {
+fn inisiu() : Erru {
     lansa_direto();
-    mostraln(tenta_no_spia() sinon 0);
-    chamada_sem_tenta();
-    mostraln(relansa() sinon -1);
+    mostraln(spia propaga_no_spia());
+    chamada_sem_spia();
+    spia {
+        mostraln(relansa());
+    } oops (err) {
+        mostraln(f"relansa falhou: {err.mensagem}");
+    }
     aninhado();
     com_sempri(nau);
     com_sempri(sin);

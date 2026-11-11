@@ -14,9 +14,7 @@ fn talvez(bool ok) Par : Erru {
     divolvi novu();
 }
 
-fn inisiu() {
+fn inisiu() : Erru {
     konfirma(novu().v[1] == 2);
-    Par reserva = Par{v = [7; 3]};
-    konfirma((talvez(sin) sinon reserva).v[2] == 3);
-    konfirma((talvez(nau) sinon reserva).v[0] == 7);
+    konfirma((spia talvez(sin)).v[2] == 3);
 }

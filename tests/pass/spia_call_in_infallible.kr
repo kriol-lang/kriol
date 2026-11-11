@@ -4,7 +4,7 @@ fn g() int : Erru {
 
 fn sem_erru() {
     spia {
-        int x = tenta g();
+        int x = spia g();
         mostraln("nunca ", x);
     } oops (err) {
         mostraln("oops: ", err.mensagem);

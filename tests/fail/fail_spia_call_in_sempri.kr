@@ -1,4 +1,4 @@
-// expect: 'tenta' não pode sair de um bloco 'sempri', que corre sempre até ao fim
+// expect: 'spia' não pode sair de um bloco 'sempri', que corre sempre até ao fim
 fn falha() int : Erru {
     lansa Erru{mensagem = "x"};
 }
@@ -7,7 +7,7 @@ fn limpa() : Erru {
     spia {
         mostraln("x");
     } sempri {
-        int v = tenta falha();
+        int v = spia falha();
     }
 }
 

@@ -43,7 +43,7 @@ fn lansa_ku_sempri() int : Erru {
 
 fn chama_so_sempri() {
     spia {
-        mostraln(so_sempri() sinon 42);
+        mostraln(so_sempri());
     } oops (err) {
         mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
@@ -51,7 +51,7 @@ fn chama_so_sempri() {
 
 fn chama_oops_ku_sempri() {
     spia {
-        mostraln(oops_ku_sempri() sinon 42);
+        mostraln(oops_ku_sempri());
     } oops (err) {
         mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
@@ -59,7 +59,7 @@ fn chama_oops_ku_sempri() {
 
 fn chama_spia_dentu_spia() {
     spia {
-        mostraln(spia_dentu_spia() sinon 42);
+        mostraln(spia_dentu_spia());
     } oops (err) {
         mostraln(f"chamador apanhou {err.tipu} (linha {err.linha})");
     }
@@ -69,5 +69,9 @@ fn inisiu() {
     chama_so_sempri();
     chama_oops_ku_sempri();
     chama_spia_dentu_spia();
-    mostraln(lansa_ku_sempri() sinon 42);
+    spia {
+        mostraln(lansa_ku_sempri());
+    } oops (err) {
+        mostraln(42);
+    }
 }

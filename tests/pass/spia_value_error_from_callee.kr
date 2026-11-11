@@ -6,7 +6,7 @@ fn divide(int a, int b) int : Erru {
 }
 
 fn passa(int a, int b) int : Erru {
-    divolvi tenta divide(a, b);
+    divolvi spia divide(a, b);
 }
 
 fn chamador(int b) {
@@ -45,7 +45,19 @@ fn so_sempri(int b) int : Erru {
 fn inisiu() {
     chamador(2);
     chamador(0);
-    mostraln(chamador_falivel(5) sinon 99);
-    mostraln(chamador_falivel(0) sinon 99);
-    mostraln(so_sempri(0) sinon 43);
+    spia {
+        mostraln(chamador_falivel(5));
+    } oops (err) {
+        mostraln(99);
+    }
+    spia {
+        mostraln(chamador_falivel(0));
+    } oops (err) {
+        mostraln(99);
+    }
+    spia {
+        mostraln(so_sempri(0));
+    } oops (err) {
+        mostraln(43);
+    }
 }

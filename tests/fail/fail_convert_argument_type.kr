@@ -1,4 +1,4 @@
 // expect: o argumento 1 de 'int::konverti' tem de ser do tipo 'textu', mas é do tipo 'int'
-fn inisiu() {
-    int n = int::konverti(5) sinon 0;
+fn inisiu() : Erru {
+    int n = spia int::konverti(5);
 }

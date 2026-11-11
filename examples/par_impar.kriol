@@ -3,8 +3,8 @@ fn num_par(int n) bool {
 }
 
 fn inisiu() : Erru {
-  textu entrada = tenta toma("Screbi númeru interu: ");
-  int numeru = tenta int::konverti(entrada);
+  textu entrada = spia toma("Screbi númeru interu: ");
+  int numeru = spia int::konverti(entrada);
 
   si num_par(numeru) {
     mostraln(f'Númeru {numeru} é PAR.');

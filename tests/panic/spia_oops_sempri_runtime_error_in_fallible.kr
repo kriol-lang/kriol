@@ -14,7 +14,7 @@ fn oops_ku_sempri() int : Erru {
     }
 }
 
-fn inisiu() {
-    mostraln(oops_ku_sempri() sinon 42);
+fn inisiu() : Erru {
+    mostraln(spia oops_ku_sempri());
     mostraln("nunca");
 }

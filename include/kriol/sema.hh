@@ -68,7 +68,7 @@ namespace sema {
         // Whether the function being analysed declares an error type.
         bool CurrFuncCanFail = false;
 
-        // The fallible call that the enclosing 'tenta' or 'sinon' handles;
+        // The fallible call that the 'spia' before it handles;
         // any other fallible call is an unhandled error.
         const ast::FunCallExpr* HandledCall = nullptr;
 
@@ -137,7 +137,7 @@ namespace sema {
         void expectArgType(ast::FunCallExpr& node, std::size_t index, const Type& expected,
                            const std::string& callee);
 
-        // Reports an error if 'tenta' or 'lansa' is used outside a function
+        // Reports an error if 'spia' or 'lansa' is used outside a function
         // that declares an error type and outside a spia body or oops, or
         // where its error would leave a sempri.
         void requireFallibleFunction(const std::string& keyword, int lineNum);
@@ -155,7 +155,7 @@ namespace sema {
         // The call under any parentheses, or null if `expr` is not a call.
         static ast::FunCallExpr* unwrapCallExpr(ast::Expr* expr);
 
-        // Visits the operand of 'tenta' or 'sinon' and checks it is a call to
+        // Visits the operand of 'spia' and checks it is a call to
         // a function that can fail. Returns false after reporting an error.
         bool visitFallibleOperand(ast::Expr* operand, const std::string& keyword, int lineNum);
 

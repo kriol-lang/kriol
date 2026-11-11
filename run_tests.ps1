@@ -250,13 +250,13 @@ Write-Result '--strict accepts clean programs' $ok
 
 $oopsCall = Join-Path $Root 'tests/pass/spia_oops_unhandled_call.kr'
 $warning = Get-KriolResult @($oopsCall, '-o', (Join-Path $Work 'oops_call.exe'))
-Write-Result 'unhandled call in oops warns of the return' ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função"))
+Write-Result 'unhandled call in oops warns of the return' ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso é devolvido a quem chamou esta função; usa 'spia'"))
 $strictRejected = -not (Invoke-Kriol @('--strict', $oopsCall, '-o', (Join-Path $Work 'oops_call_strict.exe')))
 Write-Result '--strict rejects an unhandled call in oops' $strictRejected
 
 foreach ($program in 'spia_sempri_unhandled_call_is_fatal', 'spia_sempri_unhandled_call_in_oops_is_fatal') {
     $warning = Get-KriolResult @((Join-Path $Root "tests/panic/$program.kr"), '-o', (Join-Path $Work "$program.exe"))
-    Write-Result "unhandled call in sempri warns of the stop: $program" ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar"))
+    Write-Result "unhandled call in sempri warns of the stop: $program" ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar; usa 'spia'"))
 }
 
 $deprecated = Join-Path $Root 'tests/pass/deprecated_names.kr'

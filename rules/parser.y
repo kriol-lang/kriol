@@ -99,7 +99,7 @@
 %token<token>  BIT_AND "&" BIT_OR "|" BIT_XOR "^" BIT_NOT "~" AND_ASSIGN "&=" OR_ASSIGN "|=" XOR_ASSIGN "^="
 %token<token>  AND "&&" OR "||" ASSIGN "=" LCURLY "{" RCURLY "}" COMMA "," COLON ":" SEMIC ";" LBRAC "[" RBRAC "]"
 %token<string> TYPE_NUM TYPE_BOOL TYPE_INT TYPE_TEXTU TYPE_PRIMITIVE
-%token<token>  DIVOLVI "divolvi" PA "pa" TENTA "tenta" LANSA "lansa"
+%token<token>  DIVOLVI "divolvi" PA "pa" LANSA "lansa"
 %token<token>  SPIA "spia" OOPS "oops" SEMPRI "sempri"
 %token<token>  NKUANTU "nkuantu" SI "si" SINON "sinon" IMPRISTAN "inpristan"
 %token<token> KEBRA "kebra" CONTINUA "kontinua" DOT "." COLONCOLON "::" RPAR ")" LPAR "("
@@ -217,7 +217,7 @@ value_expression : constant_expression { $$ = $1; }
                  ;
 
 // An array initializer where an array value is expected: a return value, an
-// argument, the value of an assignment or the fallback of 'sinon'.
+// argument or the value of an assignment.
 array_value : array_initializer { $$ = $1; }
             | repeat_initializer { $$ = $1; }
             ;
@@ -298,7 +298,7 @@ multiplicative_expression : unary_expression { $$ = $1; }
 
 unary_expression : primary_expression                          { $$ = $1; }
                  | NOT unary_expression                         { auto n = new ast::UnaryExpr("!", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                 | TENTA unary_expression                        { auto n = new ast::UnaryExpr("tenta", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
+                 | SPIA unary_expression                         { auto n = new ast::UnaryExpr("spia", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | LPAR type_specifier RPAR unary_expression    { auto n = new ast::CastExpr(Type::FromName(*$2), std::unique_ptr<ast::Expr>($4)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | BIT_NOT unary_expression                     { auto n = new ast::UnaryExpr("~", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                  | MINUS unary_expression %prec UMINUS          { auto n = new ast::UnaryExpr("-", std::unique_ptr<ast::Expr>($2)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
@@ -325,8 +325,6 @@ primary_atom : record_literal { $$ = $1; }
              ;
 
 assignment_expression : constant_expression { $$ = $1; }
-                      | constant_expression SINON constant_expression { auto n = new ast::BinExpr("sinon", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
-                      | constant_expression SINON array_value { auto n = new ast::BinExpr("sinon", std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       | primary_expression assignment_operator assignment_expression { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       | primary_expression assignment_operator array_value { auto n = new ast::AssignExpr(*$2, std::unique_ptr<ast::Expr>($1), std::unique_ptr<ast::Expr>($3)); n->LineNum = @$.first_line; delete $2; KRIOL_CHECK_DEPTH(n, @$.first_line); $$ = n; }
                       ;
@@ -515,11 +513,29 @@ static std::string kriol_describe_symbol(yysymbol_kind_t symbol) {
 static int kriol_previous_token_line = 0;
 static int kriol_token_line = 0;
 
+// Tokens read since the name 'tenta', or -1. A syntax error just after it is
+// most likely a 'tenta f()' from before 'spia' replaced 'tenta'.
+static int kriol_tokens_since_tenta = -1;
+
+static void kriol_track_tenta(int token) {
+    if (token == IDENT && *yylval.string == "tenta")
+        kriol_tokens_since_tenta = 0;
+    else if (token == YYEOF)
+        kriol_tokens_since_tenta = -1;
+    else if (kriol_tokens_since_tenta >= 0)
+        ++kriol_tokens_since_tenta;
+}
+
+static bool kriol_error_follows_tenta() {
+    return kriol_tokens_since_tenta == 1 || kriol_tokens_since_tenta == 2;
+}
+
 #undef yylex
 static int kriol_lex() {
     const int token = yylex();
     kriol_previous_token_line = kriol_token_line;
     kriol_token_line = yylloc.last_line;
+    kriol_track_tenta(token);
     return token;
 }
 
@@ -542,6 +558,18 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
         return 0;
     }
 
+    // 'spia' replaced both 'tenta f()' and 'f() sinon valor'.
+    if (kriol_error_follows_tenta()) {
+        kriol::cli::ReportParseError(line, "'tenta' já não existe; para passar o erro de uma chamada "
+            "a quem a chamou usa 'spia', como em 'spia f()'");
+        return 0;
+    }
+    if (found == YYSYMBOL_SINON && !expects(YYSYMBOL_IDENT)) {
+        kriol::cli::ReportParseError(line, "'sinon' só pode vir depois do bloco de um 'si'; para tratar "
+            "o erro de uma chamada usa 'spia { ... } oops (err) { ... }'");
+        return 0;
+    }
+
     // A statement that ends without ';' is noticed only at the next line.
     if (expects(YYSYMBOL_SEMIC) && found != YYSYMBOL_YYEOF && kriol_previous_token_line > 0
             && kriol_previous_token_line < line) {
@@ -552,7 +580,7 @@ static int yyreport_syntax_error(const yypcontext_t* context, kriol::ast::BlockS
     // A keyword where a name is expected, such as 'fn si()'.
     static const yysymbol_kind_t keywords[] = {
         YYSYMBOL_FN, YYSYMBOL_MOLDA, YYSYMBOL_SI, YYSYMBOL_SINON, YYSYMBOL_PA, YYSYMBOL_NKUANTU,
-        YYSYMBOL_KEBRA, YYSYMBOL_CONTINUA, YYSYMBOL_DIVOLVI, YYSYMBOL_TENTA, YYSYMBOL_LANSA,
+        YYSYMBOL_KEBRA, YYSYMBOL_CONTINUA, YYSYMBOL_DIVOLVI, YYSYMBOL_LANSA,
         YYSYMBOL_IMPRISTAN, YYSYMBOL_SPIA, YYSYMBOL_OOPS, YYSYMBOL_SEMPRI,
     };
     if (expects(YYSYMBOL_IDENT) && std::find(std::begin(keywords), std::end(keywords), found) != std::end(keywords)) {

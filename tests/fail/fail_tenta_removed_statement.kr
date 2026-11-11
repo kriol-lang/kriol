@@ -1,0 +1,10 @@
+// expect: 'tenta' já não existe; para passar o erro de uma chamada a quem a chamou usa 'spia', como em 'spia f()'
+fn f() : Erru {
+}
+
+fn g() : Erru {
+    tenta f();
+}
+
+fn inisiu() {
+}

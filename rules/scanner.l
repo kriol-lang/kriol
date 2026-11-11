@@ -59,7 +59,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "divolvi"       return TOKENIZE(DIVOLVI);
 "pa"            return TOKENIZE(PA);
 "nkuantu"       return TOKENIZE(NKUANTU);
-"tenta"         return TOKENIZE(TENTA);
 "lansa"         return TOKENIZE(LANSA);
 "spia"          return TOKENIZE(SPIA);
 "oops"          return TOKENIZE(OOPS);

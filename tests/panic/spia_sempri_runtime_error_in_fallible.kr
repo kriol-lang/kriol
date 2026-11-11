@@ -11,7 +11,7 @@ fn so_sempri() int : Erru {
     }
 }
 
-fn inisiu() {
-    mostraln(so_sempri() sinon 42);
+fn inisiu() : Erru {
+    mostraln(spia so_sempri());
     mostraln("nunca");
 }

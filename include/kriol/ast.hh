@@ -218,7 +218,7 @@ namespace ast {
         // Set by sema when the callee declares an error type, so the call
         // yields a value or an error that must be handled.
         bool Fallible = false;
-        // Whether a surrounding 'tenta' or 'sinon' handles the error. An
+        // Whether a 'spia' before the call handles the error. An
         // unhandled error stops the program at the call.
         bool ErrorHandled = false;
 

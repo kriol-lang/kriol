@@ -24,7 +24,7 @@ fn inisiu() {
                 mostraln(f"sempri: {e.mensagem}");
             }
             spia {
-                int v = tenta falha();
+                int v = spia falha();
             } oops (e) {
                 mostraln(f"sempri: {e.mensagem}");
             }

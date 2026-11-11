@@ -82,7 +82,7 @@ private:
 static const std::unordered_set<std::string> reservedKeywords = {
     // Language keywords.
     "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "kebra", "kontinua", "tenta", "lansa", "spia", "oops", "sempri",
+    "kebra", "kontinua", "lansa", "spia", "oops", "sempri",
 
     // Type names and literals.
     "num", "int", "bool", "textu", "sin", "nau",
@@ -902,7 +902,7 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
             ? "é devolvido a quem chamou esta função"
             : "o programa termina se a função falhar";
         addWarning(warnLoc(node.LineNum) + "o erro de '" + callee->Name + "' não é tratado, por isso "
-                   + consequence + "; usa 'tenta' ou 'sinon'");
+                   + consequence + "; usa 'spia'");
     }
 
     size_t want = info.paramTypes.size();
@@ -951,31 +951,6 @@ bool SemanticAnalyzer::visitFallibleOperand(Expr* operand, const std::string& ke
 }
 
 void SemanticAnalyzer::visit(BinExpr& node) {
-    if (node.Op == "sinon") {
-        const bool valid = visitFallibleOperand(node.LHS.get(), "sinon", node.LineNum);
-        const Type& valueType = node.LHS->ResolvedType;
-        if (valid && valueType.isArray()) {
-            visitArrayValue(node.RHS.get(), valueType, node.LineNum, "o valor depois de 'sinon'");
-            node.ResolvedType = valueType;
-            return;
-        }
-        if (node.RHS) node.RHS->accept(*this);
-        if (!valid) { node.ResolvedType = Type::Invalid(); return; }
-
-        if (valueType.isVoid()) {
-            addError(errLoc(node.LineNum) + "'sinon' precisa de uma chamada que devolva um valor, "
-                     "mas esta função não devolve nenhum");
-            node.ResolvedType = Type::Invalid();
-            return;
-        }
-        if (node.RHS && node.RHS->ResolvedType.valid()
-                && !canCoerceExprTo(node.RHS.get(), valueType))
-            addError(errLoc(node.LineNum) + "o valor depois de 'sinon' "
-                     + mustBeOfType(valueType, node.RHS->ResolvedType));
-        node.ResolvedType = valueType;
-        return;
-    }
-
     if (node.LHS) node.LHS->accept(*this);
     if (node.RHS) node.RHS->accept(*this);
 
@@ -1441,9 +1416,9 @@ void SemanticAnalyzer::noteUserCall(const std::string& callee, int lineNum) {
 }
 
 void SemanticAnalyzer::visit(UnaryExpr& node) {
-    if (node.Op == "tenta") {
-        requireFallibleFunction("tenta", node.LineNum);
-        const bool valid = visitFallibleOperand(node.Operand.get(), "tenta", node.LineNum);
+    if (node.Op == "spia") {
+        requireFallibleFunction("spia", node.LineNum);
+        const bool valid = visitFallibleOperand(node.Operand.get(), "spia", node.LineNum);
         node.ResolvedType = valid ? node.Operand->ResolvedType : Type::Invalid();
         return;
     }

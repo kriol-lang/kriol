@@ -179,13 +179,25 @@ fn inisiu() {
     mostraln(f"molda {p.x} {p.y}");
     mostraln(divolvi_do_corpo());
     mostraln(divolvi_textu());
-    mostraln(divolvi_do_oops() sinon 99);
+    spia {
+        mostraln(divolvi_do_oops());
+    } oops (err) {
+        mostraln(99);
+    }
     divolvi_vazio();
     kebra_e_kontinua();
     mostraln(aninhado_em_ciclo());
     spia_seguinte(0);
     mostraln(ciclo_no_sempri());
     mostraln(sempri_ve_o_seu_ambito());
-    mostraln(sempri_fora_do_oops() sinon 99);
-    mostraln(sempri_ao_relansar() sinon 98);
+    spia {
+        mostraln(sempri_fora_do_oops());
+    } oops (err) {
+        mostraln(99);
+    }
+    spia {
+        mostraln(sempri_ao_relansar());
+    } oops (err) {
+        mostraln(98);
+    }
 }

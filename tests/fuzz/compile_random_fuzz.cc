@@ -121,9 +121,9 @@ namespace
             case 11:
                 return typeName(rng) + "::konverti(" + expr(rng, depth - 1) + ")";
             case 12:
-                return "tenta " + ident(rng) + "(" + expr(rng, depth - 1) + ")";
+                return "spia " + ident(rng) + "(" + expr(rng, depth - 1) + ")";
             case 13:
-                return ident(rng) + "(" + expr(rng, depth - 1) + ") sinon " + expr(rng, depth - 1);
+                return "spia " + typeName(rng) + "::konverti(" + expr(rng, depth - 1) + ")";
             case 14:
                 return ident(rng) + "[" + expr(rng, depth - 1) + "][" + expr(rng, depth - 1) + "]";
             default:
@@ -230,7 +230,7 @@ namespace
             "bool", "textu", "sin", "nau", "(", ")", "{", "}", "[", "]", ";",
             ",", ".", "::", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-",
             "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'",
-            "tenta", "lansa", "paniku", "konverti", "Erru", ":", "&", "|", "^", "~",
+            "spia", "lansa", "paniku", "konverti", "Erru", ":", "&", "|", "^", "~",
             "&=", "|=", "^=", "%", "%=", "mostran"
         };
 

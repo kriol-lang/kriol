@@ -1,8 +1,0 @@
-// expect: o valor depois de 'sinon' tem de ser do tipo 'int', mas é do tipo 'textu'
-fn f() int : Erru {
-    divolvi 1;
-}
-
-fn inisiu() {
-    int x = f() sinon "x";
-}

@@ -19,6 +19,14 @@ fn falivel(int b) int : Erru {
 
 fn inisiu() {
     mostraln(so_sempri());
-    mostraln(falivel(2) sinon 0);
-    mostraln(falivel(0) sinon 7);
+    spia {
+        mostraln(falivel(2));
+    } oops (err) {
+        mostraln(0);
+    }
+    spia {
+        mostraln(falivel(0));
+    } oops (err) {
+        mostraln(7);
+    }
 }

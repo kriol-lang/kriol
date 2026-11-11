@@ -13,5 +13,9 @@ fn no_oops() int : Erru {
 }
 
 fn inisiu() {
-    mostraln(no_oops() sinon 42);
+    spia {
+        mostraln(no_oops());
+    } oops (err) {
+        mostraln(42);
+    }
 }
