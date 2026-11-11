@@ -3,7 +3,7 @@ fn do_corpo() int {
     spia {
         divolvi 1;
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 
@@ -13,7 +13,7 @@ fn do_oops() int {
     } oops (err) {
         divolvi 2;
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
     divolvi 0;
 }
@@ -26,7 +26,7 @@ fn dos_ciclos() {
             }
             kebra;
         } oops (err) {
-            mostran(err.mensagem);
+            mostraln(err.mensagem);
         }
     }
 }
@@ -38,7 +38,7 @@ fn kebra_do_oops_com_sempri() {
         } oops (err) {
             kebra;
         } sempri {
-            mostran("sempri do kebra");
+            mostraln("sempri do kebra");
         }
     }
 }
@@ -50,7 +50,7 @@ fn kontinua_do_oops_com_sempri() {
         } oops (err) {
             kontinua;
         } sempri {
-            mostran("sempri do kontinua");
+            mostraln("sempri do kontinua");
         }
     }
 }
@@ -60,6 +60,6 @@ fn inisiu() {
     dos_ciclos();
     kebra_do_oops_com_sempri();
     kontinua_do_oops_com_sempri();
-    mostran(zero);
-    mostran(10 / zero);
+    mostraln(zero);
+    mostraln(10 / zero);
 }

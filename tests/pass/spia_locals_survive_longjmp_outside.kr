@@ -25,7 +25,7 @@ fn inisiu() {
                 soma += fundu(k);
             }
         } oops (e) {
-            mostran(f"k={k} soma={soma} antis={antis} metadi={metadi}");
+            mostraln(f"k={k} soma={soma} antis={antis} metadi={metadi}");
         }
         metadi = metadi * 2.0;
     }
@@ -38,9 +38,9 @@ fn inisiu() {
             marka = 7;
             int x = fundu(3);
         } sempri {
-            mostran(f"sempri marka={marka}");
+            mostraln(f"sempri marka={marka}");
         }
     } oops (e) {
-        mostran(f"oops marka={marka} {e.tipu}");
+        mostraln(f"oops marka={marka} {e.tipu}");
     }
 }

@@ -4,13 +4,13 @@ fn inisiu() {
     int zero = 0;
     spia {
         spia {
-            mostran("korpu");
+            mostraln("korpu");
         } sempri {
-            mostran("antis");
+            mostraln("antis");
             int x = 1 / zero;
-            mostran("dipos");
+            mostraln("dipos");
         }
     } oops (e) {
-        mostran("nunca");
+        mostraln("nunca");
     }
 }

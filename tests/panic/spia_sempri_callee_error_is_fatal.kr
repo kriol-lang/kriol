@@ -7,9 +7,9 @@ fn le(int i) int {
 
 fn limpa() {
     spia {
-        mostran("korpu");
+        mostraln("korpu");
     } sempri {
-        mostran(f"{le(5)}");
+        mostraln(f"{le(5)}");
     }
 }
 
@@ -17,6 +17,6 @@ fn inisiu() {
     spia {
         limpa();
     } oops (e) {
-        mostran("nunca");
+        mostraln("nunca");
     }
 }

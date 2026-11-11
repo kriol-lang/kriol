@@ -3,5 +3,5 @@ fn source_name() int {
 }
 
 fn inisiu() {
-    mostran(source_name());
+    mostraln(source_name());
 }

@@ -7,14 +7,14 @@ fn oops_ku_sempri() int : Erru {
     spia {
         lansa Erru{mensagem = "x"};
     } oops (err) {
-        mostran(f"oops apanhou {err.tipu}");
+        mostraln(f"oops apanhou {err.tipu}");
         divolvi 1 / zero();
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 
 fn inisiu() {
-    mostran(oops_ku_sempri() sinon 42);
-    mostran("nunca");
+    mostraln(oops_ku_sempri() sinon 42);
+    mostraln("nunca");
 }

@@ -13,12 +13,12 @@ fn riba(int b) int {
 
 fn chama(int b) {
     spia {
-        mostran(riba(b));
+        mostraln(riba(b));
     } oops (err) {
-        mostran(f"{err.tipu}: {err.mensagem}");
+        mostraln(f"{err.tipu}: {err.mensagem}");
         konfirma(err.linha == 2);
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
 }
 

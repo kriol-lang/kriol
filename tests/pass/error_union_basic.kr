@@ -25,7 +25,7 @@ fn inisiu() : Erru {
 
     // The error is an ordinary molda value.
     Erru e = Erru{mensagem = "x"};
-    mostran(e.mensagem);
+    mostraln(e.mensagem);
 
     // A fallible inisiu may finish without failing.
     tenta valida(1);

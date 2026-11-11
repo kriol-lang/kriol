@@ -15,12 +15,12 @@ fn f(int n) int {
     } sempri {
         int[120000] buf = [0; 120000];
         buf[n] = n;
-        mostran("sempri ", buf[n]);
+        mostraln("sempri ", buf[n]);
     }
     divolvi 0;
 }
 
 fn inisiu() {
-    mostran(f(3));
-    mostran(f(20));
+    mostraln(f(3));
+    mostraln(f(20));
 }

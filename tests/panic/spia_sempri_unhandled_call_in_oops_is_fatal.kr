@@ -6,7 +6,7 @@ fn falha() int : Erru {
 
 fn limpa() int : Erru {
     spia {
-        mostran("korpu");
+        mostraln("korpu");
     } sempri {
         spia {
             lansa Erru{mensagem = "primeiru"};
@@ -20,8 +20,8 @@ fn limpa() int : Erru {
 fn inisiu() {
     spia {
         int r = limpa();
-        mostran(f"nunca {r}");
+        mostraln(f"nunca {r}");
     } oops (e) {
-        mostran("nunca");
+        mostraln("nunca");
     }
 }

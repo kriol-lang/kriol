@@ -2,8 +2,8 @@
 fn inisiu() {
     int x = 1;
     si x == 1 {
-        mostran("early exit");
+        mostraln("early exit");
         divolvi;
     }
-    mostran("not reached");
+    mostraln("not reached");
 }

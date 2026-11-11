@@ -145,7 +145,7 @@ namespace
             case 3:
                 return ident(rng) + " = " + expr(rng, depth) + ";";
             case 4:
-                return "mostran(" + expr(rng, depth) + ");";
+                return "mostraln(" + expr(rng, depth) + ");";
             case 5:
                 return "si " + expr(rng, depth) + " { " + statement(rng, depth - 1) + " }";
             case 6:
@@ -225,13 +225,13 @@ namespace
     std::string tokenSoup(std::mt19937_64& rng, std::size_t maxBytes)
     {
         static const std::vector<std::string> tokens = {
-            "fn", "molda", "mostran", "mostra", "si", "sinon", "nkuantu",
+            "fn", "molda", "mostraln", "mostra", "si", "sinon", "nkuantu",
             "pa", "kebra", "divolvi", "sai", "kontinua", "konfirma", "int", "num",
             "bool", "textu", "sin", "nau", "(", ")", "{", "}", "[", "]", ";",
             ",", ".", "::", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-",
             "*", "/", "+=", "-=", "*=", "/=", "&&", "||", "f\"", "\"", "'",
             "tenta", "lansa", "paniku", "konverti", "Erru", ":", "&", "|", "^", "~",
-            "&=", "|=", "^=", "%", "%="
+            "&=", "|=", "^=", "%", "%=", "mostran"
         };
 
         std::string out;

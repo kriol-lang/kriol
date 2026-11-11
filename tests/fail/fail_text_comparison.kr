@@ -2,6 +2,6 @@
 fn inisiu() {
     textu a = "x";
     si a == "x" {
-        mostran(1);
+        mostraln(1);
     }
 }

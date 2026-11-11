@@ -5,5 +5,5 @@ molda Grandi {
 }
 
 fn inisiu() {
-    mostran(Grandi{v = [1; 200000], x = 0}.v[0]);
+    mostraln(Grandi{v = [1; 200000], x = 0}.v[0]);
 }

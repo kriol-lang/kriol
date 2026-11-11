@@ -1,7 +1,7 @@
 // expect: não se esperava um nome aqui; esperava-se 'oops' ou 'sempri'
 fn inisiu() {
     spia {
-        mostran("x");
+        mostraln("x");
     }
-    mostran("y");
+    mostraln("y");
 }

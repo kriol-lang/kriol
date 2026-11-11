@@ -5,7 +5,7 @@ fn falha() int : Erru {
 
 fn limpa() : Erru {
     spia {
-        mostran("x");
+        mostraln("x");
     } sempri {
         int v = tenta falha();
     }

@@ -6,5 +6,5 @@ fn le() int {
 }
 
 fn inisiu() {
-    mostran(a);
+    mostraln(a);
 }

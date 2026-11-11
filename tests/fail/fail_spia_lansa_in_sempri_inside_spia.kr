@@ -7,6 +7,6 @@ fn inisiu() {
             lansa Erru{mensagem = "di sempri"};
         }
     } oops (e) {
-        mostran(e.mensagem);
+        mostraln(e.mensagem);
     }
 }

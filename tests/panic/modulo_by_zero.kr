@@ -2,5 +2,5 @@
 fn inisiu() {
     int a = 7;
     int b = 0;
-    mostran(a % b);
+    mostraln(a % b);
 }

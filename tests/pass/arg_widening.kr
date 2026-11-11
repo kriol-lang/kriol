@@ -6,5 +6,5 @@ fn inisiu() {
     int x = 3;
     int y = 7;
     num r = media(x, y);
-    mostran(r);
+    mostraln(r);
 }

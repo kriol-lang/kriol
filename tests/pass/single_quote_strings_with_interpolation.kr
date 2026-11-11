@@ -2,5 +2,5 @@
 fn inisiu() {
     textu nomi = "Joe";
     textu hello = f'Olá, "{nomi}", Tudo bom?';
-    mostran(hello);
+    mostraln(hello);
 }

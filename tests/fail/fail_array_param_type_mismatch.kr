@@ -5,5 +5,5 @@ fn soma(int[3] v) int {
 
 fn inisiu() {
     int[4] b = [0; 4];
-    mostran(soma(b));
+    mostraln(soma(b));
 }

@@ -1,5 +1,5 @@
 // expect: o array tem 100000000 elementos, mais do que o máximo de 1048576
 fn inisiu() {
     int [100000000]a = [0; 100000000];
-    mostran(a[0]);
+    mostraln(a[0]);
 }

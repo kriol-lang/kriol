@@ -2,5 +2,5 @@
 molda P { int a; }
 fn inisiu() {
     P p = P{a = 1};
-    mostran(p.b);
+    mostraln(p.b);
 }

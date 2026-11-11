@@ -9,18 +9,18 @@ fn novu_pessoa(textu nomi, textu apelidu, int idadi) Pessoa {
 }
 
 fn mostra_pessoa(Pessoa p) {
-  mostran(f"{p.nomi} {p.apelidu} tem {p.idadi} anos de idade.");
+  mostraln(f"{p.nomi} {p.apelidu} tem {p.idadi} anos de idade.");
 }
 
 fn compara_idadi(Pessoa a, Pessoa b) {
   int diferensa = a.idadi - b.idadi;
 
   si diferensa == 0 {
-    mostran(f"{a.nomi} {a.apelidu} tem a mesma idade que {b.nomi} {b.apelidu}.");
+    mostraln(f"{a.nomi} {a.apelidu} tem a mesma idade que {b.nomi} {b.apelidu}.");
   } sinon si diferensa > 0 {
-    mostran(f"{a.nomi} {a.apelidu} é maior que {b.nomi} {b.apelidu} por {diferensa} anos.");
+    mostraln(f"{a.nomi} {a.apelidu} é maior que {b.nomi} {b.apelidu} por {diferensa} anos.");
   } sinon {
-    mostran(f"{a.nomi} {a.apelidu} é menor que {b.nomi} {b.apelidu} por {-diferensa} anos.");
+    mostraln(f"{a.nomi} {a.apelidu} é menor que {b.nomi} {b.apelidu} por {-diferensa} anos.");
   }
 }
 
@@ -35,21 +35,21 @@ fn inisiu() {
     mostra_pessoa(pessoas[i]);
   }
 
-  mostran("-----------------");
-  mostran("[[ E tu? ]]");
+  mostraln("-----------------");
+  mostraln("[[ E tu? ]]");
 
   textu nomi = toma("-> Nome: ");
   textu apelidu = toma("-> Apelido: ");
   textu entrada_idadi = toma("-> Idade: ");
   int idadi = int::konverti(entrada_idadi);
 
-  mostran("-----------------");
+  mostraln("-----------------");
 
   Pessoa abo = novu_pessoa(nomi, apelidu, idadi);
 
   mostra_pessoa(abo);
 
-  mostran("-----------------");
+  mostraln("-----------------");
 
   pa int i = 0 ; i < 3 ; i += 1 {
     compara_idadi(abo, pessoas[i]);

@@ -5,9 +5,9 @@ fn falha() int : Erru {
 fn inisiu() {
     spia {
         int v = falha() sinon 5;
-        mostran(v);
+        mostraln(v);
     } oops (err) {
-        mostran("oops");
+        mostraln("oops");
     }
-    mostran("fin");
+    mostraln("fin");
 }

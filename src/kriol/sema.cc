@@ -787,9 +787,12 @@ void SemanticAnalyzer::visit(FunCallExpr& node) {
     const std::string loc = errLoc(node.LineNum);
     size_t got = node.Args ? node.Args->Args.size() : 0;
 
+    if (auto currentName = deprecated::currentNameOf(callee->Name))
+        addWarning(warnLoc(node.LineNum) + deprecated::renamedWordWarning(callee->Name, *currentName));
+
     switch (prelude::lookupBuiltin(callee->Name)) {
         case prelude::Builtin::Mostra:
-        case prelude::Builtin::Mostran:
+        case prelude::Builtin::Mostraln:
             if (node.Args) {
                 for (auto& arg : node.Args->Args) {
                     if (!arg) continue;

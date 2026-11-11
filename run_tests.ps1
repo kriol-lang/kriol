@@ -208,13 +208,13 @@ foreach ($source in Get-Sources (Join-Path $Root 'tests/panic') '.kr') {
 }
 
 $exe = Join-Path $Work 'text.exe'
-$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("Kualeh, Mundu!"); }', '-o', $exe)
+$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostraln("Kualeh, Mundu!"); }', '-o', $exe)
 $output = if ($ok) { & $exe } else { $null }
 Write-Result 'inline source text' ($output -eq 'Kualeh, Mundu!')
 
 foreach ($level in '0', '3') {
     $exe = Join-Path $Work 'optimized.exe'
-    $ok = Invoke-Kriol @('--opt-lvl', $level, '--text', 'fn inisiu() { int[3] a = [1, 2, 3]; mostran(a[2] / a[0]); }', '-o', $exe)
+    $ok = Invoke-Kriol @('--opt-lvl', $level, '--text', 'fn inisiu() { int[3] a = [1, 2, 3]; mostraln(a[2] / a[0]); }', '-o', $exe)
     $output = if ($ok) { & $exe } else { $null }
     Write-Result "optimization level $level" ($output -eq '3')
 }
@@ -235,7 +235,7 @@ $run = if ($ok) { Invoke-Program $exe $EmptyInput } else { $null }
 Write-Result 'sempri copies share locals at --opt-lvl 0' ($ok -and -not $run.TimedOut -and $run.ExitCode -eq 0 -and
     (Test-Stdout $sempri $run.Stdout))
 
-$unhandled = 'fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostran("never"); }'
+$unhandled = 'fn f() int : Erru { lansa Erru{mensagem = "boom"}; } fn inisiu() { int x = f(); mostraln("never"); }'
 $exe = Join-Path $Work 'unhandled.exe'
 $ok = Invoke-Kriol @('--text', $unhandled, '-o', $exe)
 Write-Result 'unhandled error compiles' $ok
@@ -259,6 +259,19 @@ foreach ($program in 'spia_sempri_unhandled_call_is_fatal', 'spia_sempri_unhandl
     Write-Result "unhandled call in sempri warns of the stop: $program" ($warning.Output.Contains("aviso: o erro de 'falha' não é tratado, por isso o programa termina se a função falhar"))
 }
 
+$deprecated = Join-Path $Root 'tests/pass/deprecated_names.kr'
+$warning = Get-KriolResult @($deprecated, '-o', (Join-Path $Work 'deprecated.exe'))
+foreach ($old in @(,@('mostran', 'mostraln', 5, 7))) {
+    $name, $current, $lines = $old[0], $old[1], $old[2..3]
+    $missing = @($lines | Where-Object { -not $warning.Output.Contains("deprecated_names.kr:${_}: aviso: '$name' está obsoleto; usa '$current'") })
+    Write-Result "'$name' warns that it is now '$current'" ($missing.Count -eq 0)
+}
+Write-Result 'one warning per use of an old name' (([regex]::Matches($warning.Output, 'está obsoleto')).Count -eq 2)
+$strictRejected = -not (Invoke-Kriol @('--strict', $deprecated, '-o', (Join-Path $Work 'deprecated_strict.exe')))
+Write-Result '--strict rejects the old name' $strictRejected
+$ok = Invoke-Kriol @('--strict', '--text', 'fn inisiu() { si nau { mostra("a"); } sinon { mostraln("b"); } }', '-o', (Join-Path $Work 'current_names.exe'))
+Write-Result '--strict accepts mostraln' $ok
+
 foreach ($program in 'spia_lexical', 'spia_value_error_from_callee', 'spia_sempri_catches_its_own') {
     $ok = Invoke-Kriol @('--strict', (Join-Path $Root "tests/pass/$program.kr"), '-o', (Join-Path $Work "strict_$program.exe"))
     Write-Result "--strict accepts $program" $ok
@@ -268,7 +281,7 @@ $outputDir = Join-Path $Work 'output'
 New-Item -ItemType Directory $outputDir | Out-Null
 $sentinels = @('program.o', 'program.obj', 'program.exe.obj') | ForEach-Object { Join-Path $outputDir $_ }
 $sentinels | ForEach-Object { Set-Content $_ 'precious' }
-$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostran("x"); }', '-o', (Join-Path $outputDir 'program'))
+$ok = Invoke-Kriol @('--text', 'fn inisiu() { mostraln("x"); }', '-o', (Join-Path $outputDir 'program'))
 $untouched = -not ($sentinels | Where-Object { (Get-Content $_ -ErrorAction SilentlyContinue) -ne 'precious' })
 Write-Result 'output directory left untouched' ($ok -and $untouched)
 
@@ -286,7 +299,7 @@ function Test-RejectedWith([string] $Name, [string] $Expected, [string[]] $Argum
 $cliDir = Join-Path $Work 'cli'
 New-Item -ItemType Directory (Join-Path $cliDir 'folder.kriol') -Force | Out-Null
 $txtSource = Join-Path $cliDir 'program.txt'
-Set-Content $txtSource 'fn inisiu() { mostran("txt"); }'
+Set-Content $txtSource 'fn inisiu() { mostraln("txt"); }'
 $cliOut = Join-Path $cliDir 'program.exe'
 Test-RejectedWith 'cli: missing input' 'falta o programa a compilar' @('-o', $cliOut)
 Test-RejectedWith 'cli: file and --text together' 'um ficheiro ou --text' @($txtSource, '--text', 'fn inisiu() {}')

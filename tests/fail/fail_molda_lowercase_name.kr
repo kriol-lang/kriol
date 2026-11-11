@@ -4,5 +4,5 @@ molda pessoa {
 }
 
 fn inisiu() {
-    mostran("nome de tipo invalido");
+    mostraln("nome de tipo invalido");
 }

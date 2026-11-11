@@ -4,5 +4,5 @@ fn tonum(int x) num {
 
 fn inisiu() {
     num resultado = tonum(7);
-    mostran(resultado);
+    mostraln(resultado);
 }

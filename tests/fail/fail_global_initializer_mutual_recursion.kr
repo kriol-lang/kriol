@@ -14,5 +14,5 @@ fn impar(int n) int {
 }
 
 fn inisiu() {
-    mostran(a);
+    mostraln(a);
 }

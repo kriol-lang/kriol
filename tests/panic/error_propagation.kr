@@ -9,7 +9,7 @@ fn media(int a, int b) num : Erru {
 }
 
 fn inisiu() : Erru {
-    mostran(tenta media(4, 2));
-    mostran(tenta media(4, 0));
-    mostran("never");
+    mostraln(tenta media(4, 2));
+    mostraln(tenta media(4, 0));
+    mostraln("never");
 }

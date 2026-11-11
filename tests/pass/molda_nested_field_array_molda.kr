@@ -26,7 +26,7 @@ fn inisiu() {
 
     mostra(pessoa.enderesu[0].rua);
     mostra(" ");
-    mostran(pessoa.enderesu[0].numero);
-    mostran(f"F pessoa: {pessoa.flags}");
-    mostran(f"F pessoa: {pessoa.flags}");
+    mostraln(pessoa.enderesu[0].numero);
+    mostraln(f"F pessoa: {pessoa.flags}");
+    mostraln(f"F pessoa: {pessoa.flags}");
 }

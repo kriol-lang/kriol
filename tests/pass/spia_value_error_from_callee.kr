@@ -12,12 +12,12 @@ fn passa(int a, int b) int : Erru {
 fn chamador(int b) {
     spia {
         int q = divide(10, b);
-        mostran(f"quociente {q}");
+        mostraln(f"quociente {q}");
         int r = passa(10, b);
-        mostran(f"outra vez {r}");
+        mostraln(f"outra vez {r}");
     } oops (err) {
-        mostran(f"oops: {err.mensagem}");
-        mostran(err.tipu);
+        mostraln(f"oops: {err.mensagem}");
+        mostraln(err.tipu);
         konfirma(err.linha == 3);
     }
 }
@@ -27,7 +27,7 @@ fn chamador_falivel(int b) int : Erru {
         int r = passa(10, b);
         divolvi r;
     } oops (err) {
-        mostran(f"oops falível: {err.mensagem}");
+        mostraln(f"oops falível: {err.mensagem}");
     }
     divolvi -1;
 }
@@ -35,9 +35,9 @@ fn chamador_falivel(int b) int : Erru {
 fn so_sempri(int b) int : Erru {
     spia {
         int r = divide(10, b);
-        mostran(f"só sempri {r}");
+        mostraln(f"só sempri {r}");
     } sempri {
-        mostran("sempri do só sempri");
+        mostraln("sempri do só sempri");
     }
     divolvi 0;
 }
@@ -45,7 +45,7 @@ fn so_sempri(int b) int : Erru {
 fn inisiu() {
     chamador(2);
     chamador(0);
-    mostran(chamador_falivel(5) sinon 99);
-    mostran(chamador_falivel(0) sinon 99);
-    mostran(so_sempri(0) sinon 43);
+    mostraln(chamador_falivel(5) sinon 99);
+    mostraln(chamador_falivel(0) sinon 99);
+    mostraln(so_sempri(0) sinon 43);
 }

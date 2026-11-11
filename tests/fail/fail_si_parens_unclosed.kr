@@ -1,6 +1,6 @@
 // expect: falta ')' antes de '{'
 fn inisiu() {
     si (int x = 1; x > 0 {
-        mostran("x");
+        mostraln("x");
     }
 }

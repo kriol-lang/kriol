@@ -2,12 +2,12 @@
 fn inisiu() {
     int code = 300;
     spia {
-        mostran("antes");
+        mostraln("antes");
         sai(code);
     } oops (err) {
-        mostran("oops");
+        mostraln("oops");
     } sempri {
-        mostran("sempri");
+        mostraln("sempri");
     }
-    mostran("nunca");
+    mostraln("nunca");
 }

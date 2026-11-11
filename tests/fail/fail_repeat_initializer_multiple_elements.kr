@@ -1,5 +1,5 @@
 // expect: não se esperava ';' aqui; esperava-se ',' ou ']'
 fn inisiu() {
     int [6]a = [1, 2; 3];
-    mostran(a[0]);
+    mostraln(a[0]);
 }

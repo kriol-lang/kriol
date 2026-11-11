@@ -3,5 +3,5 @@ fn inisiu() {
     bool[2] flags = [sin, nau];
     textu[2] words = ["A", "B"];
 
-    mostran(f"nums={nums} flags={flags} words={words}");
+    mostraln(f"nums={nums} flags={flags} words={words}");
 }

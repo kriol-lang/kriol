@@ -1,7 +1,7 @@
 // expect: não se pode declarar a função 'inner' dentro de outra função; declara-a fora, ao nível do ficheiro
 fn inisiu() {
     fn inner() {
-        mostran("inner");
+        mostraln("inner");
     }
-    mostran("outer");
+    mostraln("outer");
 }

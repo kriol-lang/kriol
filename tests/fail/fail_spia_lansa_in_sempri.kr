@@ -1,7 +1,7 @@
 // expect: 'lansa' não pode sair de um bloco 'sempri', que corre sempre até ao fim
 fn inisiu() {
     spia {
-        mostran("x");
+        mostraln("x");
     } sempri {
         lansa Erru{mensagem = "y"};
     }
