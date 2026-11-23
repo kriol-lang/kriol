@@ -56,7 +56,7 @@ jobs:
           $toolset = $toolsets | Where-Object MinClang -le $llvmMajor |
             Sort-Object Version -Descending | Select-Object -First 1
           if (-not $toolset) {
-            throw "No installed MSVC toolset accepts Clang $llvmMajor: install an older toolset or move LLVM_VERSION up"
+            throw "No installed MSVC toolset accepts Clang ${llvmMajor}: install an older toolset or move LLVM_VERSION up"
           }
           Write-Host "Using MSVC $($toolset.Version) from $($toolset.VS)"
 
@@ -66,6 +66,7 @@ jobs:
               "$($Matches[1])=$($Matches[2])" | Add-Content $env:GITHUB_ENV
             }
           }
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed for MSVC $($toolset.Version)" }
 
       - name: Cache LLVM
         id: cache-llvm
