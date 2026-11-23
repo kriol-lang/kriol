@@ -30,16 +30,38 @@ jobs:
           submodules: true
 
       # Same as a "x64 Native Tools" prompt: exports what vcvars64.bat changes.
+      # Each MSVC STL accepts Clang only from some version on (its STL1000
+      # check: MSVC 14.52 wants Clang 22), and clang-cl here is the pinned LLVM.
+      # So this picks the newest installed toolset whose STL accepts that LLVM,
+      # rather than the newest Visual Studio's default.
       - name: Set up MSVC environment
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products * -property installationPath `
+          $installs = & $vswhere -products * -property installationPath `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
-          if (-not $vs) { throw 'Visual Studio with the C++ x64 tools was not found' }
+          if (-not $installs) { throw 'Visual Studio with the C++ x64 tools was not found' }
+
+          $llvmMajor = [int]$env:LLVM_VERSION.Split('.')[0]
+          $toolsets = foreach ($vs in $installs) {
+            foreach ($dir in Get-ChildItem "$vs\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue) {
+              $header = Join-Path $dir.FullName 'include\yvals_core.h'
+              if (-not (Test-Path $header)) { continue }
+              $minClang = if ((Get-Content $header -Raw) -match 'expected Clang (\d+)') { [int]$Matches[1] } else { 0 }
+              [pscustomobject]@{ Version = [version]$dir.Name; MinClang = $minClang; VS = $vs }
+            }
+          }
+          $toolsets | Sort-Object Version | Format-Table -AutoSize | Out-String | Write-Host
+
+          $toolset = $toolsets | Where-Object MinClang -le $llvmMajor |
+            Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $toolset) {
+            throw "No installed MSVC toolset accepts Clang $llvmMajor: install an older toolset or move LLVM_VERSION up"
+          }
+          Write-Host "Using MSVC $($toolset.Version) from $($toolset.VS)"
 
           $before = [Environment]::GetEnvironmentVariables()
-          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+          cmd /c "`"$($toolset.VS)\VC\Auxiliary\Build\vcvars64.bat`" -vcvars_ver=$($toolset.Version) >nul && set" | ForEach-Object {
             if ($_ -match '^([^=]+)=(.*)$' -and $before[$Matches[1]] -ne $Matches[2]) {
               "$($Matches[1])=$($Matches[2])" | Add-Content $env:GITHUB_ENV
             }
