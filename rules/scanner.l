@@ -9,8 +9,11 @@
     #include <cstdio>
     #include <iostream>
     #include <cstring>
+    #include <string_view>
+    #include <unordered_map>
     #include <vector>
     #include "parser.hh"
+    #include "include/kriol/words.hh"
 
     #define SAVE_TOKEN     yylval.string  = new std::string(yytext, yyleng)
     #define TOKENIZE(sym) (yylval.token   = sym)
@@ -30,6 +33,73 @@
     // One entry per open f-string interpolation: how many `{` inside it are
     // still open, so the `}` of a molda literal does not end the interpolation.
     static std::vector<int> g_fstr_braces;
+
+    // The words the scanner reads as their own token; any other name is an
+    // IDENT. kriol --print-words lists them, and syntax/kriol-syntax.json must
+    // follow this table. A boolean carries the value its literal stands for.
+    struct WordToken {
+        std::string_view name;
+        int token;
+        const char* boolValue = nullptr;
+    };
+
+    static constexpr WordToken WordTokens[] = {
+        {"fn", FN}, {"molda", MOLDA}, {"inpristan", IMPRISTAN},
+        {"si", SI}, {"sinon", SINON}, {"pa", PA}, {"nkuantu", NKUANTU},
+        {"kebra", KEBRA}, {"kontinua", CONTINUA}, {"divolvi", DIVOLVI},
+        {"lansa", LANSA}, {"spia", SPIA}, {"oops", OOPS}, {"sempri", SEMPRI},
+
+        {"num", TYPE_NUM}, {"int", TYPE_INT}, {"bool", TYPE_BOOL}, {"textu", TYPE_TEXTU},
+        {"i8", TYPE_PRIMITIVE}, {"i16", TYPE_PRIMITIVE}, {"i32", TYPE_PRIMITIVE}, {"i64", TYPE_PRIMITIVE},
+        {"u8", TYPE_PRIMITIVE}, {"u16", TYPE_PRIMITIVE}, {"u32", TYPE_PRIMITIVE}, {"u64", TYPE_PRIMITIVE},
+        {"f32", TYPE_PRIMITIVE}, {"f64", TYPE_PRIMITIVE}, {"isize", TYPE_PRIMITIVE}, {"usize", TYPE_PRIMITIVE},
+
+        {"sin", BOOL_LIT, "1"}, {"nau", BOOL_LIT, "0"},
+    };
+
+    static kriol::words::Kind KindOf(int token)
+    {
+        switch (token) {
+            case BOOL_LIT:
+                return kriol::words::Kind::Boolean;
+            case TYPE_NUM: case TYPE_INT: case TYPE_BOOL: case TYPE_TEXTU: case TYPE_PRIMITIVE:
+                return kriol::words::Kind::BuiltinType;
+            default:
+                return kriol::words::Kind::Keyword;
+        }
+    }
+
+    static const WordToken* FindWord(std::string_view name)
+    {
+        static const auto words = [] {
+            std::unordered_map<std::string_view, const WordToken*> byName;
+            for (const auto& word : WordTokens) byName.emplace(word.name, &word);
+            return byName;
+        }();
+        const auto found = words.find(name);
+        return found == words.end() ? nullptr : found->second;
+    }
+
+    // A lower-case name: one of the words above, or an IDENT.
+    static int ScanName(const char* text, int length)
+    {
+        const WordToken* word = FindWord(std::string_view(text, length));
+        if (!word) {
+            SAVE_TOKEN;
+            return IDENT;
+        }
+        switch (KindOf(word->token)) {
+            case kriol::words::Kind::Boolean:
+                yylval.string = new std::string(word->boolValue);
+                return word->token;
+            case kriol::words::Kind::BuiltinType:
+                SAVE_TOKEN;
+                return word->token;
+            case kriol::words::Kind::Keyword:
+                break;
+        }
+        return TOKENIZE(word->token);
+    }
 %}
 
 INT [0-9]+
@@ -51,38 +121,6 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 "/*"([^*]|\*+[^*/])*\*+"/"  /* multi-line comment */;
 "/*"([^*]|\*+[^*/])*\**     { SCAN_ERROR("o comentário não foi fechado; falta '*/'"); }
 
-"fn"            return TOKENIZE(FN);
-"molda"         return TOKENIZE(MOLDA);
-"inpristan"     return TOKENIZE(IMPRISTAN);
-"si"            return TOKENIZE(SI);
-"sinon"         return TOKENIZE(SINON);
-"divolvi"       return TOKENIZE(DIVOLVI);
-"pa"            return TOKENIZE(PA);
-"nkuantu"       return TOKENIZE(NKUANTU);
-"lansa"         return TOKENIZE(LANSA);
-"spia"          return TOKENIZE(SPIA);
-"oops"          return TOKENIZE(OOPS);
-"sempri"        return TOKENIZE(SEMPRI);
-"num"           SAVE_TOKEN;   return TYPE_NUM;
-"int"           SAVE_TOKEN;   return TYPE_INT;
-"bool"          SAVE_TOKEN;   return TYPE_BOOL;
-"textu"         SAVE_TOKEN;   return TYPE_TEXTU;
-"i8"            SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"i16"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"i32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"i64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"u8"            SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"u16"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"u32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"u64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"f32"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"f64"           SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"isize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"usize"         SAVE_TOKEN;   return TYPE_PRIMITIVE;
-"sin"           { yylval.string = new std::string("1"); return BOOL_LIT; }
-"nau"           { yylval.string = new std::string("0"); return BOOL_LIT; }
-"kebra"         return TOKENIZE(KEBRA);
-"kontinua"      return TOKENIZE(CONTINUA);
 "+"             return TOKENIZE(PLUS);
 "-"             return TOKENIZE(MINUS);
 "*"             return TOKENIZE(MUL);
@@ -131,7 +169,7 @@ STRING_SQ   [']([^'\\\n]|\\.|\\\r?\n)*[']
 {INT}           SAVE_TOKEN;   return INT_LIT;
 {FLOAT}         SAVE_TOKEN;   return FLOAT_LIT;
 {TYPE_IDENT}    SAVE_TOKEN;   return TYPE_IDENT;
-{IDENT}         SAVE_TOKEN;   return IDENT;
+{IDENT}         return ScanName(yytext, yyleng);
 f["]            { yy_push_state(FSTRING_DQ); return TOKENIZE(FSTR_START); }
 f[']            { yy_push_state(FSTRING_SQ); return TOKENIZE(FSTR_START); }
 {STRING_DQ}     SAVE_TOKEN;   return STR_LIT;
@@ -168,4 +206,14 @@ void kriol_scanner_reset_state(void)
     g_fstr_braces.clear();
     yy_start_stack_ptr = 0;
     BEGIN(INITIAL);
+}
+
+const std::vector<kriol::words::ScannerWord>& kriol::words::scannerWords()
+{
+    static const auto words = [] {
+        std::vector<ScannerWord> list;
+        for (const auto& word : WordTokens) list.push_back({word.name, KindOf(word.token)});
+        return list;
+    }();
+    return words;
 }

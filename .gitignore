@@ -33,3 +33,7 @@ build*/
 
 # Python bytecode (bench/run.py)
 __pycache__/
+
+# syntax/: npm run build writes dist/, which releases build for themselves
+syntax/dist/
+syntax/node_modules/

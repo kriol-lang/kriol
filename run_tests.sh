@@ -414,8 +414,14 @@ rejects_with "cli: unknown option" "a opção '--sem-isto' não existe" --sem-is
 rejects_with "cli: option without a value" "falta o valor da opção '-o'" --text 'fn inisiu() {}' -o
 rejects_with "cli: two files" "está a mais" "$tmpdir/a.kriol" "$tmpdir/b.kriol"
 
+# KRIOL_VERSION (set by the CMake check target) is the version CMakeLists.txt declares.
 printf "  %-44s" "cli: --version"
-if "$KRIOL" --version | grep -Eq "^Kriol v[0-9]+\.[0-9]+\.[0-9]+$"; then
+if [ -n "${KRIOL_VERSION:-}" ]; then
+    expected_version="^Kriol v${KRIOL_VERSION//./\\.}$"
+else
+    expected_version="^Kriol v[0-9]+\.[0-9]+\.[0-9]+$"
+fi
+if "$KRIOL" --version | grep -Eq "$expected_version"; then
     echo " PASS"; pass=$((pass+1))
 else
     echo " FAIL"; record_failure "cli: --version"
@@ -426,6 +432,14 @@ if "$KRIOL" --help | grep -Fq "Utilização: kriol"; then
     echo " PASS"; pass=$((pass+1))
 else
     echo " FAIL"; record_failure "cli: --help"
+fi
+
+# --print-words is for syntax/'s check, not for people: --help leaves it out.
+printf "  %-44s" "cli: --print-words is hidden from --help"
+if "$KRIOL" --print-words >/dev/null && ! "$KRIOL" --help | grep -Fq -- "--print-words"; then
+    echo " PASS"; pass=$((pass+1))
+else
+    echo " FAIL"; record_failure "cli: --print-words is hidden from --help"
 fi
 
 printf "  %-44s" "cli: --ignore-extension"
@@ -521,6 +535,30 @@ else
     else
         wasm_tests_unavailable "node is not on the PATH"
     fi
+fi
+
+# ---- syntax/: the words editors and sites colour match the compiler ---------
+# A change to a keyword, type or prelude function fails here until
+# syntax/kriol-syntax.json follows it. The compiler prints its words with the
+# hidden --print-words option.
+# syntax_test <label> <command...>: runs a Node command, shows its failures.
+syntax_test() {
+    local label="$1" output
+    shift
+    printf "  %-44s" "$label"
+    if output=$(KRIOL="$KRIOL" "$@" 2>&1); then
+        echo " PASS"; pass=$((pass+1))
+    else
+        echo " FAIL"; record_failure "$label"
+        printf '%s\n' "$output" | grep -E '^ *(not ok|\+ )|differs|^  [a-zA-Z]' | sed 's/^/      /'
+    fi
+}
+
+if command -v node >/dev/null 2>&1; then
+    syntax_test "syntax: word lists and grammar" node --test "$ROOT"/syntax/test/*.test.js
+    syntax_test "syntax: words match kriol --print-words" node "$ROOT/syntax/scripts/check-compiler.js" "$KRIOL"
+else
+    printf "  %-44s SKIP (node is not on the PATH)\n" "syntax: word lists and grammar"
 fi
 
 echo -e "\n  $pass/$((pass+fail)) passed\n"

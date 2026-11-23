@@ -1,0 +1,8 @@
+// CMake writes version.hh from this file into the build directory. The version
+// is set in project() in CMakeLists.txt: change it there, not here.
+#ifndef _KRIOL_VERSION_HEADER
+#define _KRIOL_VERSION_HEADER
+
+#define KR_VERSION "@PROJECT_VERSION@"
+
+#endif // _KRIOL_VERSION_HEADER
