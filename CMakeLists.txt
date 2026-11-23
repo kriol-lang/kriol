@@ -30,7 +30,8 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
     endif()
 endif()
 
-project(kriol LANGUAGES C CXX)
+############ SET VERSION HERE ###############
+project(kriol VERSION 1.17.1 LANGUAGES C CXX)
 
 # -----------------------------------------------------------------------------
 # Build configuration
@@ -310,10 +311,19 @@ endif()
 # Sources
 # -----------------------------------------------------------------------------
 
+# main.cc includes it as "include/kriol/version.hh", found through the build
+# directory's place on the include path.
+configure_file(
+    ${CMAKE_SOURCE_DIR}/include/kriol/version.hh.in
+    ${CMAKE_BINARY_DIR}/include/kriol/version.hh
+    @ONLY
+)
+
 set(KRIOL_CORE_SOURCES
     src/kriol/sema.cc
     src/kriol/global_init_order.cc
     src/kriol/type_rules.cc
+    src/kriol/words.cc
     ${PARSER_SRC}
     ${SCANNER_SRC}
 )
@@ -699,6 +709,7 @@ add_custom_target(
         $<TARGET_FILE:kriol_compile_fuzz_smoke>
     COMMAND
         ${CMAKE_COMMAND} -E env KRIOL_ENABLE_WASM=$<BOOL:${KRIOL_ENABLE_WASM}>
+        KRIOL_VERSION=${PROJECT_VERSION}
         ${CMAKE_SOURCE_DIR}/run_tests.sh
         $<TARGET_FILE:kriol>
         ${CMAKE_SOURCE_DIR}

@@ -81,6 +81,7 @@ in detail. In short:
 | `tests/panic/` | compile, then stop with a runtime error |
 | `tests/fail/` | be rejected by the compiler |
 | `tests/api/`, `tests/runtime/` | C++ and C tests for behaviour that no Kriol source file expresses naturally |
+| `syntax/test/` | the words editors and sites colour match the compiler (needs Node 22 or later; skipped without `node`) |
 
 A `<test>.kr.stdout` fixture is the exact output the program must write, and a
 `<test>.kr.stdin` fixture is its standard input. In `tests/fail` and
@@ -110,6 +111,18 @@ space indentation, braces on the same line as the statement that opens them,
 Comments explain *why* the code does something, not what it does. The existing
 ones are worth reading as a model: they tend to record the constraint that forced
 the design, which is what a future reader cannot recover from the code.
+
+Each word of the language is listed once in the compiler: keywords, type names
+and booleans in the scanner's table in `rules/scanner.l`, prelude functions in
+`BuiltinFunctions` in `include/kriol/prelude.hh`, and renamed words in
+`include/kriol/deprecated.hh`. It also lives in
+[`syntax/kriol-syntax.json`](syntax/kriol-syntax.json), the word list the editors,
+the docs and the playground colour code with. Change both in the same pull
+request: the `check` target compares the file with `kriol --print-words` and
+fails while they disagree. See [`syntax/README.md`](syntax/README.md).
+
+The compiler's version is set once, in `project()` in `CMakeLists.txt`; a release
+tag must start with it.
 
 Keep a change to one concern. A fix that also renames things and reformats a file
 is slow to review and hard to revert.

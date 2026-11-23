@@ -4,6 +4,7 @@
 #include "../../include/kriol/sema.hh"
 #include "../../include/kriol/constants.hh"
 #include "../../include/kriol/diagnostic.hh"
+#include "../../include/kriol/words.hh"
 
 #include "../../include/external/argparse.hpp"
 
@@ -176,6 +177,7 @@ void cli::PrintErr(std::string message, int exitNum)
 
 
 // The options are documented by HelpText(), which must follow any change here.
+// --print-words is the exception: it is for syntax/'s check, not for people.
 void cli::Compiler::DefineArgs()
 {
     Parser->add_argument("file").nargs(ap::nargs_pattern::optional);
@@ -188,6 +190,7 @@ void cli::Compiler::DefineArgs()
     Parser->add_argument("--ignore-extension").flag();
     Parser->add_argument("-h", "--help").flag();
     Parser->add_argument("-v", "--version").flag();
+    Parser->add_argument("--print-words").flag();
 }
 
 void cli::Compiler::ParseArgs(int argc, const char* const* argv)
@@ -212,6 +215,11 @@ void cli::Compiler::ParseArgs(int argc, const char* const* argv)
     {
         std::cout << Version << std::endl;
         throw cli::FatalError("version", 0);
+    }
+    if (Parser->get<bool>("--print-words"))
+    {
+        std::cout << words::toJson();
+        throw cli::FatalError("print-words", 0);
     }
 
     const auto targets = SupportedTargets();

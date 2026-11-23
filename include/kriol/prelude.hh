@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "ast.hh"
 #include "deprecated.hh"
@@ -40,16 +41,28 @@ enum class Builtin {
     Paniku
 };
 
+struct BuiltinFunction {
+    std::string_view name;
+    Builtin builtin;
+};
+
+// The prelude's functions. kriol --print-words lists them, and
+// syntax/kriol-syntax.json must follow this table.
+inline constexpr BuiltinFunction BuiltinFunctions[] = {
+    {"mostra", Builtin::Mostra},
+    {"mostraln", Builtin::Mostraln},
+    {"toma", Builtin::Toma},
+    {"sai", Builtin::Sai},
+    {"konfirma", Builtin::Konfirma},
+    {"paniku", Builtin::Paniku},
+};
+
 // The built-in a name calls; an old spelling of a renamed built-in calls it too.
 inline Builtin lookupBuiltin(const std::string& name) {
     if (auto currentName = deprecated::currentNameOf(name))
         return lookupBuiltin(std::string(*currentName));
-    if (name == "mostra") return Builtin::Mostra;
-    if (name == "mostraln") return Builtin::Mostraln;
-    if (name == "toma") return Builtin::Toma;
-    if (name == "sai") return Builtin::Sai;
-    if (name == "konfirma") return Builtin::Konfirma;
-    if (name == "paniku") return Builtin::Paniku;
+    for (const auto& function : BuiltinFunctions)
+        if (function.name == name) return function.builtin;
     return Builtin::None;
 }
 

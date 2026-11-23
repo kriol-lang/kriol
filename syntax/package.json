@@ -1,0 +1,40 @@
+{
+  "name": "kriol-syntax",
+  "version": "0.0.0",
+  "description": "Single source of the KriolLang syntax: word lists and the TextMate grammar shared by every editor and site",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kriol-lang/kriol.git",
+    "directory": "syntax"
+  },
+  "homepage": "https://github.com/kriol-lang/kriol/tree/main/syntax",
+  "keywords": [
+    "kriol",
+    "textmate",
+    "grammar",
+    "syntax-highlighting"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./kriol.tmLanguage.json": "./dist/kriol.tmLanguage.json",
+    "./kriol-syntax.json": "./kriol-syntax.json"
+  },
+  "files": [
+    "dist",
+    "kriol-syntax.json"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "check:compiler": "node scripts/check-compiler.js",
+    "pack:release": "node scripts/pack.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

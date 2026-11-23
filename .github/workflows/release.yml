@@ -18,8 +18,33 @@ jobs:
   macos:
     uses: ./.github/workflows/macos.yml
 
+  # The word lists and grammar of syntax/, checked against this compiler by the
+  # Linux build's tests and versioned with its tag.
+  syntax:
+    needs: linux
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kriol-linux-x86_64
+          path: compiler
+
+      - name: Pack kriol-syntax
+        run: |
+          # Artifacts do not keep the executable bit.
+          chmod +x compiler/kriol
+          node syntax/scripts/pack.js "$GITHUB_REF_NAME" compiler/kriol syntax-release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kriol-syntax
+          path: syntax-release
+
   release:
-    needs: [linux, windows, macos]
+    needs: [linux, windows, macos, syntax]
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -45,6 +70,11 @@ jobs:
           name: kriol-macos-arm64
           path: ${{ env.MACOS }}
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kriol-syntax
+          path: .
+
       - name: Pack archives
         run: |
           # Artifacts do not keep the executable bit.
@@ -56,7 +86,7 @@ jobs:
 
       - name: Generate checksums
         run: |
-          sha256sum *.tar.gz *.tar.xz *.zip > SHA256SUMS.txt
+          sha256sum *.tar.gz *.tar.xz *.zip *.tgz kriol.tmLanguage.json > SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
@@ -67,4 +97,6 @@ jobs:
             ${{ env.LINUX }}.tar.xz
             ${{ env.WINDOWS }}.zip
             ${{ env.MACOS }}.tar.gz
+            kriol-syntax-*.tgz
+            kriol.tmLanguage.json
             SHA256SUMS.txt

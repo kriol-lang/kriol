@@ -2,7 +2,9 @@
 #include "../../include/kriol/type_rules.hh"
 #include "../../include/kriol/type_utils.hh"
 #include "../../include/kriol/prelude.hh"
+#include "../../include/kriol/words.hh"
 
+#include <string_view>
 #include <unordered_set>
 #include <algorithm>
 #include <cctype>
@@ -79,20 +81,18 @@ private:
 
 }
 
-static const std::unordered_set<std::string> reservedKeywords = {
-    // Language keywords.
-    "si", "sinon", "nkuantu", "pa", "fn", "molda", "divolvi", "inpristan",
-    "kebra", "kontinua", "lansa", "spia", "oops", "sempri",
-
-    // Type names and literals.
-    "num", "int", "bool", "textu", "sin", "nau",
-    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64",
-    "f32", "f64", "isize", "usize"
-};
+// The keywords, type names and literals: the words the scanner reads as tokens.
+static bool isScannerWord(const std::string& name) {
+    static const auto scannerWords = [] {
+        std::unordered_set<std::string_view> names;
+        for (const auto& word : words::scannerWords()) names.insert(word.name);
+        return names;
+    }();
+    return scannerWords.count(name) != 0;
+}
 
 bool SemanticAnalyzer::isReservedKeyword(const std::string& name) {
-    return reservedKeywords.count(name) != 0 || prelude::isPreludeName(name)
-        || name == erruName;
+    return isScannerWord(name) || prelude::isPreludeName(name) || name == erruName;
 }
 
 bool SemanticAnalyzer::checkDeclaredNameValid(const std::string& name,

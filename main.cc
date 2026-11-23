@@ -1,4 +1,5 @@
 #include "include/kriol/constants.hh"
+#include "include/kriol/version.hh"
 #include "include/kriol/cli.hh"
 
 #ifdef _WIN32
@@ -23,7 +24,7 @@ int main(int argc, const char** argv) {
     ConsoleUtf8 consoleUtf8;
 #endif
     try {
-        kriol::cli::Compiler Comp(KR_STANDARD_COMPILER_NAME, KR_VERSION_STRING);
+        kriol::cli::Compiler Comp(KR_STANDARD_COMPILER_NAME, KR_STANDARD_NAME " v" KR_VERSION);
         Comp.Run(argc, argv);
         kriol::cli::Compiler::Cleanup();
         return 0;
